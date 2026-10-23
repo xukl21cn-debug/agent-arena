@@ -1,6 +1,6 @@
 # 五子棋 MCP 对弈系统 · 设计文档
 
-> 版本：v0.7（Agent 视图：LLM 友好棋盘表达 + 热路径瘦身）
+> 版本：v0.8（Agent 视图：double 威胁合并 + 防守纪律）
 > 日期：2026-10-23
 > 项目路径：`E:\code\fun\gomoku-mcp`
 > 技术栈：Node.js + TypeScript（单进程后端） / Vite + React（前端）
@@ -254,10 +254,20 @@ web/        只依赖 shared 类型与 REST/WS 协议
   `win > open4 > four > open3`（`fiveAt` 给出成五点）。`win` 与 `fiveAt`
   都经引擎 `findWinLine` 校验，`overlineWin` / `winLength` 语义与规则引擎
   一致（exact-five 规则下六连补全不会被误报）；open3 为参考级启发式并设
-  数量上限。决定实测对局胜负的那手棋（黑 (9,4) 斜跳四成开四）在落下前
+  数量上限。决定第一局胜负的那手棋（黑 (9,4) 斜跳四成开四）在落下前
   就会被标为 `open4` 并给出两个成五点
-- **防守纪律写入提示词**：对手 open4 候选点必须本手直接占掉该点本身，
-  等对方落子后再挡 fiveAt 就已迟了（SERVER_INSTRUCTIONS 与工具描述同步）
+- **double 威胁合并**：同一手制造两个独立必应威胁时，`HotPoint.double`
+  标为 `["four","open3"]`（四三杀）或 `["open3","open3"]`（双活三），
+  `open3At` 给出活三的拆点。独立性按“对手能否一手同时化解”判断：
+  同方向的 four + three 不独立（挡 fiveAt 即同时拆三），不同方向的
+  four + live three 才合并。double 点在同级 effect 中排最前
+- **防守纪律写入提示词**：对手 open4 候选点必须本手直接占掉该点本身；
+  对手 double 点本手优先占点（four+open3 可退而挡 `fiveAt`/拆 `open3At`
+  一端；双活三必须占点或自己更快取胜，只拆一端挡不住）；对手 four
+  必须本手挡 `fiveAt`，不能等它落子。SERVER_INSTRUCTIONS 与工具描述同步
+- **第二局验收**：25 手黑胜（白方认输）。第 21 手后黑 `(4,7)` 不再只是
+  `four`，而是 `four + double[four+open3]`，`open3At = (3,8)/(7,4)`；
+  白 22 的发展着被标为必防点，复现脚本见 `scripts/replay-game2.mjs`
 
 实现位置：`core/insights.ts`（纯函数）；MCP 两个传输
 （`InProcessApi` / `HttpApi`）都经 `toAgentStateView()` 出同一份视图，
@@ -762,6 +772,8 @@ output: { ok: true; commentary: Commentary }
 - state.moves 是最近的走子记录；movesOmitted>0 表示更早的手数被省略，完整历史用 get_state 查；
 - state.hotPoints 列出双方"落子即成威胁"的关键点：
   win=该点落子成五获胜 | open4=该点落子成两头开四（双杀）| four=落子成冲四（fiveAt 即成五点）| open3=活三（参考级）。
+  double=该点同时制造两个独立必应威胁（four+open3 或双活三），open3At 给出活三的拆点——
+  四三杀不能只当普通 four（挡完 fiveAt 还会被活三开四），双活三不能只拆一端。
 禁止自己逐格重建棋盘或数数组——判断一律以 boardText 和 hotPoints 为准。
 
 每次落子前，按以下优先级检查 hotPoints（先算胜，再算防）：
@@ -769,7 +781,11 @@ output: { ok: true; commentary: Commentary }
 2. 对手的 win 点：必须占住；若对手已有两个 win 点，说明开四已成立无法全挡，选最能拖延或制造反击的一手。
 3. 自己的 open4 候选点：优先落子，形成对手挡不住的双杀——它通常比防守对手的 open4 候选更快获胜。
 4. 对手的 open4 候选点：必须在本手直接占掉该候选点本身——等对方落子后再去挡 fiveAt 就已经晚了。
-5. 对手的 four 点：挡在其 fiveAt；再往后才是自己的 four / open3。
+5. 对手的 double 点：本手优先占掉该点本身，不要下发展棋。
+   - four+open3（double 含 four）：占不了时，可挡 fiveAt，或拆 open3At 的一端；之后还要防另一条线。
+   - 双活三（double 只有 open3）：必须占点，或自己有更快的成五/开四；只拆一个端点挡不住两个活三。
+6. 对手的 four 点：本手挡在其 fiveAt；不要等它落子。
+7. 再往后才是自己的 double / four / open3；自己的 double 是两步杀，但没有上述必防项时才优先。
 低阶威胁只作参考，不要为它们放弃上面的必防项。
 
 标准流程：
@@ -1104,3 +1120,6 @@ cmd mcp get gomoku
   热路径只带最近 8 手（`movesOmitted` 标注省略，get_state 仍全量）；错误响应携带 history；
   `win`/`fiveAt` 判定复用引擎 `findWinLine`（overlineWin / winLength 语义一致）；威胁分级
   精简为 win/open4/four/open3；boardText 列号可解析；REST 变更端点返回 `{ state, history }`（已知破坏，见 §4.3）
+- v0.8：`HotPoint.double`（four+open3 / 双活三）+ `open3At` 拆点；同方向 four+three 不合并；
+  double 点排在同级之前；提示词把“对手 double 本手优先占点（four+open3 可拆，双活三必须占点）”
+  “对手 four 本手挡 fiveAt”写成硬约束；新增第二局 25 手复盘与 `scripts/replay-game2.mjs`；测试 106

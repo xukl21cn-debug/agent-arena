@@ -87,6 +87,21 @@ export interface HotPoint {
   effect: HotPointEffect;
   /** Empty cells that complete a five for this color (win/open4/four only). */
   fiveAt: Cell[];
+  /**
+   * Set when placing here creates two independent threats: four + open3, or
+   * two open3s in different directions. Each threat needs its own defense, so
+   * the point is a forced win unless the opponent already has a faster threat.
+   * win/open4 points do not repeat their existing tier here.
+   */
+  double?: HotPointEffect[];
+  /**
+   * Extension points of the independent open3(s) counted by `double`
+   * (`double` includes "open3" only). Occupying one of these ends can defuse
+   * a four+open3 combo; a double-open3 point must itself be occupied (or
+   * answered by a faster win), because one endpoint block leaves the other
+   * live three intact.
+   */
+  open3At?: Cell[];
 }
 
 export interface Commentary {

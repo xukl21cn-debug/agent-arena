@@ -4,7 +4,7 @@
 
 ## 状态
 
-M1–M6 代码完成：`shared` 类型、规则引擎、房间与长轮询、REST + WebSocket、MCP 双传输（Streamable HTTP / stdio）、React 棋盘与 AI 互动面板。99 个测试，包含 HTTP / WS / MCP 集成用例。已用 zcode 实测完整对局（49 手 + 26 条解说）。
+M1–M6 代码完成：`shared` 类型、规则引擎、房间与长轮询、REST + WebSocket、MCP 双传输（Streamable HTTP / stdio）、React 棋盘与 AI 互动面板。106 个测试，包含 HTTP / WS / MCP 集成用例。已用 zcode 实测完整对局（49 手 + 26 条解说；第二局 25 手复盘见 `docs/GAME-2026-10-23-2.md`）。
 
 ## Agent 视图：LLM 友好的棋盘表达
 
@@ -12,9 +12,9 @@ M1–M6 代码完成：`shared` 类型、规则引擎、房间与长轮询、RES
 
 - `state.boardText`：等宽棋盘图（`X`=黑 `O`=白 `.`=空，小写=最新一手，`#`/`@`=五连），行号两位补零、列号空白分隔，任何数字都不会黏连；
 - `state.moves`：走子记录。`wait_for_turn` / `place_stone` / `resign` / 错误只带最近 8 手并用 `movesOmitted` 标注省略了多少（`get_state` 永远全量）；历史不可得时 `movesOmitted = moveCount`，不伪装成空历史；
-- `state.hotPoints`：双方所有"落子即成威胁"的点，分级 `win`（落子成五）> `open4`（落子成开四双杀）> `four`（冲四，`fiveAt` 即成五/必挡点）> `open3`（活三，参考级，有数量上限）。`win` 与 `fiveAt` 均经规则引擎 `findWinLine` 校验，`overlineWin` / `winLength` 变体语义一致。
+- `state.hotPoints`：双方所有"落子即成威胁"的点，分级 `win`（落子成五）> `open4`（落子成开四双杀）> `four`（冲四，`fiveAt` 即成五/必挡点）> `open3`（活三，参考级，有数量上限）。`win` 与 `fiveAt` 均经规则引擎 `findWinLine` 校验，`overlineWin` / `winLength` 变体语义一致。`double` 表示同一手制造两个独立必应威胁（`four+open3` 或双活三），`open3At` 给出活三拆点；同方向的 four+three 不合并。
 
-payload 实测（100 手中盘）：热路径 2470 字符（全量历史版本为 6600，旧裸 `GameState` 为 1732）。防守纪律已写入 SERVER_INSTRUCTIONS 与工具描述：对手 open4 候选点必须本手直接占掉该点本身。演示：`node scripts/demo-agent-view.mjs`（复盘了实测对局中决定胜负的那一步）。
+payload 实测（100 手中盘）：热路径 2470 字符（全量历史版本为 6600，旧裸 `GameState` 为 1732）。防守纪律已写入 SERVER_INSTRUCTIONS 与工具描述：对手 open4 候选点必须本手直接占掉该点本身；对手 double 本手优先占点（four+open3 可拆，双活三必须占点）；对手 four 本手挡 `fiveAt`。演示：`node scripts/demo-agent-view.mjs`（第一局决定胜负的那一步）与 `node scripts/replay-game2.mjs`（第二局 25 手，含 `(4,7)` 四三杀）。
 
 ## 界面预览
 

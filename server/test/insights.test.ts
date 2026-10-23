@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { HotPoint, Move, StoneColor } from '@gomoku/shared';
+import type { GameState, HotPoint, Move, StoneColor } from '@gomoku/shared';
 import { AGENT_RECENT_MOVES } from '@gomoku/shared';
 import {
   createBoard,
@@ -48,6 +48,30 @@ function winsIfPlaced(
   const scratch = board.map((line) => line.slice());
   scratch[row]![col] = color;
   return findWinLine(scratch, row, col, rules) !== null;
+}
+
+/** Game 2 (2026-10-23): black = human, white = GLM agent. */
+const GAME2_MOVES: ReadonlyArray<readonly [number, number]> = [
+  [7, 7], [8, 8], [7, 8], [7, 9], [9, 7], [8, 7], [8, 9], [9, 8],
+  [7, 6], [7, 5], [6, 7], [9, 10], [5, 6], [4, 5], [5, 8], [8, 5],
+  [5, 7], [5, 5], [6, 5], [8, 6], [8, 4], [8, 10], [4, 7], [3, 7], [7, 4],
+];
+
+function game2StateAfter(moveCount: number): GameState {
+  let state: GameState = {
+    ...createInitialState('room'),
+    status: 'playing',
+    gameId: 'g2',
+  };
+  for (let i = 0; i < moveCount; i += 1) {
+    const [row, col] = GAME2_MOVES[i]!;
+    const result = applyMove(state, i % 2 === 0 ? 'black' : 'white', row, col);
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+    state = result.state;
+  }
+  return state;
 }
 
 describe('findHotPoints', () => {
@@ -125,6 +149,108 @@ describe('findHotPoints', () => {
     const point = pointsAt(hot.black, 9, 4);
     expect(point?.effect).toBe('open4');
     expect(point?.fiveAt).toEqual([{ row: 7, col: 2 }, { row: 12, col: 7 }]);
+  });
+
+  it('merges four + live three into double at game 2 move 21', () => {
+    // Black (4,7) is a vertical rush four (fiveAt 3,7) plus an anti-diagonal
+    // live three (3,8)/(7,4). v0.3 kept only the higher `four`, hiding the
+    // two-step kill that decided the game.
+    const state = game2StateAfter(21);
+    const hot = findHotPoints(state.board, state.rules);
+    const point = pointsAt(hot.black, 4, 7);
+
+    expect(point?.effect).toBe('four');
+    expect(point?.fiveAt).toEqual([{ row: 3, col: 7 }]);
+    expect(point?.double).toEqual(['four', 'open3']);
+    expect(point?.open3At).toHaveLength(2);
+    expect(point?.open3At).toEqual(
+      expect.arrayContaining([
+        { row: 3, col: 8 },
+        { row: 7, col: 4 },
+      ]),
+    );
+  });
+
+  it('does not mark an open four as double (game 2, moves 11 and 23)', () => {
+    const after11 = game2StateAfter(11);
+    const hot11 = findHotPoints(after11.board, after11.rules);
+
+    expect(pointsAt(hot11.black, 5, 6)?.effect).toBe('open4');
+    expect(pointsAt(hot11.black, 5, 6)?.double).toBeUndefined();
+    expect(pointsAt(hot11.black, 9, 10)?.effect).toBe('open4');
+    expect(pointsAt(hot11.black, 9, 10)?.double).toBeUndefined();
+
+    const after23 = game2StateAfter(23);
+    const hot23 = findHotPoints(after23.board, after23.rules);
+    expect(pointsAt(hot23.black, 3, 8)?.effect).toBe('open4');
+    expect(pointsAt(hot23.black, 3, 8)?.double).toBeUndefined();
+    expect(pointsAt(hot23.black, 7, 4)?.effect).toBe('open4');
+    expect(pointsAt(hot23.black, 7, 4)?.double).toBeUndefined();
+  });
+
+  it('does not promote a same-direction four + three to double', () => {
+    // White (5,5) at game 2 move 17 is a four with fiveAt (6,5). The extra
+    // three-windows are on the same vertical line: blocking (6,5) defuses
+    // both, so this must stay a plain `four`.
+    const state = game2StateAfter(17);
+    const hot = findHotPoints(state.board, state.rules);
+    const point = pointsAt(hot.white, 5, 5);
+
+    expect(point?.effect).toBe('four');
+    expect(point?.fiveAt).toEqual([{ row: 6, col: 5 }]);
+    expect(point?.double).toBeUndefined();
+    expect(point?.open3At).toBeUndefined();
+  });
+
+  it('marks two independent live threes as double open3', () => {
+    // Placing (7,7) makes a horizontal live three (7,5)(7,7) with ends
+    // (7,4)/(7,8) and a vertical live three (5,7)(7,7) with ends
+    // (4,7)/(8,7). Different directions, no shared defense point.
+    const board = boardWith([
+      ['black', 7, 5],
+      ['black', 7, 6],
+      ['black', 5, 7],
+      ['black', 6, 7],
+    ]);
+    const hot = findHotPoints(board, RULES);
+    const point = pointsAt(hot.black, 7, 7);
+
+    expect(point?.effect).toBe('open3');
+    expect(point?.double).toEqual(['open3', 'open3']);
+    expect(point?.open3At).toHaveLength(4);
+    expect(point?.open3At).toEqual(
+      expect.arrayContaining([
+        { row: 7, col: 4 },
+        { row: 7, col: 8 },
+        { row: 4, col: 7 },
+        { row: 8, col: 7 },
+      ]),
+    );
+  });
+
+  it('does not mark a plain live three as double', () => {
+    const board = boardWith([
+      ['black', 7, 5],
+      ['black', 7, 6],
+    ]);
+    const hot = findHotPoints(board, RULES);
+
+    expect(pointsAt(hot.black, 7, 7)?.effect).toBe('open3');
+    expect(pointsAt(hot.black, 7, 7)?.double).toBeUndefined();
+  });
+
+  it('orders double fours before ordinary four candidates', () => {
+    const state = game2StateAfter(21);
+    const hot = findHotPoints(state.board, state.rules);
+    const doubleIndex = hot.black.findIndex(
+      (point) => point.row === 4 && point.col === 7,
+    );
+    const ordinaryIndex = hot.black.findIndex(
+      (point) => point.row === 3 && point.col === 7,
+    );
+
+    expect(doubleIndex).toBeGreaterThanOrEqual(0);
+    expect(ordinaryIndex).toBeGreaterThan(doubleIndex);
   });
 
   it('treats a split three with room as a live three', () => {
@@ -345,6 +471,17 @@ describe('toAgentStateView', () => {
     // white holds a single stone and cannot have a three-level point yet.
     expect(view.hotPoints.black.length).toBeGreaterThan(0);
     expect(view.hotPoints.white).toEqual([]);
+  });
+
+  it('carries double/open3At into the agent view', () => {
+    const state = game2StateAfter(21);
+    const view = toAgentStateView(state, null);
+    const point = view.hotPoints.black.find(
+      (candidate) => candidate.row === 4 && candidate.col === 7,
+    );
+
+    expect(point?.double).toEqual(['four', 'open3']);
+    expect(point?.open3At).toHaveLength(2);
   });
 
   it('keeps only recent moves on the hot path and reports the omission', () => {
