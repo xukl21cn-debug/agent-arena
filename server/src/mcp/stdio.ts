@@ -1,0 +1,214 @@
+#!/usr/bin/env node
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type {
+  AgentStateResponse,
+  AgentStateView,
+  AgentWaitForTurnResponse,
+  Commentary,
+  CommentaryKind,
+  CommentaryMood,
+  ErrorCode,
+  GameState,
+  Move,
+  MutationResponse,
+  RoomView,
+  StoneColor,
+  WaitForTurnResponse,
+} from '@gomoku/shared';
+import { AGENT_RECENT_MOVES } from '@gomoku/shared';
+import { resolveServerUrl } from '../config.js';
+import {
+  toAgentStateView,
+  type AgentViewOptions,
+} from '../core/insights.js';
+import { agentColorOf, GomokuApiError, type GomokuApi } from './api.js';
+import { registerTools, SERVER_INSTRUCTIONS } from './tools.js';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Hot-path responses keep only recent moves; get_state returns everything. */
+const RECENT: AgentViewOptions = { recentMoves: AGENT_RECENT_MOVES };
+
+/**
+ * `GomokuApi` that proxies to a running gomoku server over REST. Used by the
+ * stdio bridge, which deliberately holds no game state of its own. REST
+ * responses carry the move history so the bridge can build the same
+ * agent-facing views (boardText / moves / hotPoints) as the in-process API.
+ */
+export class HttpApi implements GomokuApi {
+  private readonly baseUrl: string;
+
+  constructor(baseUrl: string = resolveServerUrl()) {
+    this.baseUrl = baseUrl;
+  }
+
+  async newGame(
+    roomId: string,
+    agentColor?: StoneColor,
+  ): Promise<AgentStateResponse> {
+    const payload = await this.request<MutationResponse>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/games`,
+      agentColor === undefined ? {} : { agentColor },
+    );
+    const state = payload.state;
+    return {
+      state: toAgentStateView(state, payload.history),
+      yourColor: agentColorOf(state),
+    };
+  }
+
+  async getState(roomId: string): Promise<AgentStateResponse> {
+    const view = await this.request<RoomView>(
+      'GET',
+      `/api/rooms/${encodeURIComponent(roomId)}`,
+    );
+    return {
+      state: toAgentStateView(view.state, view.history),
+      yourColor: agentColorOf(view.state),
+    };
+  }
+
+  async waitForTurn(
+    roomId: string,
+    timeoutMs: number,
+  ): Promise<AgentWaitForTurnResponse> {
+    const payload = await this.request<WaitForTurnResponse>(
+      'GET',
+      `/api/rooms/${encodeURIComponent(roomId)}/wait-for-turn?actor=agent&timeoutMs=${encodeURIComponent(String(timeoutMs))}`,
+    );
+    return {
+      state: toAgentStateView(payload.state, payload.history, RECENT),
+      yourColor: payload.yourColor,
+      reason: payload.reason,
+    };
+  }
+
+  async placeStone(
+    roomId: string,
+    row: number,
+    col: number,
+  ): Promise<AgentStateView> {
+    const payload = await this.request<MutationResponse>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/moves`,
+      { row, col, actor: 'agent' },
+    );
+    return toAgentStateView(payload.state, payload.history, RECENT);
+  }
+
+  async resign(roomId: string): Promise<AgentStateView> {
+    const payload = await this.request<MutationResponse>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/resign`,
+      { actor: 'agent' },
+    );
+    return toAgentStateView(payload.state, payload.history, RECENT);
+  }
+
+  async say(
+    roomId: string,
+    text: string,
+    kind?: CommentaryKind,
+    mood?: CommentaryMood,
+  ): Promise<Commentary> {
+    return this.request<Commentary>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/commentary`,
+      { text, kind, mood, actor: 'agent' },
+    );
+  }
+
+  private async request<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
+    const url = new URL(path, this.baseUrl);
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers:
+          body === undefined ? undefined : { 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new GomokuApiError(
+        'BACKEND_UNAVAILABLE',
+        `无法连接 gomoku 后端 ${this.baseUrl}。请先运行 "pnpm start"（生产）或 "pnpm dev"（开发）启动服务，然后重试。(${detail})`,
+      );
+    }
+
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      throw this.toApiError(payload, response.status);
+    }
+
+    if (payload === null) {
+      throw new GomokuApiError(
+        'INTERNAL_ERROR',
+        `后端返回了非 JSON 响应 (HTTP ${response.status})。`,
+      );
+    }
+
+    return payload as T;
+  }
+
+  private toApiError(payload: unknown, status: number): GomokuApiError {
+    if (isRecord(payload) && isRecord(payload.error)) {
+      const { code, message } = payload.error;
+      const state = isRecord(payload.state)
+        ? (payload.state as unknown as GameState)
+        : null;
+      const history = Array.isArray(payload.history)
+        ? (payload.history as unknown as Move[])
+        : null;
+      return new GomokuApiError(
+        typeof code === 'string' ? (code as ErrorCode) : 'INTERNAL_ERROR',
+        typeof message === 'string' ? message : `HTTP ${status}`,
+        state,
+        history,
+      );
+    }
+
+    return new GomokuApiError(
+      'INTERNAL_ERROR',
+      `后端请求失败 (HTTP ${status})。`,
+    );
+  }
+}
+
+export function createStdioServer(api: GomokuApi): McpServer {
+  const server = new McpServer(
+    { name: 'gomoku', version: '0.1.0' },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
+  registerTools(server, api);
+  return server;
+}
+
+async function main(): Promise<void> {
+  const serverUrl = resolveServerUrl();
+  const server = createStdioServer(new HttpApi(serverUrl));
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  // stdout is the JSON-RPC channel: logs must go to stderr.
+  console.error(`[gomoku-mcp] stdio bridge ready, backend: ${serverUrl}`);
+}
+
+main().catch((error: unknown) => {
+  console.error('[gomoku-mcp] fatal error', error);
+  process.exit(1);
+});

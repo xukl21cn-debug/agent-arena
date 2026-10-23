@@ -5,6 +5,9 @@ import type {
   CommentaryMood,
   ErrorCode,
   GameState,
+  HotPoint,
+  Move,
+  MoveRecord,
   PlayerSpec,
   RuleSet,
   StoneColor,
@@ -45,6 +48,41 @@ export interface StateResponse {
 
 export interface WaitForTurnResponse extends StateResponse {
   reason: WaitReason;
+  history: Move[];
+}
+
+/** Successful mutation responses carry the state plus the full move history. */
+export interface MutationResponse {
+  state: GameState;
+  history: Move[];
+}
+
+/**
+ * GameState rendered for LLM agents: the 15×15 nested null array is replaced
+ * by a monospace board picture, a move list, and per-color hot points.
+ * Agents should never need to rebuild the board cell by cell.
+ */
+export interface AgentStateView extends Omit<GameState, 'board'> {
+  /** Monospace grid: X=black, O=white, .=empty, lowercase = latest move. */
+  boardText: string;
+  /**
+   * Move records for this game. Hot-path responses keep only the most
+   * recent moves; get_state returns the full list.
+   */
+  moves: MoveRecord[];
+  /** Earlier moves left out of `moves`; 0 means the list is complete. */
+  movesOmitted: number;
+  /** Cells where placing that color's stone creates an immediate threat. */
+  hotPoints: Record<StoneColor, HotPoint[]>;
+}
+
+export interface AgentStateResponse {
+  state: AgentStateView;
+  yourColor: StoneColor | null;
+}
+
+export interface AgentWaitForTurnResponse extends AgentStateResponse {
+  reason: WaitReason;
 }
 
 export interface ErrorResponse {
@@ -53,6 +91,8 @@ export interface ErrorResponse {
     message: string;
   };
   state?: GameState;
+  /** Move history alongside `state`, so error views stay self-consistent. */
+  history?: Move[];
 }
 
 export type ClientMessage = { type: 'ping' };

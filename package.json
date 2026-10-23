@@ -10,14 +10,19 @@
     "pnpm": ">=10"
   },
   "scripts": {
+    "dev": "pnpm build:shared && concurrently -k -n shared,server,web -c cyan,yellow,green \"pnpm --filter @gomoku/shared dev\" \"pnpm --filter @gomoku/server dev\" \"pnpm --filter @gomoku/web dev\"",
+    "dev:server": "pnpm build:shared && pnpm --filter @gomoku/server dev",
     "build:shared": "pnpm --filter @gomoku/shared build",
     "build:server": "pnpm --filter @gomoku/server build",
-    "build": "pnpm build:shared && pnpm build:server",
+    "build:web": "pnpm --filter @gomoku/web build",
+    "build": "pnpm build:shared && pnpm build:server && pnpm build:web",
+    "start": "pnpm --filter @gomoku/server start",
     "test": "pnpm build:shared && pnpm --filter @gomoku/server test",
-    "typecheck": "pnpm build:shared && pnpm --filter @gomoku/server typecheck"
+    "typecheck": "pnpm build:shared && pnpm --filter @gomoku/server typecheck && pnpm --filter @gomoku/web typecheck"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "concurrently": "^10.0.6",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

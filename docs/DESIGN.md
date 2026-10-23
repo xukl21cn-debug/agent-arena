@@ -1,7 +1,7 @@
 # 五子棋 MCP 对弈系统 · 设计文档
 
-> 版本：v0.4（AI 互动解说 + docs 目录）
-> 日期：2026-10-22
+> 版本：v0.7（Agent 视图：LLM 友好棋盘表达 + 热路径瘦身）
+> 日期：2026-10-23
 > 项目路径：`E:\code\fun\gomoku-mcp`
 > 技术栈：Node.js + TypeScript（单进程后端） / Vite + React（前端）
 
@@ -232,6 +232,37 @@ web/        只依赖 shared 类型与 REST/WS 协议
 - MCP 工具名稳定；参数只增加可选字段
 - REST 前缀 `/api`；未来破坏性变更走 `/api/v2`
 - WS 消息带 `type` 与 `roomId`，客户端忽略未知字段与未知消息类型
+- v0.7 一次已知破坏：REST 变更类端点（`POST /games` `/moves` `/resign`）与
+  `wait-for-turn` 的响应从裸 `GameState` 改为 `{ state, history, ... }` 包装，
+  错误响应增加可选 `history` 字段；目的是让 stdio 桥接拿到走子历史、与进程内
+  MCP 返回同一份 Agent 视图。web 前端与测试同步更新，无外部消费方
+
+### 4.4 Agent 视图：LLM 友好的棋盘表达
+
+实测（zcode，49 手完整对局）暴露的问题：LLM 逐格消费 15×15 嵌套 null 数组
+会数错列，斜线上的跳四（`x 1 2 x 3 x`）在读盘阶段被漏看，直接导致输棋。
+对策是把 MCP 边界的表达从「数据结构」换成「认知友好」：
+
+- **boardText**：等宽棋盘图，`X`=黑 `O`=白 `.`=空，小写=最新一手，
+  `#`/`@`=五连；行号两位补零、列号空白分隔（`10+` 不会黏连成 `9101112`）
+- **moves**：走子记录 `{row, col, color, index}`。热路径
+  （wait_for_turn / place_stone / resign / 错误）只带最近 8 手并标注
+  `movesOmitted`；`get_state` 返回全量。历史不可得时 `movesOmitted =
+  moveCount`，绝不伪装成空历史。实测 100 手热路径负载 2470 字符
+  （全量历史为 6600）
+- **hotPoints**：对每个空点、每种颜色做落子模拟，分级
+  `win > open4 > four > open3`（`fiveAt` 给出成五点）。`win` 与 `fiveAt`
+  都经引擎 `findWinLine` 校验，`overlineWin` / `winLength` 语义与规则引擎
+  一致（exact-five 规则下六连补全不会被误报）；open3 为参考级启发式并设
+  数量上限。决定实测对局胜负的那手棋（黑 (9,4) 斜跳四成开四）在落下前
+  就会被标为 `open4` 并给出两个成五点
+- **防守纪律写入提示词**：对手 open4 候选点必须本手直接占掉该点本身，
+  等对方落子后再挡 fiveAt 就已迟了（SERVER_INSTRUCTIONS 与工具描述同步）
+
+实现位置：`core/insights.ts`（纯函数）；MCP 两个传输
+（`InProcessApi` / `HttpApi`）都经 `toAgentStateView()` 出同一份视图，
+`GameState.board` 数组只保留在 REST/WS（前端渲染用），不再进入 MCP 负载。
+错误负载同样转换并携带 history（见 §4.3 的 `history` 字段）。
 
 ---
 
@@ -301,15 +332,17 @@ gomoku-mcp/
 │       ├── index.ts
 │       ├── game.ts              # GameState / Move / RuleSet / Commentary
 │       ├── constants.ts         # 默认规则、上限、房间号规则
-│       └── protocol.ts          # WS 消息、REST DTO
+│       └── protocol.ts          # WS 消息、REST DTO、Agent 视图类型
 ├── server/
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── src/
-│   │   ├── index.ts             # 启动：Express + HTTP + WS + MCP HTTP
+│   │   ├── index.ts             # 启动：读取配置、创建房间、监听端口
+│   │   ├── app.ts               # Express 组装：REST + MCP + 静态资源（测试可复用）
 │   │   ├── config.ts            # PORT/HOST/默认参数
 │   │   ├── core/
 │   │   │   ├── rules.ts         # RuleSet、胜负检测、平局
+│   │   │   ├── insights.ts      # Agent 视图：boardText / hotPoints / moves
 │   │   │   └── engine.ts        # 纯函数状态转移
 │   │   ├── rooms/
 │   │   │   ├── room.ts          # 单房间：状态、waiters、互动、事件
@@ -326,7 +359,8 @@ gomoku-mcp/
 │   └── test/
 │       ├── engine.test.ts
 │       ├── room.test.ts
-│       └── rooms.test.ts
+│       ├── rooms.test.ts
+│       └── http.test.ts        # REST / WS / MCP 集成
 └── web/
     ├── package.json
     ├── vite.config.ts           # /api、/ws 代理到 3000
@@ -458,6 +492,7 @@ export interface GameState {
 
 export interface RoomView {
   state: GameState;
+  history: Move[];
   commentary: Commentary[];
 }
 ```
@@ -468,6 +503,7 @@ export interface RoomView {
 - 引擎只认 `StoneColor`，不认 actor；角色映射在 Room 层完成
 - `version` 每个房间单调递增，换局也不重置，前端可直接用它丢弃旧消息
 - `Commentary` 是给玩家看的互动内容，不进入 `GameState`
+- `RoomView.history` 是当前局完整走子记录，供 stdio 桥接构建 Agent 视图
 
 ### 8.3 错误码
 
@@ -475,12 +511,16 @@ export interface RoomView {
 export type ErrorCode =
   | 'ROOM_NOT_FOUND'
   | 'ROOM_EXISTS'
+  | 'INVALID_ROOM_ID'
   | 'GAME_NOT_PLAYING'
   | 'NOT_YOUR_TURN'
   | 'OUT_OF_BOUNDS'
   | 'CELL_OCCUPIED'
   | 'NO_AGENT_SEAT'
-  | 'INVALID_COMMENTARY';
+  | 'INVALID_COMMENTARY'
+  | 'INVALID_REQUEST'      // 请求体 / 参数不合法
+  | 'BACKEND_UNAVAILABLE'  // stdio 桥接连不上后端
+  | 'INTERNAL_ERROR';
 ```
 
 ### 8.4 引擎函数（pure）
@@ -641,7 +681,7 @@ input:  {
   roomId?: string;              // 默认 'default'
   agentColor?: 'black' | 'white'; // 默认 'white'
 }
-output: { state: GameState; yourColor: StoneColor | null }
+output: { state: AgentStateView; yourColor: StoneColor | null }
 ```
 
 若网页已开局，Agent 通常不需要调用；重复调用会覆盖当前局。指定不存在的 roomId 时自动创建。
@@ -650,7 +690,8 @@ output: { state: GameState; yourColor: StoneColor | null }
 
 ```ts
 input:  { roomId?: string }
-output: { state: GameState; yourColor: StoneColor | null }
+output: { state: AgentStateView; yourColor: StoneColor | null }
+// state.moves 为全量历史（movesOmitted = 0）
 ```
 
 #### `wait_for_turn`
@@ -658,7 +699,7 @@ output: { state: GameState; yourColor: StoneColor | null }
 ```ts
 input:  { roomId?: string; timeoutMs?: number } // 默认 20000，范围 1000–60000
 output: {
-  state: GameState;
+  state: AgentStateView;   // moves 只带最近 8 手，movesOmitted>0 表示已省略
   yourColor: StoneColor | null;
   reason: 'your_turn' | 'game_over' | 'idle' | 'new_game' | 'timeout';
 }
@@ -668,16 +709,17 @@ output: {
 
 ```ts
 input:  { roomId?: string; row: number; col: number } // 0-based；row 从上到下
-output: { ok: true; state: GameState }
+output: { ok: true; state: AgentStateView }           // moves 同样只带最近 8 手
 ```
 
-错误返回 `isError: true`，文本内容为 `{ code, message, state }`，便于模型自我纠正。
+错误返回 `isError: true`，文本内容为 `{ code, message, state }`（state 同为 AgentStateView，
+并携带最近走子使 `moves` 与 `moveCount` 一致），便于模型自我纠正。
 
 #### `resign`
 
 ```ts
 input:  { roomId?: string }
-output: { state: GameState }
+output: { state: AgentStateView }
 ```
 
 #### `say`
@@ -715,14 +757,29 @@ output: { ok: true; commentary: Commentary }
 你是五子棋对弈 Agent，在 15×15 棋盘上与人类对弈。
 坐标 0-based：row 从上到下，col 从左到右；黑先。
 
+读盘方式（重要）：
+- state.boardText 是等宽棋盘图：X=黑 O=白 .=空，小写 x/o=最新一手，#/@=五连；
+- state.moves 是最近的走子记录；movesOmitted>0 表示更早的手数被省略，完整历史用 get_state 查；
+- state.hotPoints 列出双方"落子即成威胁"的关键点：
+  win=该点落子成五获胜 | open4=该点落子成两头开四（双杀）| four=落子成冲四（fiveAt 即成五点）| open3=活三（参考级）。
+禁止自己逐格重建棋盘或数数组——判断一律以 boardText 和 hotPoints 为准。
+
+每次落子前，按以下优先级检查 hotPoints（先看对手，再看自己）：
+1. 自己的 win 点：直接落子获胜。
+2. 对手的 win 点：必须占住；若对手已有两个 win 点，说明开四已成立无法全挡，选最能拖延或制造反击的一手。
+3. 对手的 open4 候选点：必须在本手直接占掉该候选点本身——等对方落子后再去挡 fiveAt 就已经晚了。
+4. 自己的 open4 候选点：优先落子，形成对手挡不住的双杀。
+5. 对手的 four 点：挡在其 fiveAt；再往后才是自己的 four / open3。
+低阶威胁只作参考，不要为它们放弃上面的必防项。
+
 标准流程：
 1. 调用 wait_for_turn 等待轮到你；
 2. reason=your_turn 时，先调用 say 评价人类刚落的那一步（kind=evaluation），
-   再读取 state.board 选择一个空位调用 place_stone；
+   再按上述优先级依据 boardText / hotPoints 选择一个空位调用 place_stone；
 3. 落子后调用 say 评论局势或表达情绪（kind=position / reaction），
    然后再次 wait_for_turn；
 4. reason=game_over 时用 say（kind=result）总结胜负；
-   reason=timeout 时再次 wait_for_turn；
+   reason=timeout 时再次调用 wait_for_turn；
    reason=idle 时可调用 new_game 或提示人类在网页开局。
 
 只能操作 yourColor 颜色的棋子，不要替人类落子。每次落子前确认目标格为空。
@@ -731,7 +788,7 @@ output: { ok: true; commentary: Commentary }
 
 ### 10.2 REST（浏览器与 stdio 桥接）
 
-统一前缀 `/api`，JSON 请求 / 响应。错误：4xx + `{ error: { code, message }, state }`。
+统一前缀 `/api`，JSON 请求 / 响应。
 
 | 方法 | 路径 | Body | 返回 |
 |---|---|---|---|
@@ -739,11 +796,13 @@ output: { ok: true; commentary: Commentary }
 | GET | `/api/rooms` | - | `RoomSummary[]` |
 | POST | `/api/rooms` | `{ roomId?, seats?, rules? }` | `RoomView` |
 | GET | `/api/rooms/:roomId` | - | `RoomView` |
-| POST | `/api/rooms/:roomId/games` | `{ agentColor? }` | `GameState` |
-| POST | `/api/rooms/:roomId/moves` | `{ row, col, actor? }` | `GameState` |
-| POST | `/api/rooms/:roomId/resign` | `{ actor? }` | `GameState` |
+| POST | `/api/rooms/:roomId/games` | `{ agentColor? }` | `{ state: GameState, history: Move[] }` |
+| POST | `/api/rooms/:roomId/moves` | `{ row, col, actor? }` | `{ state: GameState, history: Move[] }` |
+| POST | `/api/rooms/:roomId/resign` | `{ actor? }` | `{ state: GameState, history: Move[] }` |
 | POST | `/api/rooms/:roomId/commentary` | `{ text, kind?, mood?, actor? }` | `Commentary` |
-| GET | `/api/rooms/:roomId/wait-for-turn?timeoutMs=` | - | `{ state, reason }` |
+| GET | `/api/rooms/:roomId/wait-for-turn?timeoutMs=&actor=` | - | `{ state, yourColor, reason, history }` |
+
+错误：4xx + `{ error: { code, message }, state?, history? }`（有房间上下文时携带 state 与 history）。
 
 - 浏览器动作使用默认 `actor='human'`
 - stdio 桥接调用时显式传 `actor='agent'`
@@ -796,13 +855,13 @@ Client → Server：
 
 ### 11.2 棋盘
 
-- CSS Grid 15×15；木色底，网格线用背景渐变或伪元素
-- 每个格子一个 button，点击 → `POST /api/rooms/:roomId/moves`
+- 标准 15×15 交叉点棋盘：15 条横线与 15 条竖线，棋子落在交叉点，四周留半格木边
+- 网格线用一层 SVG 叠加绘制，穿过下方命中格子的中心；CSS Grid 15×15 只作为点击命中区域，每个格子一个 button，点击 → `POST /api/rooms/:roomId/moves`
 - 棋子：圆形 radial-gradient；最后一手加小圆点标记
 - 获胜五子：高亮描边 / 脉冲
-- 人类回合且格子为空时显示 hover 预览
-- 棋盘外圈标注 0–14 坐标（方便调试和与 Agent 沟通）
-- 禁用点击条件：非 `playing` / 非人类回合 / 格子已有子 / 请求进行中
+- 人类回合且交叉点为空时显示 hover 预览；星位用同一层 SVG 圆点绘制，与交点严格重合（避免小尺寸 HTML 圆角盒在亚像素位置被吸附成椭圆）
+- 棋盘外圈标注 0–14 坐标，与网格线对齐（方便调试和与 Agent 沟通）
+- 禁用点击条件：非 `playing` / 非人类回合 / 交点已有子 / 请求进行中
 
 ### 11.3 AI 互动面板
 
@@ -1004,9 +1063,11 @@ cmd mcp get gomoku
 - engine：横 / 竖 / 主副对角线五连；长连（6 子）判胜；四连不胜；越界；占用；轮次错误；平局；认输；规则参数化（winLength）
 - room：人类落子后 waiter resolve；超时 resolve `timeout`；新局 resolve `new_game`；对局结束 resolve `game_over`；并发落子只有一个成功；解说日志上限；新局清空解说
 - rooms：多房间状态隔离；默认房间初始化；roomId 校验；仓库读写
+- http（集成）：`createApp` 挂到临时端口，验证 REST 错误码、WS `hello`/`state`/`commentary`/`ping`、MCP SDK 客户端完整回合（含跨 REST 的 `wait_for_turn` 唤醒）
 
 ### 集成 / 手工
 
+- 棋盘几何：15×15 条线、棋子中心与交叉点重合、星位为正圆且与线对齐、坐标与线对齐、四周半格木边
 - 浏览器落子 → WS 广播 → 另一个页面同步
 - 互动事件：`say` → WS `commentary` → 页面追加
 - HTTP MCP 全流程（Command Code `/mcp` 检查 6 个工具）
@@ -1021,11 +1082,12 @@ cmd mcp get gomoku
 ## 16. 里程碑
 
 - [x] M1 `shared` + 规则引擎 + 单测（可独立验证规则）
-- [ ] M2 Room / RoomManager / 仓库缝 + REST + WS（curl / websocat 验证）
-- [ ] M3 React 棋盘 + 状态栏 + 断线重连（人类可自己走完一局）
-- [ ] M4 互动通道：Room 日志 + REST + WS + 前端面板（临时用 curl 验证）
-- [ ] M5 MCP：`tools.ts` + HTTP 入口 + stdio 桥接（6 个工具）
-- [ ] M6 生产构建 + 静态托管 + README + Command Code / zcode 联调
+- [x] M2 Room / RoomManager / 仓库缝 + REST + WS（curl / websocat 验证）
+- [x] M3 React 棋盘 + 状态栏 + 断线重连（人类可自己走完一局）
+- [x] M4 互动通道：Room 日志 + REST + WS + 前端面板（临时用 curl 验证）
+- [x] M5 MCP：`tools.ts` + HTTP 入口 + stdio 桥接（6 个工具）
+- [x] M6 生产构建 + 静态托管 + README + MCP 协议联调（官方 SDK 客户端，HTTP / stdio 均通）
+- [ ] M6b 在 Command Code / zcode 客户端实测（需本地手动接入一次）
 - [ ] M7（可选）多房间 UI、悔棋、计时器、持久化、内置 AI 流式模式；dsh 接入
 
 ---
@@ -1036,3 +1098,9 @@ cmd mcp get gomoku
 - v0.2：补充跨客户端通用性，stdio 桥接升为 P0
 - v0.3：房间 / 座位 / 规则集 / 历史 / 持久化缝，明确可扩展边界
 - v0.4：设计文档移入 `docs/`；AI 思考改为 AI 互动解说（`say`）；上限 2000 字符并滚动；zcode 优先，dsh 延后
+- v0.5：M2–M6 实现：房间与长轮询、REST / WS、MCP 双传输、React 棋盘与 AI 互动面板；补充 `INVALID_ROOM_ID` / `INVALID_REQUEST` / `BACKEND_UNAVAILABLE` / `INTERNAL_ERROR` 错误码，抽出 `app.ts` 供集成测试复用
+- v0.6：修正棋盘几何：棋子改为落在 15×15 交叉点（SVG 网格线 + CSS Grid 命中格 + 半格木边），坐标与星位对齐；星位改用同层 SVG 圆点，避免亚像素吸附成椭圆
+- v0.7：Agent 视图（见 §4.4）：MCP 响应以 boardText / moves / hotPoints 取代 `state.board` 数组；
+  热路径只带最近 8 手（`movesOmitted` 标注省略，get_state 仍全量）；错误响应携带 history；
+  `win`/`fiveAt` 判定复用引擎 `findWinLine`（overlineWin / winLength 语义一致）；威胁分级
+  精简为 win/open4/four/open3；boardText 列号可解析；REST 变更端点返回 `{ state, history }`（已知破坏，见 §4.3）

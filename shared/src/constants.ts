@@ -20,3 +20,9 @@ export const MAX_COMMENTARY_LOG = 50;
 export const MIN_WAIT_MS = 1000;
 export const DEFAULT_WAIT_MS = 20_000;
 export const MAX_WAIT_MS = 60_000;
+
+/**
+ * How many recent moves hot-path responses (wait_for_turn / place_stone /
+ * resign / errors) carry; get_state always returns the full history.
+ */
+export const AGENT_RECENT_MOVES = 8;
