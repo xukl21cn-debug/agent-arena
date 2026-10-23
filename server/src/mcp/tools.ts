@@ -50,12 +50,12 @@ export const SERVER_INSTRUCTIONS = `你是五子棋对弈 Agent，在 15×15 棋
   win=该点落子成五获胜 | open4=该点落子成两头开四（双杀）| four=该点落子成冲四（fiveAt 即成五点）| open3=活三（参考级）。
 禁止自己逐格重建棋盘或数数组——判断一律以 boardText 和 hotPoints 为准。
 
-每次落子前，按以下优先级检查 hotPoints（先看对手，再看自己）：
+每次落子前，按以下优先级检查 hotPoints（先算胜，再算防）：
 1. 自己的 win 点：直接落子获胜。
 2. 对手的 win 点：必须占住；若对手已有两个 win 点，说明开四已成立无法全挡，选最能拖延或制造反击的一手。
-3. 对手的 open4 候选点：必须在本手直接占掉该候选点本身（hotPoints[对手] 中 effect=open4 的 row/col）——
+3. 自己的 open4 候选点：优先落子，形成对手挡不住的双杀——它通常比防守对手的 open4 候选更快获胜。
+4. 对手的 open4 候选点：必须在本手直接占掉该候选点本身（hotPoints[对手] 中 effect=open4 的 row/col）——
    等对方落子后再去挡 fiveAt 就已经晚了。
-4. 自己的 open4 候选点：优先落子，形成对手挡不住的双杀。
 5. 对手的 four 点：挡在其 fiveAt；再往后才是自己的 four / open3。
 低阶威胁只作参考，不要为它们放弃上面的必防项。
 
@@ -170,10 +170,10 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
       title: '等轮到我',
       description: `挂起等待，直到轮到你落子、对局结束、开了新局或超时。timeoutMs 默认 ${DEFAULT_WAIT_MS}，范围 ${MIN_WAIT_MS}-${MAX_WAIT_MS}。
 返回 { state, yourColor, reason }，state 含 boardText（等宽棋盘图）、moves（最近走子，movesOmitted>0 表示更早的已省略）、hotPoints（双方威胁点）：
-- your_turn：轮到你了。落子前按优先级检查 hotPoints（先看对手，再看自己）：
+- your_turn：轮到你了。落子前按优先级检查 hotPoints（先算胜，再算防）：
   ① 自己的 win 点直接下；② 对手的 win 点必占（若有两个，开四已成立，选最能拖延/反击的一手）；
-  ③ 对手的 open4 候选点必须本手直接占掉该点本身，等对方落子后再挡 fiveAt 就晚了；
-  ④ 自己的 open4 候选优先下；⑤ 挡对手 four 的 fiveAt；再往后才是自己的 four/open3。低阶只作参考。
+  ③ 自己的 open4 候选优先下（通常比防守更快获胜）；④ 对手的 open4 候选必须本手直接占掉该点本身，
+  等对方落子后再挡 fiveAt 就晚了；⑤ 挡对手 four 的 fiveAt；再往后才是自己的 four/open3。低阶只作参考。
 - game_over：对局已结束，用 say(kind="result") 收尾；
 - idle：还没有开局，请人类在网页点「新对局」，或自己调用 new_game；
 - new_game：等待期间开了新局，按新状态继续；
@@ -205,7 +205,8 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
       title: '落子',
       description: `在 (row, col) 落下你的一颗棋子。坐标 0-based：row 从上到下 0-14，col 从左到右 0-14。
 落子前按 wait_for_turn 里写的优先级检查 state.hotPoints：自己的 win 点直接取胜；对手的 win 点必占；
-对手的 open4 候选点必须本手直接占掉该点本身（不要等它落子后再挡 fiveAt）；再挡对手 four 的 fiveAt。
+自己的 open4 候选优先下；对手的 open4 候选必须本手直接占掉该点本身（不要等它落子后再挡 fiveAt）；
+再挡对手 four 的 fiveAt。
 只能在自己的回合、用自己的颜色落子，且目标格必须为空（看 state.boardText 里该位置是否为 '.'）。
 成功返回 { ok: true, state }（state 含更新后的 boardText / 最近走子 / hotPoints）；失败返回 isError 和 { code, message, state }：
 - NOT_YOUR_TURN：还没轮到你，先调用 wait_for_turn；

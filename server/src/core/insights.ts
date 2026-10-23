@@ -155,7 +155,7 @@ function classifyPlacement(
  *
  * Note the tier names assume winLength=5; for other rule sets the semantics
  * stay engine-correct (win / fiveAt always agree with findWinLine), only
- * the labels "four"/"three" become relative to `winLength`.
+ * the labels "four"/"open3" become relative to `winLength`.
  */
 export function findHotPoints(
   board: (StoneColor | null)[][],
