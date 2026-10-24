@@ -3,7 +3,8 @@
 > 状态：**v3，DeepSeek 评审修订**｜原作者：GLM (ZCode)｜日期：2026-10-24
 > 评审结论：**方向可行，但 v2 不能直接开工。** 规则引擎本身不难，真正的成本在
 > `GameState` 判别、pass/scoring 状态机、`wait_for_turn` 的数子唤醒，以及 web 的类型收窄。
-> v3 把这几处补成可实现的契约，并修正了 v2 的贴目方向错误和“106 测试原样不动”的乐观假设。
+> v3 把这几处补成可实现的契约，并澄清了贴目语义（7.5 是白方后手的公平补偿，
+> 不是“对黑更宽松”），同时修正了“106 测试原样不动”的乐观假设。
 >
 > v2 变更保留：不新建仓库，围棋作为第二种游戏并入本仓库（web 可选五子棋 / 围棋）；
 > 仓库名后续由用户手动改，纯重命名不阻塞开发。
@@ -15,9 +16,10 @@
 
 但 v2 有 8 个硬问题，必须在 M0/M1 解决，否则实现会返工：
 
-1. **贴目方向写反了**：komi 是加给白方的，7.5 对白更有利，不是“对黑更宽松”。
-   用户执黑且是新手时，7.5 会让 AI 更占便宜。v1 默认改为 **5.5**（可配 0–7.5），
-   并在 UI 明示“贴目给白方”。
+1. **贴目是公平补偿，不是给黑方的优惠**：komi 加给白方；白方后下，7.5 是国际比赛
+   常用的公平补偿。v2 的 bug 只是把它写成“对黑更宽松”，不是 7.5 本身错了。
+   v1 默认 **7.5**（可配；不因用户水平自动降低，让子另设，v1 不做），并在 UI 明示
+   “贴目给白方”。
 2. **“boardSize 可配 5/7/9/13”是范围蔓延**：v1 只做 9 路；5/7/13 的星位、贴目、
    UI 和平衡都要单独处理，放到 M5。`new_game` 对非 9 的 `boardSize` 先返回
    `UNSUPPORTED_RULE`，不要静默接受。
@@ -67,15 +69,17 @@ v1 明确不做：
 ```ts
 interface GoRules {
   boardSize: 9;          // v1 固定 9；非 9 返回 UNSUPPORTED_RULE
-  komi: number;          // 默认 5.5，加给白方；建议半整数避免和棋
+  komi: number;          // 默认 7.5，加给白方；建议半整数避免和棋
   koRule: 'simple';      // v1 只有 simple；superko 放 M5
 }
 ```
 
 - `board: (StoneColor | null)[][]`，9×9；坐标 `(row, col)` 0-based。
 - 引擎放 `server/src/core/go.ts`，纯函数、board 进 board 出；`rules.ts` 不承载围棋规则。
-- `komi` 方向必须在 UI/文档写死：**白方总分 = 白子 + 白地 + komi**。7.5 对白更有利；
-  默认 5.5 是给执黑新手留一点空间，不是“公平贴目”的竞技最优值。
+- `komi` 方向必须在 UI/文档写死：**白方总分 = 白子 + 白地 + komi**。
+  默认 **7.5** 是公平补偿白方后手，不是给黑方的优惠；7.5 让白方有利正是设计目的。
+  若显式降低 komi，那是 handicap（让子/让目），不属于公平规则；v1 只做标准 7.5（可配），
+  不因用户水平自动调整。
 
 ### 3.2 落子、提子、自杀
 
@@ -175,7 +179,7 @@ scoreConfirmed: Record<StoneColor, boolean>;
 | G13 | 多块提子 | 一手同时提两个独立敌块，顺序/计数正确 |
 | G14 | mark_dead 确认重置 | 一方 confirm 后另一方 mark_dead → 双方 confirm 都变 false |
 | G15 | resume_play | scoring 中 resume → 死子清空、确认清空、pass 清零、棋盘不变 |
-| G16 | 数子胜负/贴目 | 黑 40、白 35、komi 5.5 → 白 40.5 胜；和棋/半目边界 |
+| G16 | 数子胜负/贴目 | 黑 40、白 35、komi 7.5 → 白 42.5 胜；和棋/半目边界 |
 | G17 | wrongGame 分发 | gomoku 房间调用 pass/mark_dead/confirm_score/resume_play → `WRONG_GAME` |
 | G18 | 视图预算 | 60 手 9 路局面序列化 ≤4000 字符，`groupsOmitted` 生效 |
 
@@ -337,7 +341,7 @@ interface GoGroupsView {
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
-| `new_game` | `roomId, game?, boardSize?, komi?, koRule?, agentColor?` | `game` 默认 `gomoku`；go 默认 9 / 5.5 / simple / white |
+| `new_game` | `roomId, game?, boardSize?, komi?, koRule?, agentColor?` | `game` 默认 `gomoku`；go 默认 9 / 7.5 / simple / white |
 | `get_state` | `roomId` | 全量视图；按 `game` 返回不同字段 |
 | `wait_for_turn` | `roomId, timeoutMs` | 增加 `reason='scoring'` |
 | `place_stone` | `roomId, row, col` | 按当前游戏校验；go 错误 `KO/SUICIDE/CELL_OCCUPIED` |
@@ -413,8 +417,9 @@ GET  /api/rooms/:id/wait-for-turn  ?actor=&timeoutMs=
 
 1. **koRule**：v1 只实现 `simple`；`superko` 在 `new_game` 直接返回 `UNSUPPORTED_RULE`，
    M5 再做。不要接受一个没实现的配置。
-2. **komi**：默认 **5.5**（白方加）。7.5 是白方优势，不是黑方优势；若想更公平可 6.5–7.5，
-   但用户执黑新手时 5.5 更合适；UI 必须注明“贴目给白方”。
+2. **komi**：默认 **7.5**（白方加），按国际比赛公平补偿白方后手；7.5 对白有利是设计目的，
+   不是“黑方吃亏”的 bug。若显式降低 komi，那是 handicap，不属于公平规则；v1 不做让子，
+   UI 必须注明“贴目给白方”。
 3. **mark_dead 协议**：toggle 整块 + 双方 confirm + `resume_play` 兜底可行；
    但必须补 `deadStones` / `scoreConfirmed` 字段、确认重置、scoring wait 语义。
 4. **boardText 坐标**：用数值 0–8，与工具参数一致；字母坐标（跳过 I）只在 UI 显示，
