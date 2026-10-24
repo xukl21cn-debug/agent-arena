@@ -43,6 +43,7 @@ export interface PresenceSource {
   detachSession(sessionId: string): void;
   touch(roomId: string, seat: StoneColor, client?: string): void;
   beginWait(roomId: string, seat: StoneColor): () => void;
+  rebindSeats(roomId: string, agentSeat: StoneColor | null): void;
   clearRoom(roomId: string): void;
   snapshot(input: {
     roomId: string;
@@ -91,8 +92,6 @@ export class PresenceRegistry implements PresenceSource {
   private readonly seats = new Map<string, SeatSignals>();
   /** Browser tabs watching each room. Room-level on purpose: see above. */
   private readonly viewers = new Map<string, number>();
-  /** When each room last had a tab watching it, so a closed tab reads as seen. */
-  private readonly watchedAt = new Map<string, number>();
   private readonly listeners = new Set<PresenceListener>();
   private readonly now: () => number;
   private readonly staleAfterMs: number;
@@ -121,7 +120,6 @@ export class PresenceRegistry implements PresenceSource {
    */
   attachViewer(roomId: string): () => void {
     this.viewers.set(roomId, (this.viewers.get(roomId) ?? 0) + 1);
-    this.watchedAt.set(roomId, this.now());
     this.emit(roomId);
 
     let detached = false;
@@ -130,7 +128,6 @@ export class PresenceRegistry implements PresenceSource {
         return;
       }
       detached = true;
-      this.watchedAt.set(roomId, this.now());
       const remaining = Math.max(0, (this.viewers.get(roomId) ?? 1) - 1);
       if (remaining === 0) {
         this.viewers.delete(roomId);
@@ -210,6 +207,42 @@ export class PresenceRegistry implements PresenceSource {
     };
   }
 
+  /**
+   * Drop the stale evidence a seat accumulated while it belonged to someone
+   * else.
+   *
+   * Signals are keyed by seat, but a seat changes hands between games: the
+   * human's activity from a game where they played black must not make the
+   * next game's *agent* seat look connected. Without this, starting a new game
+   * as white showed the agent "online" for the whole stale window even though
+   * nothing had ever connected to it.
+   *
+   * Live evidence survives — an attached session and a parked wait are proof
+   * that somebody is there right now, whichever color they just took. Only the
+   * carried-over call stamps are cleared, because those describe the previous
+   * occupant.
+   */
+  rebindSeats(roomId: string, agentSeat: StoneColor | null): void {
+    if (agentSeat === null) {
+      return;
+    }
+    for (const seat of ['black', 'white'] as const) {
+      const signals = this.seats.get(keyOf(roomId, seat));
+      if (!signals) {
+        continue;
+      }
+      if (signals.sessions.size > 0 || signals.waits > 0) {
+        // Still connected: keep the evidence, just stop trusting old stamps.
+        signals.lastSeenAt = this.now();
+        continue;
+      }
+      signals.sessionSeen = false;
+      signals.lastSeenAt = null;
+      delete signals.client;
+    }
+    this.emit(roomId);
+  }
+
   /** Forget every signal for a room (used when a room is deleted). */
   clearRoom(roomId: string): void {
     for (const key of [...this.seats.keys()]) {
@@ -218,7 +251,6 @@ export class PresenceRegistry implements PresenceSource {
       }
     }
     this.viewers.delete(roomId);
-    this.watchedAt.delete(roomId);
   }
 
   snapshot(input: {
@@ -229,7 +261,6 @@ export class PresenceRegistry implements PresenceSource {
   }): ParticipantView[] {
     const now = this.now();
     const watchers = this.viewers.get(input.roomId) ?? 0;
-    const watchedAt = this.watchedAt.get(input.roomId) ?? null;
     const views: ParticipantView[] = [];
 
     for (const seat of ['black', 'white'] as const) {
@@ -238,9 +269,12 @@ export class PresenceRegistry implements PresenceSource {
       const isTurn = input.playing && input.turn === seat;
       const waiting = (signals?.waits ?? 0) > 0;
 
-      // A human seat exists only while a browser tab is open: a REST call is
-      // never proof that somebody is looking at the board. Its "last seen" is
-      // therefore the last time a tab watched this room, not a call stamp.
+      // A human seat exists only while a browser tab is open. There is no
+      // "recently seen" notion for it: a tab is either watching the room or it
+      // is not, and a REST call from a closed tab is not evidence of anybody.
+      // So the human's `lastSeenAt` is either "now, because a tab is open" or
+      // null — never a leftover stamp, which is what used to keep a closed tab
+      // reading as `idle` until the stale window expired.
       //
       // An agent seat is connected while a *live* MCP session is attached. A
       // session goes live again on every call, and expires once it stops
@@ -251,7 +285,9 @@ export class PresenceRegistry implements PresenceSource {
       // lives in another process) falls back to recent-call freshness.
       const lastSeenAt =
         spec.kind === 'human'
-          ? (watchedAt ?? signals?.lastSeenAt ?? null)
+          ? watchers > 0
+            ? now
+            : null
           : (signals?.lastSeenAt ?? null);
 
       const liveSessions = signals

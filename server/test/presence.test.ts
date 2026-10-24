@@ -107,9 +107,10 @@ describe('PresenceRegistry', () => {
     const detach = reg.attachViewer('r1');
     expect(snapshot(reg)[0]?.presence).toBe('idle');
 
-    // Closing the tab is a confirmed disconnect: no tab, nobody watching.
+    // Closing the tab means nobody is watching, so the seat is gone at once —
+    // no stale window, because a human seat has no "recently seen" state.
     detach();
-    expect(snapshot(reg)[0]?.presence).toBe('disconnected');
+    expect(snapshot(reg)[0]?.presence).toBe('unknown');
   });
 
   it('follows the human seat when a new game moves it to the other color', () => {
@@ -138,13 +139,68 @@ describe('PresenceRegistry', () => {
     expect(swapped[1]?.presence).toBe('idle'); // human watching
   });
 
-  it('drops the human seat once its viewer leaves and the stale window passes', () => {
+  it('clears carried-over activity when a seat changes hands', () => {
+    // The bug this test exists for: signals are keyed by seat, but seats swap
+    // occupants between games. The human's moves in a game where they played
+    // black left a fresh call stamp on black, so the next game's *agent* seat
+    // (also black) read "online" for the whole stale window even though no
+    // agent had ever connected.
+    const reg = registry();
+    reg.attachViewer('r1');
+    reg.touch('r1', 'black'); // human played black in the previous game
+
+    // New game: agent takes black, nothing has connected to it.
+    reg.rebindSeats('r1', 'black');
+
+    const views = reg.snapshot({
+      roomId: 'r1',
+      seats: {
+        black: { kind: 'agent' },
+        white: { kind: 'human' },
+      },
+      turn: 'black',
+      playing: true,
+    });
+
+    expect(views[0]?.presence).toBe('unknown');
+    expect(views[1]?.presence).toBe('idle');
+  });
+
+  it('keeps live evidence when a seat changes hands', () => {
+    // A new game must not wipe an agent that is connected right now: an
+    // attached session is proof somebody is there, whichever color they took.
+    const reg = registry();
+    reg.attachViewer('r1');
+    reg.attachSession('r1', 'black', 'session-1', 'dsh');
+    reg.touch('r1', 'black');
+
+    reg.rebindSeats('r1', 'black');
+
+    const views = reg.snapshot({
+      roomId: 'r1',
+      seats: {
+        black: { kind: 'agent' },
+        white: { kind: 'human' },
+      },
+      turn: 'black',
+      playing: true,
+    });
+
+    expect(views[0]?.presence).toBe('thinking');
+  });
+
+  it('drops the human seat immediately, not after the stale window', () => {
+    // The bug this test exists for: closing the tab used to leave the human
+    // seat reading `idle` until the stale window expired, so a refresh looked
+    // like "still online" for two minutes.
     const clock = { now: NOW };
     const reg = registry(clock);
     const detach = reg.attachViewer('r1');
     detach();
+
+    expect(snapshot(reg)[0]?.presence).toBe('unknown');
     clock.now += 11_000;
-    expect(snapshot(reg)[0]?.presence).toBe('disconnected');
+    expect(snapshot(reg)[0]?.presence).toBe('unknown');
   });
 
   it('counts viewers per room and keeps them independent', () => {
@@ -252,7 +308,7 @@ describe('PresenceRegistry', () => {
     // the UI would claim somebody is there when nobody is looking.
     const reg = registry();
     reg.touch('r1', 'black');
-    expect(snapshot(reg)[0]?.presence).toBe('disconnected');
+    expect(snapshot(reg)[0]?.presence).toBe('unknown');
   });
 
   it('sweeps a room whose seats went quiet past the stale window', () => {

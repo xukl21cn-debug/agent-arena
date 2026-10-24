@@ -216,6 +216,11 @@ export class GameRoom {
     this.history = [];
     this.commentaryLog = [];
 
+    // Seats change hands between games, and presence is keyed by seat: the
+    // human's activity from the previous game must not make this game's agent
+    // seat look connected. Clear the slate before announcing the new game.
+    this.presence?.rebindSeats(this.id, agentColor);
+
     this.emitState('new_game');
     this.save();
     return this.state;
