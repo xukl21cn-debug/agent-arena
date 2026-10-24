@@ -3,6 +3,7 @@ import {
   MAX_COMMENTARY_LOG,
   type Commentary,
   type GameState,
+  type ParticipantView,
   type ServerMessage,
 } from '@gomoku/shared';
 import { api } from './api';
@@ -16,6 +17,7 @@ export type ConnectionStatus =
 export interface RoomSocket {
   state: GameState | null;
   commentary: Commentary[];
+  participants: ParticipantView[];
   status: ConnectionStatus;
 }
 
@@ -43,6 +45,7 @@ function isServerMessage(value: unknown): value is ServerMessage {
 export function useRoomSocket(roomId: string): RoomSocket {
   const [state, setState] = useState<GameState | null>(null);
   const [commentary, setCommentary] = useState<Commentary[]>([]);
+  const [participants, setParticipants] = useState<ParticipantView[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const gameIdRef = useRef<string | null>(null);
 
@@ -103,9 +106,13 @@ export function useRoomSocket(roomId: string): RoomSocket {
             gameIdRef.current = message.state.gameId;
             setState(message.state);
             setCommentary(message.commentary.slice(-MAX_COMMENTARY_LOG));
+            setParticipants(message.participants);
             break;
           case 'state':
             applyState(message.state);
+            break;
+          case 'participants':
+            setParticipants(message.participants);
             break;
           case 'commentary':
             setCommentary((previous) => {
@@ -169,6 +176,9 @@ export function useRoomSocket(roomId: string): RoomSocket {
             ? previous
             : view.commentary.slice(-MAX_COMMENTARY_LOG),
         );
+        setParticipants((previous) =>
+          previous.length > 0 ? previous : view.participants,
+        );
       })
       .catch(() => {
         // The socket keeps retrying; a failed initial fetch is not fatal.
@@ -183,5 +193,5 @@ export function useRoomSocket(roomId: string): RoomSocket {
     };
   }, [roomId]);
 
-  return { state, commentary, status };
+  return { state, commentary, participants, status };
 }

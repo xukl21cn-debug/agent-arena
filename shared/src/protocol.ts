@@ -13,6 +13,7 @@ import type {
   StoneColor,
   WaitReason,
 } from './game.js';
+import type { ParticipantView } from './presence.js';
 
 export interface NewRoomRequest {
   roomId?: string;
@@ -103,11 +104,18 @@ export type ServerMessage =
       roomId: string;
       state: GameState;
       commentary: Commentary[];
+      participants: ParticipantView[];
     }
   | {
       type: 'state';
       roomId: string;
       state: GameState;
+    }
+  | {
+      /** Presence changed (waiting / thinking / idle / disconnected). */
+      type: 'participants';
+      roomId: string;
+      participants: ParticipantView[];
     }
   | {
       type: 'commentary';

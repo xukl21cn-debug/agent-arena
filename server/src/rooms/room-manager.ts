@@ -3,6 +3,7 @@ import {
   ROOM_ID_PATTERN,
   type RoomSummary,
 } from '@gomoku/shared';
+import type { PresenceSource } from '../core/presence.js';
 import { RoomError, GameRoom, type RoomConfig } from './room.js';
 import {
   MemoryRoomRepository,
@@ -13,6 +14,8 @@ export interface RoomManagerOptions {
   repository?: RoomRepository;
   defaultRoomId?: string;
   defaultRoomConfig?: RoomConfig;
+  /** Presence source handed to every room; omitted in pure-logic tests. */
+  presence?: PresenceSource;
 }
 
 export function assertRoomId(roomId: unknown): asserts roomId is string {
@@ -33,11 +36,13 @@ export class RoomManager {
   private readonly rooms = new Map<string, GameRoom>();
   private readonly defaultRoomConfig: RoomConfig;
   private readonly defaultRoomIdValue: string;
+  private readonly presence: PresenceSource | undefined;
 
   constructor(options: RoomManagerOptions = {}) {
     this.repository = options.repository ?? new MemoryRoomRepository();
     this.defaultRoomIdValue = options.defaultRoomId ?? DEFAULT_ROOM_ID;
     this.defaultRoomConfig = options.defaultRoomConfig ?? {};
+    this.presence = options.presence;
   }
 
   get defaultRoomId(): string {
@@ -63,6 +68,7 @@ export class RoomManager {
       seats: config.seats,
       rules: config.rules,
       repository: this.repository,
+      ...(this.presence === undefined ? {} : { presence: this.presence }),
     });
 
     this.rooms.set(roomId, room);
@@ -79,6 +85,11 @@ export class RoomManager {
   remove(roomId: string): void {
     this.rooms.delete(roomId);
     this.repository.delete(roomId);
+  }
+
+  /** The presence source shared by every room, when one is configured. */
+  get presenceSource(): PresenceSource | undefined {
+    return this.presence;
   }
 
   /** Idempotently create the configured default room. */

@@ -1,0 +1,256 @@
+import { describe, expect, it } from 'vitest';
+import { computePresence, type PresenceInput } from '@gomoku/shared';
+import { PresenceRegistry, seatLabel } from '../src/core/presence';
+
+const NOW = 1_800_000_000_000;
+
+function input(overrides: Partial<PresenceInput> = {}): PresenceInput {
+  return {
+    connected: false,
+    waiting: false,
+    lastSeenAt: null,
+    isTurn: false,
+    now: NOW,
+    ...overrides,
+  };
+}
+
+describe('computePresence', () => {
+  it('reports unknown for a seat that never connected', () => {
+    expect(computePresence(input())).toBe('unknown');
+  });
+
+  it('treats a parked long-poll as waiting, even when it is also on turn', () => {
+    expect(
+      computePresence(
+        input({ waiting: true, connected: true, isTurn: true, lastSeenAt: NOW }),
+      ),
+    ).toBe('waiting');
+  });
+
+  it('reports thinking while it is the seat turn and the connection is alive', () => {
+    expect(
+      computePresence(input({ connected: true, isTurn: true, lastSeenAt: NOW })),
+    ).toBe('thinking');
+  });
+
+  it('keeps a quiet connected seat idle instead of disconnected', () => {
+    // A player staring at the board for ten minutes is still connected.
+    expect(
+      computePresence(
+        input({ connected: true, lastSeenAt: NOW - 600_000, isTurn: false }),
+      ),
+    ).toBe('idle');
+  });
+
+  it('reports disconnected once the connection is gone', () => {
+    expect(
+      computePresence(input({ connected: false, lastSeenAt: NOW - 1_000 })),
+    ).toBe('disconnected');
+  });
+
+  it('reports disconnected as soon as nothing is attached, however recent the call', () => {
+    // Freshness alone is not connection: the caller decides what counts as
+    // attached, and a REST call is never proof for a human seat.
+    expect(
+      computePresence(input({ connected: false, lastSeenAt: NOW - 10 })),
+    ).toBe('disconnected');
+  });
+});
+
+describe('seatLabel', () => {
+  it('prefers the declared name', () => {
+    expect(seatLabel('black', { kind: 'agent', name: 'dsh' })).toBe('dsh');
+  });
+
+  it('falls back to 你 for the human seat and AI for the agent seat', () => {
+    expect(seatLabel('black', { kind: 'human' })).toBe('你');
+    expect(seatLabel('white', { kind: 'agent' })).toBe('AI');
+  });
+});
+
+describe('PresenceRegistry', () => {
+  const seats = {
+    black: { kind: 'human' as const },
+    white: { kind: 'agent' as const },
+  };
+
+  function registry(clock: { now: number } = { now: NOW }): PresenceRegistry {
+    return new PresenceRegistry({ now: () => clock.now, staleAfterMs: 10_000 });
+  }
+
+  function snapshot(
+    reg: PresenceRegistry,
+    turn: 'black' | 'white' | null = null,
+  ) {
+    return reg.snapshot({
+      roomId: 'r1',
+      seats,
+      turn,
+      playing: turn !== null,
+    });
+  }
+
+  it('reports both seats as unknown before anything connects', () => {
+    expect(snapshot(registry()).map((view) => view.presence)).toEqual([
+      'unknown',
+      'unknown',
+    ]);
+  });
+
+  it('marks the human seat idle while a browser viewer is attached', () => {
+    const reg = registry();
+    const detach = reg.attachViewer('r1', 'black');
+    expect(snapshot(reg)[0]?.presence).toBe('idle');
+
+    // Closing the tab is a confirmed disconnect: no tab, nobody watching.
+    detach();
+    expect(snapshot(reg)[0]?.presence).toBe('disconnected');
+  });
+
+  it('drops the human seat once its viewer leaves and the stale window passes', () => {
+    const clock = { now: NOW };
+    const reg = registry(clock);
+    const detach = reg.attachViewer('r1', 'black');
+    detach();
+    clock.now += 11_000;
+    expect(snapshot(reg)[0]?.presence).toBe('disconnected');
+  });
+
+  it('marks the agent seat idle while an MCP session is attached', () => {
+    const reg = registry();
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    const agent = snapshot(reg)[1];
+    expect(agent?.presence).toBe('idle');
+    expect(agent?.client).toBe('dsh');
+  });
+
+  it('reports waiting while a long-poll is parked, and idle after it returns', () => {
+    const reg = registry();
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    const release = reg.beginWait('r1', 'white');
+
+    const waiting = snapshot(reg)[1];
+    expect(waiting?.presence).toBe('waiting');
+    expect(waiting?.waiting).toBe(true);
+
+    release();
+    expect(snapshot(reg)[1]?.presence).toBe('idle');
+  });
+
+  it('reports thinking for the seat whose turn it is', () => {
+    const reg = registry();
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    reg.attachViewer('r1', 'black');
+
+    const views = snapshot(reg, 'white');
+    expect(views[0]?.presence).toBe('idle');
+    expect(views[1]?.presence).toBe('thinking');
+    expect(views[1]?.isTurn).toBe(true);
+  });
+
+  it('keeps a session-backed seat alive across long silences', () => {
+    const clock = { now: NOW };
+    const reg = registry(clock);
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+
+    clock.now += 60 * 60 * 1000;
+    expect(snapshot(reg)[1]?.presence).toBe('idle');
+  });
+
+  it('drops the seat to disconnected once its session closes', () => {
+    const clock = { now: NOW };
+    const reg = registry(clock);
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    reg.detachSession('session-1');
+
+    clock.now += 11_000;
+    expect(snapshot(reg)[1]?.presence).toBe('disconnected');
+  });
+
+  it('falls back to a recent call for clients without a session', () => {
+    // The stdio bridge has no MCP session in this process; its REST calls are
+    // the only evidence that the agent is alive.
+    const reg = registry();
+    reg.touch('r1', 'white');
+    expect(snapshot(reg)[1]?.presence).toBe('idle');
+  });
+
+  it('never treats a REST call as proof that the human seat is watching', () => {
+    // A human seat has exactly one client: the browser tab. Without a viewer,
+    // a recent move (or any other REST call) must not read as connected, or
+    // the UI would claim somebody is there when nobody is looking.
+    const reg = registry();
+    reg.touch('r1', 'black');
+    expect(snapshot(reg)[0]?.presence).toBe('disconnected');
+  });
+
+  it('sweeps a room whose seats went quiet past the stale window', () => {
+    const clock = { now: NOW };
+    const reg = registry(clock);
+    const seen: string[] = [];
+    reg.onChange((roomId) => seen.push(roomId));
+
+    reg.touch('r1', 'white');
+    seen.length = 0;
+
+    clock.now += 9_000;
+    reg.sweep();
+    expect(seen).toEqual([]);
+
+    clock.now += 2_000;
+    reg.sweep();
+    expect(seen).toEqual(['r1']);
+  });
+
+  it('does not sweep rooms that still have a viewer or a parked wait', () => {
+    const clock = { now: NOW };
+    const reg = registry(clock);
+    const seen: string[] = [];
+    reg.onChange((roomId) => seen.push(roomId));
+
+    reg.attachViewer('r1', 'black');
+    clock.now += 60_000;
+    seen.length = 0;
+    reg.sweep();
+    expect(seen).toEqual([]);
+
+    reg.beginWait('r1', 'white');
+    seen.length = 0;
+    reg.sweep();
+    expect(seen).toEqual([]);
+  });
+
+  it('stops notifying once a listener unsubscribes', () => {
+    const reg = registry();
+    const seen: string[] = [];
+    const off = reg.onChange((roomId) => seen.push(roomId));
+    reg.touch('r1', 'black');
+    expect(seen).toEqual(['r1']);
+
+    off();
+    reg.touch('r1', 'black');
+    expect(seen).toEqual(['r1']);
+  });
+
+  it('keeps two rooms isolated', () => {
+    const reg = registry();
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+
+    const other = reg.snapshot({
+      roomId: 'r2',
+      seats,
+      turn: null,
+      playing: false,
+    });
+    expect(other.map((view) => view.presence)).toEqual(['unknown', 'unknown']);
+    expect(snapshot(reg)[1]?.presence).toBe('idle');
+  });
+
+  it('forgets a room on clearRoom', () => {
+    const reg = registry();
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    reg.clearRoom('r1');
+    expect(snapshot(reg)[1]?.presence).toBe('unknown');
+  });
+});

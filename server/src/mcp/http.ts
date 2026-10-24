@@ -18,6 +18,7 @@ import {
   toAgentStateView,
   type AgentViewOptions,
 } from '../core/insights.js';
+import { currentSession, sessionContext } from '../core/session-context.js';
 import { RoomError, type GameRoom } from '../rooms/room.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
 import { GomokuApiError, type GomokuApi } from './api.js';
@@ -52,17 +53,41 @@ export class InProcessApi implements GomokuApi {
     private readonly config: Pick<ServerConfig, 'waitDefaultMs' | 'waitMaxMs'>,
   ) {}
 
+  /**
+   * Record that this seat is alive: bind the calling MCP session to the room
+   * the first time it touches it, and refresh the seat's activity stamp.
+   *
+   * The session binding is what lets presence say `idle`/`thinking` instead of
+   * decaying to `disconnected` between two slow tool calls.
+   */
+  private notePresence(roomId: string, seat: StoneColor | null): void {
+    if (!seat) {
+      return;
+    }
+    const presence = this.manager.presenceSource;
+    if (!presence) {
+      return;
+    }
+    const session = currentSession();
+    if (session?.sessionId) {
+      presence.attachSession(roomId, seat, session.sessionId, session.client);
+    }
+    presence.touch(roomId, seat);
+  }
+
   async newGame(
     roomId: string,
     agentColor?: StoneColor,
   ): Promise<AgentStateResponse> {
     const room = this.getOrCreateRoom(roomId);
     room.newGame({ agentColor });
+    this.notePresence(roomId, room.getAgentSeat());
     return { state: agentView(room), yourColor: room.getAgentSeat() };
   }
 
   async getState(roomId: string): Promise<AgentStateResponse> {
     const room = this.requireRoom(roomId);
+    this.notePresence(roomId, room.getAgentSeat());
     return { state: agentView(room), yourColor: room.getAgentSeat() };
   }
 
@@ -81,10 +106,19 @@ export class InProcessApi implements GomokuApi {
       );
     }
 
-    const result = await room.waitForSeat(
-      seat,
-      clampWaitMs(timeoutMs, this.config),
-    );
+    // A parked long-poll is the strongest evidence that this seat is alive, so
+    // it is registered for the whole time the call hangs.
+    this.notePresence(roomId, seat);
+    const releaseWait = this.manager.presenceSource?.beginWait(roomId, seat);
+    let result;
+    try {
+      result = await room.waitForSeat(
+        seat,
+        clampWaitMs(timeoutMs, this.config),
+      );
+    } finally {
+      releaseWait?.();
+    }
     return { state: agentView(room, RECENT), yourColor: seat, reason: result.reason };
   }
 
@@ -94,6 +128,7 @@ export class InProcessApi implements GomokuApi {
     col: number,
   ): Promise<AgentStateView> {
     const room = this.requireRoom(roomId);
+    this.notePresence(roomId, room.getAgentSeat());
     const result = room.moveBy('agent', row, col);
     if (!result.ok) {
       throw new GomokuApiError(
@@ -108,6 +143,7 @@ export class InProcessApi implements GomokuApi {
 
   async resign(roomId: string): Promise<AgentStateView> {
     const room = this.requireRoom(roomId);
+    this.notePresence(roomId, room.getAgentSeat());
     const result = room.resignBy('agent');
     if (!result.ok) {
       throw new GomokuApiError(
@@ -127,6 +163,7 @@ export class InProcessApi implements GomokuApi {
     mood?: CommentaryMood,
   ): Promise<Commentary> {
     const room = this.requireRoom(roomId);
+    this.notePresence(roomId, room.getAgentSeat());
     try {
       return room.say(text, kind, mood);
     } catch (error) {
@@ -171,6 +208,11 @@ function sessionIdOf(req: Request): string | undefined {
   return Array.isArray(header) ? header[0] : header;
 }
 
+/** `clientInfo.name` reported during initialize, when the session has one. */
+function clientName(session: McpSession): string | undefined {
+  return session.server.server.getClientVersion()?.name;
+}
+
 /**
  * Mounts the MCP Streamable HTTP endpoint at POST/GET/DELETE /mcp.
  * One McpServer + transport per session, all sharing the same RoomManager.
@@ -206,7 +248,17 @@ export function mountMcpHttp(
           res.status(404).json(jsonRpcError(-32001, 'Session not found'));
           return;
         }
-        await existing.transport.handleRequest(req, res, req.body);
+        // Carry the session identity into the tool call so presence can bind
+        // this agent to the room it plays in.
+        await sessionContext.run(
+          {
+            sessionId,
+            ...(clientName(existing) === undefined
+              ? {}
+              : { client: clientName(existing) }),
+          },
+          () => existing.transport.handleRequest(req, res, req.body),
+        );
         return;
       }
 
@@ -232,6 +284,8 @@ export function mountMcpHttp(
         const closedId = transport.sessionId;
         if (closedId) {
           sessions.delete(closedId);
+          // A closed session is a confirmed disconnect: forget it everywhere.
+          manager.presenceSource?.detachSession(closedId);
         }
       };
 

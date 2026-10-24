@@ -1,11 +1,14 @@
 import type { Server } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ServerMessage } from '@gomoku/shared';
+import type { PresenceRegistry } from '../core/presence.js';
 import type { RoomManager } from '../rooms/room-manager.js';
 
 export interface WebSocketOptions {
   path?: string;
   pingIntervalMs?: number;
+  /** Presence registry; when omitted the socket only relays game state. */
+  presence?: PresenceRegistry;
 }
 
 function sendJson(socket: WebSocket, message: ServerMessage): void {
@@ -20,8 +23,13 @@ function sendJson(socket: WebSocket, message: ServerMessage): void {
 }
 
 /**
- * Read-only broadcast channel: `hello` on connect, then `state` and
- * `commentary` events. Clients never mutate state over WS (actions go via REST).
+ * Read-only broadcast channel: `hello` on connect, then `state`, `commentary`,
+ * and `participants` events. Clients never mutate state over WS (actions go via
+ * REST).
+ *
+ * Each socket counts as one browser viewer for its room, which is what keeps a
+ * human seat at `idle`/`thinking` instead of decaying to `disconnected` while
+ * somebody is looking at the board.
  */
 export function attachWebSocket(
   server: Server,
@@ -30,8 +38,30 @@ export function attachWebSocket(
 ): WebSocketServer {
   const path = options.path ?? '/ws';
   const pingIntervalMs = options.pingIntervalMs ?? 30_000;
+  const presence = options.presence;
   const wss = new WebSocketServer({ server, path });
   const alive = new WeakSet<WebSocket>();
+  /** Last presence frame sent per socket, so only real changes hit the wire. */
+  const lastFrame = new WeakMap<WebSocket, string>();
+  /** Room each socket is watching, for presence fan-out. */
+  const socketRoom = new WeakMap<WebSocket, string>();
+
+  const pushParticipants = (socket: WebSocket, roomId: string): void => {
+    if (socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    const room = manager.get(roomId);
+    if (!room) {
+      return;
+    }
+    const participants = room.getParticipants();
+    const serialized = JSON.stringify(participants);
+    if (lastFrame.get(socket) === serialized) {
+      return;
+    }
+    lastFrame.set(socket, serialized);
+    sendJson(socket, { type: 'participants', roomId, participants });
+  };
 
   wss.on('connection', (socket, request) => {
     alive.add(socket);
@@ -58,16 +88,30 @@ export function attachWebSocket(
       return;
     }
 
+    socketRoom.set(socket, roomId);
+
+    // Register the viewer before building the snapshot: `hello` must already
+    // report this tab, otherwise the first paint says "unknown" for a human
+    // who is plainly looking at the board.
+    const detachViewer = presence?.attachViewer(
+      roomId,
+      room.getHumanSeat() ?? 'black',
+    );
+
     const view = room.getView();
+    lastFrame.set(socket, JSON.stringify(view.participants));
     sendJson(socket, {
       type: 'hello',
       roomId,
       state: view.state,
       commentary: view.commentary,
+      participants: view.participants,
     });
 
     const unsubscribeState = room.onState((state) => {
       sendJson(socket, { type: 'state', roomId, state });
+      // Whose turn it is changes presence (`thinking`), so refresh with state.
+      pushParticipants(socket, roomId);
     });
     const unsubscribeCommentary = room.onCommentary((commentary) => {
       sendJson(socket, { type: 'commentary', roomId, commentary });
@@ -81,6 +125,8 @@ export function attachWebSocket(
       cleanedUp = true;
       unsubscribeState();
       unsubscribeCommentary();
+      detachViewer?.();
+      socketRoom.delete(socket);
       alive.delete(socket);
     };
 
@@ -117,6 +163,16 @@ export function attachWebSocket(
     });
   });
 
+  // Presence changes originate outside any socket: an MCP session attaching, a
+  // long-poll parking, or the stale sweep. Fan those out to the right room.
+  const unsubscribePresence = presence?.onChange((roomId) => {
+    for (const socket of wss.clients) {
+      if (socketRoom.get(socket) === roomId) {
+        pushParticipants(socket, roomId);
+      }
+    }
+  });
+
   const pingTimer = setInterval(() => {
     for (const socket of wss.clients) {
       if (!alive.has(socket)) {
@@ -135,6 +191,7 @@ export function attachWebSocket(
 
   wss.on('close', () => {
     clearInterval(pingTimer);
+    unsubscribePresence?.();
   });
 
   return wss;

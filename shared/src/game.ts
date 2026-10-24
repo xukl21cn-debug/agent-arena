@@ -1,3 +1,5 @@
+import type { ParticipantView } from './presence.js';
+
 export type StoneColor = 'black' | 'white';
 export type GameStatus = 'idle' | 'playing' | 'finished';
 export type EndReason = 'five' | 'draw' | 'resign';
@@ -137,6 +139,8 @@ export interface RoomView {
   state: GameState;
   history: Move[];
   commentary: Commentary[];
+  /** Per-seat presence, so the UI can tell "thinking" from "not connected". */
+  participants: ParticipantView[];
 }
 
 export interface RoomSummary {
@@ -146,4 +150,9 @@ export interface RoomSummary {
   moveCount: number;
   version: number;
   updatedAt: string;
+  /**
+   * Compact presence line for room lists. Optional because a persisted
+   * snapshot has no connection information — presence is a live-only fact.
+   */
+  participants?: ParticipantView[];
 }

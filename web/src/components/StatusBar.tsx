@@ -1,9 +1,16 @@
-import type { GameState, StoneColor } from '@gomoku/shared';
+import type {
+  GameState,
+  ParticipantView,
+  PresenceState,
+  StoneColor,
+} from '@gomoku/shared';
+import { SeatBadge } from './SeatBadge';
 
 interface StatusBarProps {
   state: GameState | null;
   humanColor: StoneColor | null;
   agentColor: StoneColor | null;
+  participants: ParticipantView[];
 }
 
 interface StatusCopy {
@@ -12,9 +19,31 @@ interface StatusCopy {
   turn: StoneColor | null;
 }
 
+/** Presence of the side that is not to move, used to explain a stuck game. */
+function opponentNote(
+  state: GameState | null,
+  humanColor: StoneColor | null,
+  agentPresence: PresenceState | null,
+): string | null {
+  if (!state || state.status !== 'playing' || humanColor === null) {
+    return null;
+  }
+  if (state.turn === humanColor) {
+    return null;
+  }
+  if (agentPresence === 'unknown') {
+    return 'AI 还没有接入，检查 MCP 配置';
+  }
+  if (agentPresence === 'disconnected') {
+    return 'AI 已断开，可以继续等待或认输重开';
+  }
+  return null;
+}
+
 function describe(
   state: GameState | null,
   humanColor: StoneColor | null,
+  agentPresence: PresenceState | null,
 ): StatusCopy {
   if (!state || state.status === 'idle') {
     return {
@@ -26,9 +55,10 @@ function describe(
 
   if (state.status === 'playing') {
     const side = state.turn === 'black' ? '黑棋' : '白棋';
+    const note = opponentNote(state, humanColor, agentPresence);
     return {
       title: state.turn === humanColor ? '轮到你了' : 'AI 正在思考',
-      detail: `第 ${state.moveCount + 1} 手 · ${side}`,
+      detail: note ?? `第 ${state.moveCount + 1} 手 · ${side}`,
       turn: state.turn,
     };
   }
@@ -53,23 +83,18 @@ function describe(
   };
 }
 
-function seatLabel(
-  side: 'human' | 'agent',
-  color: StoneColor | null,
-): string {
-  const name = side === 'human' ? '你' : 'AI';
-  if (color === 'black') {
-    return `${name} · 黑`;
-  }
-  if (color === 'white') {
-    return `${name} · 白`;
-  }
-  return name;
-}
+export function StatusBar({
+  state,
+  humanColor,
+  agentColor,
+  participants,
+}: StatusBarProps) {
+  const agentPresence =
+    participants.find((item) => item.seat === agentColor)?.presence ?? null;
+  const { title, detail, turn } = describe(state, humanColor, agentPresence);
 
-export function StatusBar({ state, humanColor, agentColor }: StatusBarProps) {
-  const { title, detail, turn } = describe(state, humanColor);
-  const playing = state?.status === 'playing';
+  const human = participants.find((item) => item.seat === humanColor) ?? null;
+  const agent = participants.find((item) => item.seat === agentColor) ?? null;
 
   return (
     <section className="status" aria-live="polite">
@@ -86,24 +111,8 @@ export function StatusBar({ state, humanColor, agentColor }: StatusBarProps) {
       </div>
 
       <div className="seats" aria-label="对局双方">
-        <span
-          className={`seat ${playing && turn === humanColor ? 'is-active' : ''}`}
-        >
-          <i
-            className={`seat-dot seat-dot--${humanColor ?? 'empty'}`}
-            aria-hidden="true"
-          />
-          {seatLabel('human', humanColor)}
-        </span>
-        <span
-          className={`seat ${playing && turn === agentColor ? 'is-active' : ''}`}
-        >
-          <i
-            className={`seat-dot seat-dot--${agentColor ?? 'empty'}`}
-            aria-hidden="true"
-          />
-          {seatLabel('agent', agentColor)}
-        </span>
+        <SeatBadge participant={human} color={humanColor} side="human" />
+        <SeatBadge participant={agent} color={agentColor} side="agent" />
       </div>
     </section>
   );

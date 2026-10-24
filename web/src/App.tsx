@@ -64,6 +64,7 @@ export default function App() {
   const {
     state: socketState,
     commentary,
+    participants,
     status: connection,
   } = useRoomSocket(roomId);
 
@@ -205,6 +206,7 @@ export default function App() {
             state={state}
             humanColor={humanColor}
             agentColor={agentColor}
+            participants={participants}
           />
 
           <Board

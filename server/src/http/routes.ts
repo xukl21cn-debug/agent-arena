@@ -238,6 +238,17 @@ function asInvalidRequest(error: unknown): never {
   throw error;
 }
 
+/**
+ * Record activity for whichever seat the actor occupies, so REST callers (the
+ * stdio bridge included) count as present even without an MCP session.
+ */
+function touchActor(manager: RoomManager, room: GameRoom, actor: Actor): void {
+  const seat = room.getSeatFor(actor);
+  if (seat) {
+    manager.presenceSource?.touch(room.id, seat);
+  }
+}
+
 function createRoomOrThrow(
   manager: RoomManager,
   roomId: string,
@@ -299,6 +310,8 @@ export function createApiRouter(
     const col = integerOf(body.col, 'col');
     const actor = actorOf(body.actor, 'human');
 
+    touchActor(manager, room, actor);
+
     const result = room.moveBy(actor, row, col);
     if (!result.ok) {
       const payload: ErrorResponse = {
@@ -317,6 +330,8 @@ export function createApiRouter(
     const room = roomOrThrow(manager, req.params.roomId);
     const body = bodyOf(req);
     const actor = actorOf(body.actor, 'human');
+
+    touchActor(manager, room, actor);
 
     const result = room.resignBy(actor);
     if (!result.ok) {
@@ -368,7 +383,15 @@ export function createApiRouter(
     }
 
     const timeoutMs = clampWaitMs(queryValue(req.query.timeoutMs), config);
-    const result = await room.waitForSeat(seat, timeoutMs);
+    // A parked long-poll is the strongest "this seat is alive" signal, so it is
+    // registered as presence evidence for the whole time it hangs.
+    const releaseWait = manager.presenceSource?.beginWait(room.id, seat);
+    let result;
+    try {
+      result = await room.waitForSeat(seat, timeoutMs);
+    } finally {
+      releaseWait?.();
+    }
     res.json({
       state: result.state,
       yourColor: room.getAgentSeat(),

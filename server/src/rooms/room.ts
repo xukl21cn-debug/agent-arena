@@ -9,6 +9,7 @@ import {
   type ErrorCode,
   type GameState,
   type Move,
+  type ParticipantView,
   type PlayerSpec,
   type RoomSummary,
   type RoomView,
@@ -23,6 +24,7 @@ import {
   resignGame,
   startGame,
 } from '../core/engine.js';
+import { seatLabel, type PresenceSource } from '../core/presence.js';
 import type { PersistedRoom, RoomRepository } from './repository.js';
 
 export class RoomError extends Error {
@@ -74,6 +76,8 @@ interface Waiter {
 
 interface GameRoomOptions extends RoomConfig {
   repository?: RoomRepository;
+  /** Presence source for `participants`; omitted in pure-logic tests. */
+  presence?: PresenceSource;
 }
 
 function defaultSeats(): Record<StoneColor, PlayerSpec> {
@@ -102,6 +106,7 @@ export class GameRoom {
   readonly id: string;
 
   private readonly repository: RoomRepository | undefined;
+  private readonly presence: PresenceSource | undefined;
   private readonly stateListeners = new Set<StateListener>();
   private readonly commentaryListeners = new Set<CommentaryListener>();
   private readonly waiters = new Set<Waiter>();
@@ -113,6 +118,7 @@ export class GameRoom {
   constructor(id: string, options: GameRoomOptions = {}) {
     this.id = id;
     this.repository = options.repository;
+    this.presence = options.presence;
 
     const initial = createInitialState(id, options.rules);
     this.state = {
@@ -135,7 +141,33 @@ export class GameRoom {
       state: this.state,
       history: [...this.history],
       commentary: [...this.commentaryLog],
+      participants: this.getParticipants(),
     };
+  }
+
+  /**
+   * Presence for both seats. Without a registry (pure-logic tests) every seat
+   * reports `unknown`, which is the honest answer: nothing is attached.
+   */
+  getParticipants(): ParticipantView[] {
+    if (!this.presence) {
+      return (['black', 'white'] as const).map((seat) => ({
+        seat,
+        kind: this.state.seats[seat].kind,
+        label: seatLabel(seat, this.state.seats[seat]),
+        presence: 'unknown' as const,
+        lastSeenAt: null,
+        waiting: false,
+        isTurn: false,
+      }));
+    }
+
+    return this.presence.snapshot({
+      roomId: this.id,
+      seats: this.state.seats,
+      turn: this.state.turn,
+      playing: this.state.status === 'playing',
+    });
   }
 
   getSummary(): RoomSummary {
@@ -146,6 +178,7 @@ export class GameRoom {
       moveCount: this.state.moveCount,
       version: this.state.version,
       updatedAt: this.state.updatedAt,
+      participants: this.getParticipants(),
     };
   }
 
