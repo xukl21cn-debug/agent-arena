@@ -89,3 +89,40 @@ export interface ParticipantView {
   /** True when the game is running and this seat is to move. */
   isTurn: boolean;
 }
+
+/**
+ * What the UI should say about the side that is not the local player.
+ *
+ * The distinction this encodes: "it is the AI's turn" and "the AI can actually
+ * take its turn" are different facts. Before presence existed the UI collapsed
+ * them, so an agent that never connected still read as 思考中 — the player sat
+ * waiting for nobody.
+ */
+export type OpponentStatus =
+  /** Not this side's turn. */
+  | 'idle'
+  /** Its turn, and a live connection is there: it is genuinely thinking. */
+  | 'thinking'
+  /** Its turn, but nothing is attached: it never connected. */
+  | 'offline'
+  /** Its turn, but the connection dropped. */
+  | 'disconnected';
+
+export function opponentStatus(
+  participant: ParticipantView | null | undefined,
+  options: { playing: boolean; isOpponentTurn: boolean },
+): OpponentStatus {
+  if (!options.playing || !options.isOpponentTurn) {
+    return 'idle';
+  }
+  switch (participant?.presence) {
+    case 'waiting':
+    case 'thinking':
+    case 'idle':
+      return 'thinking';
+    case 'disconnected':
+      return 'disconnected';
+    default:
+      return 'offline';
+  }
+}

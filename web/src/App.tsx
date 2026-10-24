@@ -1,19 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import {
   DEFAULT_ROOM_ID,
-  MAX_COMMENTARY_LOG,
   ROOM_ID_PATTERN,
-  type GameState,
-  type PlayerSpec,
+  opponentStatus,
   type StoneColor,
 } from '@gomoku/shared';
-import { ApiError, api, errorMessage } from './api';
 import { Board } from './components/Board';
 import { CommentaryPanel } from './components/CommentaryPanel';
 import { Controls } from './components/Controls';
 import { ResultOverlay } from './components/ResultOverlay';
 import { StatusBar } from './components/StatusBar';
-import { useRoomSocket, type ConnectionStatus } from './useRoomSocket';
+import type { ConnectionStatus } from './useRoomSocket';
+import { seatColors, useRoomStore, visibleCommentary } from './store/room';
 
 const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
   connecting: '连接中',
@@ -29,128 +27,68 @@ function roomIdFromLocation(): string {
     : DEFAULT_ROOM_ID;
 }
 
-function seatFor(
-  state: GameState | null,
-  kind: PlayerSpec['kind'],
-): StoneColor | null {
-  if (!state) {
-    return null;
-  }
-  if (state.seats.black.kind === kind) {
-    return 'black';
-  }
-  if (state.seats.white.kind === kind) {
-    return 'white';
-  }
-  return null;
-}
-
-/** REST responses can be newer than the last WS frame; keep the latest one. */
-function pickLatest(
-  fromSocket: GameState | null,
-  fromRest: GameState | null,
-): GameState | null {
-  if (!fromSocket) {
-    return fromRest;
-  }
-  if (!fromRest) {
-    return fromSocket;
-  }
-  return fromRest.version >= fromSocket.version ? fromRest : fromSocket;
-}
-
 export default function App() {
   const roomId = useMemo(roomIdFromLocation, []);
-  const {
-    state: socketState,
-    commentary,
-    participants,
-    status: connection,
-  } = useRoomSocket(roomId);
+  const connect = useRoomStore((store) => store.connect);
+  const connection = useRoomStore((store) => store.connection);
+  const state = useRoomStore((store) => store.state);
+  const participants = useRoomStore((store) => store.participants);
+  const commentary = useRoomStore((store) => store.commentary);
+  const busy = useRoomStore((store) => store.busy);
+  const error = useRoomStore((store) => store.error);
+  const resultDismissed = useRoomStore((store) => store.resultDismissed);
 
-  const [restState, setRestState] = useState<GameState | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [resultDismissed, setResultDismissed] = useState(false);
+  const startGame = useRoomStore((store) => store.startGame);
+  const play = useRoomStore((store) => store.play);
+  const resign = useRoomStore((store) => store.resign);
+  const dismissResult = useRoomStore((store) => store.dismissResult);
+  const clearError = useRoomStore((store) => store.clearError);
 
-  const state = pickLatest(socketState, restState);
-  const humanColor = seatFor(state, 'human');
-  const agentColor = seatFor(state, 'agent');
+  useEffect(() => connect(roomId), [connect, roomId]);
+
+  const { human: humanColor, agent: agentColor } = seatColors(state);
   const gameId = state?.gameId ?? null;
-
-  useEffect(() => {
-    setResultDismissed(false);
-  }, [gameId]);
 
   const canPlay =
     state?.status === 'playing' &&
     humanColor !== null &&
     state.turn === humanColor &&
     !busy;
-  const thinking =
-    state?.status === 'playing' && state.turn === agentColor;
 
-  const visibleCommentary = useMemo(
-    () =>
-      commentary
-        .filter((item) => item.gameId === gameId)
-        .slice(-MAX_COMMENTARY_LOG),
+  const opponent = participants.find((item) => item.seat === agentColor) ?? null;
+  // "It is the AI's turn" is not the same as "the AI can move": an agent that
+  // never connected must not read as thinking, or the player waits for nobody.
+  const opponentState = opponentStatus(opponent, {
+    playing: state?.status === 'playing',
+    isOpponentTurn:
+      state?.status === 'playing' && state.turn === agentColor,
+  });
+
+  const visible = useMemo(
+    () => visibleCommentary(commentary, gameId),
     [commentary, gameId],
   );
 
-  const applyError = useCallback((caught: unknown) => {
-    if (caught instanceof ApiError && caught.state) {
-      setRestState(caught.state);
-    }
-    setError(errorMessage(caught));
-  }, []);
-
-  const startGame = useCallback(
-    async (humanSeat: StoneColor) => {
-      setBusy(true);
-      setError(null);
-      try {
-        const agentSeat: StoneColor =
-          humanSeat === 'black' ? 'white' : 'black';
-        setRestState(await api.newGame(roomId, agentSeat));
-      } catch (caught) {
-        applyError(caught);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [applyError, roomId],
-  );
-
-  const play = useCallback(
-    async (row: number, col: number) => {
+  const handlePlay = useCallback(
+    (row: number, col: number) => {
       if (!canPlay) {
         return;
       }
-      setBusy(true);
-      setError(null);
-      try {
-        setRestState(await api.move(roomId, row, col));
-      } catch (caught) {
-        applyError(caught);
-      } finally {
-        setBusy(false);
-      }
+      void play(row, col);
     },
-    [applyError, canPlay, roomId],
+    [canPlay, play],
   );
 
-  const resign = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setRestState(await api.resign(roomId));
-    } catch (caught) {
-      applyError(caught);
-    } finally {
-      setBusy(false);
-    }
-  }, [applyError, roomId]);
+  const handleStart = useCallback(
+    (humanSeat: StoneColor) => {
+      void startGame(humanSeat);
+    },
+    [startGame],
+  );
+
+  const handleResign = useCallback(() => {
+    void resign();
+  }, [resign]);
 
   const rematch = useCallback(() => {
     void startGame(humanColor ?? 'black');
@@ -163,7 +101,7 @@ export default function App() {
         humanColor={humanColor}
         busy={busy}
         onRematch={rematch}
-        onDismiss={() => setResultDismissed(true)}
+        onDismiss={dismissResult}
       />
     ) : null;
 
@@ -190,11 +128,7 @@ export default function App() {
       {error ? (
         <div className="error-bar" role="alert">
           <span>{error}</span>
-          <button
-            type="button"
-            className="error-dismiss"
-            onClick={() => setError(null)}
-          >
+          <button type="button" className="error-dismiss" onClick={clearError}>
             知道了
           </button>
         </div>
@@ -214,23 +148,23 @@ export default function App() {
             humanColor={humanColor}
             busy={busy}
             overlay={overlay}
-            onPlay={play}
+            onPlay={handlePlay}
           />
 
           <Controls
             state={state}
             humanColor={humanColor}
             busy={busy}
-            onStart={startGame}
-            onResign={resign}
+            onStart={handleStart}
+            onResign={handleResign}
           />
 
           <p className="rule-note">15 × 15 · 黑先 · 无禁手 · 五连获胜</p>
         </div>
 
         <CommentaryPanel
-          commentary={visibleCommentary}
-          thinking={thinking}
+          commentary={visible}
+          opponentState={opponentState}
           agentColor={agentColor}
         />
       </main>

@@ -3,6 +3,7 @@ import {
   MAX_COMMENTARY_LENGTH,
   type Commentary,
   type CommentaryKind,
+  type OpponentStatus,
   type StoneColor,
 } from '@gomoku/shared';
 
@@ -14,9 +15,31 @@ const KIND_LABELS: Record<CommentaryKind, string> = {
   banter: '闲聊',
 };
 
+/** What the panel says about the opponent's live state. */
+const STATUS_LABELS: Record<OpponentStatus, string> = {
+  idle: '',
+  thinking: '思考中',
+  offline: '未接入',
+  disconnected: '已断开',
+};
+
+/** Copy for the empty state, which must not promise a reply that cannot come. */
+const EMPTY_COPY: Record<OpponentStatus, { title: string; hint: string }> = {
+  idle: { title: 'AI 还没开口', hint: '轮到它时，它会在这里点评你的落子。' },
+  thinking: { title: 'AI 正在思考', hint: '它在读棋盘，稍等片刻。' },
+  offline: {
+    title: 'AI 还没接入',
+    hint: '在 MCP 客户端里连上这个房间，它才会应招。',
+  },
+  disconnected: {
+    title: 'AI 已断开',
+    hint: '连接恢复后它会继续，或者点「认输」重开一局。',
+  },
+};
+
 interface CommentaryPanelProps {
   commentary: Commentary[];
-  thinking: boolean;
+  opponentState: OpponentStatus;
   agentColor: StoneColor | null;
 }
 
@@ -32,9 +55,11 @@ function formatTime(iso: string): string {
 
 export function CommentaryPanel({
   commentary,
-  thinking,
+  opponentState,
   agentColor,
 }: CommentaryPanelProps) {
+  const thinking = opponentState === 'thinking';
+  const empty = EMPTY_COPY[opponentState];
   const listRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const countRef = useRef(0);
@@ -102,8 +127,14 @@ export function CommentaryPanel({
           <h2 className="panel-title">AI 互动</h2>
           <p className="panel-meta">{seatLabel}</p>
         </div>
-        <span className={`panel-live ${thinking ? 'is-thinking' : ''}`}>
-          {thinking ? '思考中' : `${commentary.length} 条`}
+        <span
+          className={`panel-live ${
+            opponentState === 'thinking' ? 'is-thinking' : ''
+          } ${opponentState === 'offline' || opponentState === 'disconnected' ? 'is-away' : ''}`}
+        >
+          {opponentState === 'idle'
+            ? `${commentary.length} 条`
+            : STATUS_LABELS[opponentState]}
         </span>
       </header>
 
@@ -117,8 +148,8 @@ export function CommentaryPanel({
       >
         {commentary.length === 0 && !thinking ? (
           <div className="panel-empty">
-            <strong>AI 还没开口</strong>
-            <span>轮到它时，它会在这里点评你的落子。</span>
+            <strong>{empty.title}</strong>
+            <span>{empty.hint}</span>
           </div>
         ) : null}
 

@@ -893,6 +893,20 @@ button {
   animation: blink 1.2s ease-in-out infinite;
 }
 
+/* The opponent is not reachable: name it, do not animate it. */
+.panel-live.is-away {
+  color: var(--seal);
+}
+
+.panel-live.is-away::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--seal);
+  opacity: 0.7;
+}
+
 .panel-list {
   flex: 1;
   min-height: 0;
