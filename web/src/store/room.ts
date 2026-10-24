@@ -7,7 +7,18 @@ import {
   type StoneColor,
 } from '@gomoku/shared';
 import { ApiError, api, errorMessage } from '../api';
-import type { ConnectionStatus } from '../useRoomSocket';
+
+/**
+ * This browser's own socket connection, not any seat's presence.
+ *
+ * Kept separate from `PresenceState` on purpose: "am I connected to the room"
+ * and "is the opponent there" are different questions with different owners.
+ */
+export type ConnectionStatus =
+  | 'connecting'
+  | 'online'
+  | 'reconnecting'
+  | 'offline';
 
 /**
  * One room, one store.

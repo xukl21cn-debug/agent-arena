@@ -10,8 +10,12 @@ import { CommentaryPanel } from './components/CommentaryPanel';
 import { Controls } from './components/Controls';
 import { ResultOverlay } from './components/ResultOverlay';
 import { StatusBar } from './components/StatusBar';
-import type { ConnectionStatus } from './useRoomSocket';
-import { seatColors, useRoomStore, visibleCommentary } from './store/room';
+import {
+  seatColors,
+  useRoomStore,
+  visibleCommentary,
+  type ConnectionStatus,
+} from './store/room';
 
 const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
   connecting: '连接中',
