@@ -8,7 +8,9 @@ import {
   type CommentaryMood,
   type ErrorCode,
   type GameState,
+  type IdentityProblem,
   type Move,
+  type Participant,
   type ParticipantView,
   type PlayerSpec,
   type RoomSummary,
@@ -25,6 +27,7 @@ import {
   startGame,
 } from '../core/engine.js';
 import { seatLabel, type PresenceSource } from '../core/presence.js';
+import { ParticipantRoster } from './participant-roster.js';
 import type { PersistedRoom, RoomRepository } from './repository.js';
 
 export class RoomError extends Error {
@@ -74,6 +77,24 @@ interface Waiter {
   resolve: (result: WaitResult) => void;
 }
 
+/** How a caller identifies itself when acting in a room. */
+export type ActorRef =
+  /** Preferred: the participant id, which is unique even with two agents. */
+  | { participantId: string }
+  /** Legacy: routed by kind, and only while exactly one seat has that kind. */
+  | { actor: Actor };
+
+/** Failure to resolve an identity to exactly one seated participant. */
+export interface IdentityFailure {
+  ok: false;
+  code: IdentityProblem;
+  message: string;
+}
+
+export type IdentityResult =
+  | { ok: true; participant: Participant; seat: StoneColor }
+  | IdentityFailure;
+
 interface GameRoomOptions extends RoomConfig {
   repository?: RoomRepository;
   /** Presence source for `participants`; omitted in pure-logic tests. */
@@ -110,6 +131,8 @@ export class GameRoom {
   private readonly stateListeners = new Set<StateListener>();
   private readonly commentaryListeners = new Set<CommentaryListener>();
   private readonly waiters = new Set<Waiter>();
+  /** Who is in this room; outlives any single game. */
+  private readonly roster = new ParticipantRoster();
 
   private state: GameState;
   private history: Move[] = [];
@@ -199,6 +222,125 @@ export class GameRoom {
     return this.getSeatFor('human');
   }
 
+  // ---------------------------------------------------------------- roster
+
+  /** Everyone currently in this room. */
+  getRoster(): Participant[] {
+    return this.roster.list();
+  }
+
+  /**
+   * Join the room, or reconnect if this name is already here.
+   *
+   * Seating is optional: a participant may join before choosing a color, which
+   * is what the lobby phase (P1c) needs.
+   */
+  join(request: {
+    name?: string;
+    kind: Participant['kind'];
+    seat?: StoneColor | null;
+    client?: string;
+    now?: number;
+  }): Participant {
+    const participant = this.roster.join(request);
+    if (participant.seat !== null) {
+      this.syncSeat(participant.seat, participant);
+    }
+    this.emitRoster();
+    return participant;
+  }
+
+  /** Leave the room, freeing the seat. */
+  leave(participantId: string): boolean {
+    const participant = this.roster.get(participantId);
+    if (!participant) {
+      return false;
+    }
+    const seat = participant.seat;
+    this.roster.leave(participantId);
+    if (seat !== null) {
+      // The seat stays on the board but is no longer anyone's; keep the kind so
+      // the UI can still label it.
+      this.state = {
+        ...this.state,
+        seats: {
+          ...this.state.seats,
+          [seat]: { kind: this.state.seats[seat].kind },
+        },
+      };
+    }
+    this.emitRoster();
+    return true;
+  }
+
+  /**
+   * Resolve a caller to exactly one seated participant.
+   *
+   * Ids win because they are unambiguous. The legacy `actor` form still works
+   * while a room holds one participant of that kind — which is every existing
+   * client — and fails loudly with `AMBIGUOUS_ACTOR` once two agents share a
+   * room, instead of silently moving the wrong color.
+   */
+  resolve(ref: ActorRef): IdentityResult {
+    if ('participantId' in ref) {
+      const participant = this.roster.get(ref.participantId);
+      if (!participant) {
+        return {
+          ok: false,
+          code: 'PARTICIPANT_NOT_FOUND',
+          message: `Participant "${ref.participantId}" is not in room "${this.id}".`,
+        };
+      }
+      if (participant.seat === null) {
+        return {
+          ok: false,
+          code: 'NOT_SEATED',
+          message: `Participant "${participant.name}" holds no seat in room "${this.id}".`,
+        };
+      }
+      return { ok: true, participant, seat: participant.seat };
+    }
+
+    const seated = this.roster
+      .byKind(ref.actor)
+      .filter((participant) => participant.seat !== null);
+
+    if (seated.length === 1) {
+      const participant = seated[0]!;
+      return { ok: true, participant, seat: participant.seat! };
+    }
+    if (seated.length > 1) {
+      return {
+        ok: false,
+        code: 'AMBIGUOUS_ACTOR',
+        message: `Room "${this.id}" has ${seated.length} seated ${ref.actor} participants; identify the caller by participantId.`,
+      };
+    }
+
+    // No roster entry: fall back to the legacy seat lookup so a room created
+    // before participants existed still answers.
+    const seat = this.getSeatFor(ref.actor);
+    if (seat === null) {
+      return {
+        ok: false,
+        code: 'IDENTITY_REQUIRED',
+        message: `Room "${this.id}" has no ${ref.actor} seat.`,
+      };
+    }
+    return {
+      ok: true,
+      participant: {
+        id: `legacy:${ref.actor}`,
+        name: ref.actor,
+        kind: ref.actor,
+        seat,
+        lastSeenAt: Date.now(),
+        joinedAt: new Date().toISOString(),
+      },
+      seat,
+    };
+  }
+
   /**
    * Start a fresh game. The agent seat is taken by `agentColor` (defaults to
    * the current agent seat, then white); the other color becomes the human.
@@ -232,6 +374,25 @@ export class GameRoom {
       return this.failure('NO_AGENT_SEAT', `Room "${this.id}" has no ${actor} seat.`);
     }
 
+    return this.moveAt(seat, row, col);
+  }
+
+  /**
+   * Place a stone for an explicit caller.
+   *
+   * This is the participant-aware entry point: the identity is resolved first,
+   * so two agents in one room each move their own color. The legacy
+   * `moveBy(actor, …)` above delegates here after resolving by kind.
+   */
+  moveAs(ref: ActorRef, row: number, col: number): MoveActionResult {
+    const identity = this.resolve(ref);
+    if (!identity.ok) {
+      return this.failure(identity.code, identity.message);
+    }
+    return this.moveAt(identity.seat, row, col);
+  }
+
+  private moveAt(seat: StoneColor, row: number, col: number): MoveActionResult {
     const result = applyMove(this.state, seat, row, col);
     if (!result.ok) {
       return {
@@ -256,6 +417,19 @@ export class GameRoom {
       return this.failure('NO_AGENT_SEAT', `Room "${this.id}" has no ${actor} seat.`);
     }
 
+    return this.resignAt(seat);
+  }
+
+  /** Resign for an explicit caller; see {@link moveAs}. */
+  resignAs(ref: ActorRef): StateActionResult {
+    const identity = this.resolve(ref);
+    if (!identity.ok) {
+      return this.failure(identity.code, identity.message);
+    }
+    return this.resignAt(identity.seat);
+  }
+
+  private resignAt(seat: StoneColor): StateActionResult {
     const result = resignGame(this.state, seat);
     if (!result.ok) {
       return {
@@ -426,6 +600,32 @@ export class GameRoom {
         console.error('[room] commentary listener failed', error);
       }
     }
+  }
+
+  /** Mirror a seated participant into `GameState.seats` so the board agrees. */
+  private syncSeat(seat: StoneColor, participant: Participant): void {
+    this.state = {
+      ...this.state,
+      seats: {
+        ...this.state.seats,
+        [seat]: {
+          id: participant.id,
+          kind: participant.kind,
+          name: participant.name,
+        },
+      },
+    };
+  }
+
+  /**
+   * Tell listeners the roster changed.
+   *
+   * Routed through the state listeners so the web client refreshes presence
+   * and seats from one event, instead of needing a second subscription.
+   */
+  private emitRoster(): void {
+    this.emitState('new_game');
+    this.save();
   }
 
   private save(): void {

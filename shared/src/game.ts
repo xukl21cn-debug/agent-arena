@@ -40,6 +40,13 @@ export type ErrorCode =
   | 'INVALID_COMMENTARY'
   | 'INVALID_REQUEST'
   | 'BACKEND_UNAVAILABLE'
+  /** No participant id was supplied and the room cannot infer one. */
+  | 'IDENTITY_REQUIRED'
+  | 'PARTICIPANT_NOT_FOUND'
+  | 'NOT_SEATED'
+  /** Two participants share a kind, so `actor` cannot pick one. */
+  | 'AMBIGUOUS_ACTOR'
+  | 'SEAT_TAKEN'
   | 'INTERNAL_ERROR';
 
 export interface Cell {
@@ -47,7 +54,17 @@ export interface Cell {
   col: number;
 }
 
+/**
+ * Who occupies a seat.
+ *
+ * `id` is optional for backward compatibility: older persisted snapshots and
+ * the engine's own defaults carry only `kind`. A seat with no id is still
+ * routable by `kind`, which is how every pre-participant client behaves, but
+ * two agents in one room need ids — see `participant.ts`.
+ */
 export interface PlayerSpec {
+  /** Stable participant id; absent on legacy snapshots. */
+  id?: string;
   kind: ParticipantKind;
   name?: string;
 }
