@@ -21,6 +21,8 @@ let wsUrl: string;
 
 const TOOL_NAMES = [
   'get_state',
+  'join_game',
+  'leave_room',
   'new_game',
   'place_stone',
   'resign',
@@ -169,8 +171,10 @@ describe('REST API', () => {
       '/api/rooms/human-room/wait-for-turn?actor=agent&timeoutMs=1000',
     );
     expect(response.status).toBe(400);
+    // No agent seat and no participant claim: the caller cannot be identified,
+    // which is what IDENTITY_REQUIRED names.
     expect((await readJson<ErrorResponse>(response)).error?.code).toBe(
-      'NO_AGENT_SEAT',
+      'IDENTITY_REQUIRED',
     );
   });
 

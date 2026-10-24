@@ -10,13 +10,14 @@ import {
   type CommentaryMood,
   type ErrorCode,
   type ErrorResponse,
+  type Participant,
   type PlayerSpec,
   type RuleSet,
   type StoneColor,
 } from '@gomoku/shared';
 import { clampWaitMs, type ServerConfig } from '../config.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
-import { RoomError, type GameRoom } from '../rooms/room.js';
+import { RoomError, type ActorRef, type GameRoom } from '../rooms/room.js';
 
 const COMMENTARY_KINDS: readonly CommentaryKind[] = [
   'evaluation',
@@ -40,12 +41,15 @@ const PARTICIPANT_KINDS = ['human', 'agent', 'remote'] as const;
 export function statusForCode(code: ErrorCode): number {
   switch (code) {
     case 'ROOM_NOT_FOUND':
+    case 'PARTICIPANT_NOT_FOUND':
       return 404;
     case 'ROOM_EXISTS':
-      return 409;
     case 'GAME_NOT_PLAYING':
-      return 409;
     case 'NOT_YOUR_TURN':
+    case 'SEAT_TAKEN':
+    // Two agents in one room is a conflict the caller resolves by identifying
+    // itself, not a malformed request.
+    case 'AMBIGUOUS_ACTOR':
       return 409;
     case 'INTERNAL_ERROR':
       return 500;
@@ -249,6 +253,32 @@ function touchActor(manager: RoomManager, room: GameRoom, actor: Actor): void {
   }
 }
 
+/**
+ * How the caller identifies itself.
+ *
+ * The header wins so the stdio bridge — which holds no server session — can
+ * present its participant id on every request. A body field is accepted for
+ * callers that cannot set headers. Falling back to `actor` keeps every
+ * pre-participant client working.
+ */
+function actorRefOf(
+  req: { headers: Record<string, unknown> },
+  body: Record<string, unknown>,
+): ActorRef {
+  const header = req.headers['x-gomoku-participant'];
+  const fromHeader = Array.isArray(header) ? header[0] : header;
+  if (typeof fromHeader === 'string' && fromHeader.length > 0) {
+    return { participantId: fromHeader };
+  }
+
+  const fromBody = body.participantId;
+  if (typeof fromBody === 'string' && fromBody.length > 0) {
+    return { participantId: fromBody };
+  }
+
+  return { actor: actorOf(body.actor, 'human') };
+}
+
 function createRoomOrThrow(
   manager: RoomManager,
   roomId: string,
@@ -296,6 +326,74 @@ export function createApiRouter(
     res.json(roomOrThrow(manager, req.params.roomId).getView());
   });
 
+  // ---- participants -------------------------------------------------------
+
+  /** Everyone currently in the room. */
+  router.get('/rooms/:roomId/participants', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    res.json({ participants: room.getRoster() });
+  });
+
+  /**
+   * Join (or reconnect to) the room, optionally claiming a seat.
+   *
+   * The stdio bridge calls this once and then sends its id on every request;
+   * the web client joins as the human seat when it connects.
+   */
+  router.post('/rooms/:roomId/participants', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const body = bodyOf(req);
+
+    const kind = body.kind;
+    if (kind !== undefined && kind !== 'agent' && kind !== 'human' && kind !== 'remote') {
+      throw new RoomError(
+        'INVALID_REQUEST',
+        'kind must be one of agent, human, remote.',
+      );
+    }
+
+    const name = body.name;
+    if (name !== undefined && typeof name !== 'string') {
+      throw new RoomError('INVALID_REQUEST', 'name must be a string.');
+    }
+
+    const seat = body.seat === undefined ? undefined : colorOf(body.seat);
+
+    const participant = room.join({
+      kind: (kind as Participant['kind'] | undefined) ?? 'agent',
+      ...(name === undefined ? {} : { name }),
+      ...(seat === undefined ? {} : { seat }),
+    });
+
+    const view = room.getView();
+    res.status(201).json({
+      participantId: participant.id,
+      name: participant.name,
+      seat: participant.seat,
+      state: view.state,
+      history: view.history,
+      participants: room.getRoster().map((item) => ({
+        id: item.id,
+        name: item.name,
+        kind: item.kind,
+        seat: item.seat,
+      })),
+    });
+  });
+
+  /** Leave the room; the seat is freed for somebody else. */
+  router.delete('/rooms/:roomId/participants/:participantId', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const ok = room.leave(req.params.participantId);
+    if (!ok) {
+      throw new RoomError(
+        'PARTICIPANT_NOT_FOUND',
+        `Participant "${req.params.participantId}" is not in room "${room.id}".`,
+      );
+    }
+    res.json({ ok: true });
+  });
+
   router.post('/rooms/:roomId/games', (req, res) => {
     const room = roomOrThrow(manager, req.params.roomId);
     const body = bodyOf(req);
@@ -308,11 +406,15 @@ export function createApiRouter(
     const body = bodyOf(req);
     const row = integerOf(body.row, 'row');
     const col = integerOf(body.col, 'col');
-    const actor = actorOf(body.actor, 'human');
 
-    touchActor(manager, room, actor);
+    // Prefer the participant the caller claims (header or body); fall back to
+    // the legacy actor kind, which the room resolves only while unambiguous.
+    const ref = actorRefOf(req, body);
+    if ('actor' in ref) {
+      touchActor(manager, room, ref.actor);
+    }
 
-    const result = room.moveBy(actor, row, col);
+    const result = room.moveAs(ref, row, col);
     if (!result.ok) {
       const payload: ErrorResponse = {
         error: { code: result.code, message: result.message },
@@ -329,11 +431,13 @@ export function createApiRouter(
   router.post('/rooms/:roomId/resign', (req, res) => {
     const room = roomOrThrow(manager, req.params.roomId);
     const body = bodyOf(req);
-    const actor = actorOf(body.actor, 'human');
 
-    touchActor(manager, room, actor);
+    const ref = actorRefOf(req, body);
+    if ('actor' in ref) {
+      touchActor(manager, room, ref.actor);
+    }
 
-    const result = room.resignBy(actor);
+    const result = room.resignAs(ref);
     if (!result.ok) {
       const payload: ErrorResponse = {
         error: { code: result.code, message: result.message },
@@ -365,22 +469,29 @@ export function createApiRouter(
 
   router.get('/rooms/:roomId/wait-for-turn', async (req, res) => {
     const room = roomOrThrow(manager, req.params.roomId);
-    const actor = actorOf(queryValue(req.query.actor), 'agent');
-    const seat = room.getSeatFor(actor);
-    if (!seat) {
+
+    // The header identifies the stdio bridge; a query parameter serves callers
+    // that cannot set one. Falling back to `actor` keeps old clients working.
+    const ref = actorRefOf(
+      req,
+      req.query.participantId === undefined
+        ? { actor: queryValue(req.query.actor) }
+        : { participantId: queryValue(req.query.participantId) },
+    );
+
+    const identity = room.resolve(ref);
+    if (!identity.ok) {
       // Returned directly (not thrown) so state and history ride along,
       // matching what the in-process MCP API reports for this failure.
       const payload: ErrorResponse = {
-        error: {
-          code: 'NO_AGENT_SEAT',
-          message: `Room "${room.id}" has no ${actor} seat.`,
-        },
+        error: { code: identity.code, message: identity.message },
         state: room.getState(),
         history: [...room.getHistory()],
       };
-      res.status(statusForCode('NO_AGENT_SEAT')).json(payload);
+      res.status(statusForCode(identity.code)).json(payload);
       return;
     }
+    const { seat } = identity;
 
     const timeoutMs = clampWaitMs(queryValue(req.query.timeoutMs), config);
     // A parked long-poll is the strongest "this seat is alive" signal, so it is
@@ -394,7 +505,7 @@ export function createApiRouter(
     }
     res.json({
       state: result.state,
-      yourColor: room.getAgentSeat(),
+      yourColor: seat,
       reason: result.reason,
       history: [...room.getHistory()],
     });

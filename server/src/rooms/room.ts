@@ -108,6 +108,26 @@ function defaultSeats(): Record<StoneColor, PlayerSpec> {
   };
 }
 
+/**
+ * The seat spec for a new game.
+ *
+ * A seated participant keeps its identity; an empty seat falls back to the
+ * legacy kind so a room without a roster still starts a game.
+ */
+function seatSpecOf(
+  participant: Participant | undefined,
+  fallbackKind: Participant['kind'],
+): PlayerSpec {
+  if (!participant) {
+    return { kind: fallbackKind };
+  }
+  return {
+    id: participant.id,
+    kind: participant.kind,
+    name: participant.name,
+  };
+}
+
 function cloneSeats(
   seats: Record<StoneColor, PlayerSpec>,
 ): Record<StoneColor, PlayerSpec> {
@@ -342,16 +362,25 @@ export class GameRoom {
   }
 
   /**
-   * Start a fresh game. The agent seat is taken by `agentColor` (defaults to
-   * the current agent seat, then white); the other color becomes the human.
+   * Start a fresh game.
+   *
+   * Seats come from the roster first: whoever already joined keeps their seat
+   * and identity across rematches, which is what lets a connected agent simply
+   * keep playing instead of re-joining every game. `agentColor` seeds the
+   * seats only when the roster has nobody seated — the pre-participant path.
    */
   newGame(options: { agentColor?: StoneColor } = {}): GameState {
     const agentColor = options.agentColor ?? this.getAgentSeat() ?? 'white';
     const humanColor = opposite(agentColor);
 
+    const seated = {
+      black: this.roster.bySeat('black'),
+      white: this.roster.bySeat('white'),
+    };
+
     const seats: Record<StoneColor, PlayerSpec> = {
-      black: { kind: agentColor === 'black' ? 'agent' : 'human' },
-      white: { kind: agentColor === 'white' ? 'agent' : 'human' },
+      black: seatSpecOf(seated.black, agentColor === 'black' ? 'agent' : 'human'),
+      white: seatSpecOf(seated.white, agentColor === 'white' ? 'agent' : 'human'),
     };
 
     this.state = startGame(this.state, seats, { rules: this.state.rules });

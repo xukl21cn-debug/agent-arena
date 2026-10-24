@@ -66,14 +66,20 @@ export const SERVER_INSTRUCTIONS = `你是五子棋对弈 Agent，在 15×15 棋
 低阶威胁只作参考，不要为它们放弃上面的必防项。
 
 标准流程：
-1. 调用 wait_for_turn 等待轮到你；
-2. reason=your_turn 时，先调用 say 评价人类刚落的那一步（kind=evaluation），
+1. 先调用 join_game 占座（name 用你的名字，seat 选执黑或执白）；之后所有调用都会自动以这个身份进行；
+2. 调用 wait_for_turn 等待轮到你；
+3. reason=your_turn 时，先调用 say 评价对手刚落的那一步（kind=evaluation），
    再按上述优先级依据 boardText / hotPoints 选择一个空位调用 place_stone；
-3. 落子后调用 say 评论局势或表达情绪（kind=position / reaction），
+4. 落子后调用 say 评论局势或表达情绪（kind=position / reaction），
    然后再次 wait_for_turn；
-4. reason=game_over 时用 say（kind=result）总结胜负；
+5. reason=game_over 时用 say（kind=result）总结胜负；
    reason=timeout 时再次调用 wait_for_turn；
    reason=idle 时可调用 new_game 或提示人类在网页开局。
+
+房间里可能有两个 agent 对弈（join_game 返回的 participants 会显示）：
+- 你只能操作自己座位那个颜色，不要替对手落子；
+- 你的身份由服务端绑定，不要在参数里伪造别人的 id；
+- 对手在思考时你调用 wait_for_turn 会挂起，这是正常的。
 
 只能操作 yourColor 颜色的棋子，不要替人类落子。每次落子前确认目标格为空。
 解说是对玩家说的话，简短、有个性，不要输出完整推理过程。`;
@@ -128,11 +134,63 @@ async function runTool(action: () => Promise<unknown>): Promise<CallToolResult> 
 }
 
 /**
- * The single source of truth for the six MCP tools. Both the in-process HTTP
+ * The single source of truth for the MCP tools. Both the in-process HTTP
  * transport and the stdio bridge register exactly these definitions, so every
  * client sees identical behaviour and descriptions.
  */
 export function registerTools(server: McpServer, api: GomokuApi): void {
+  server.registerTool(
+    'join_game',
+    {
+      title: '加入房间',
+      description: `加入一个房间并占座，之后所有工具调用都会自动以这个身份进行——你不需要再传任何 id。
+
+- name：房间内显示名（如 "dsh"）。同名再次加入视为重连，会拿回原来的 id 和座位。
+- seat：想执的颜色。省略则只进房间不占座（观战/等待）。占座会把原占座者挤成无座。
+- 两个 agent 可以同房间对弈：各自 join_game 占不同颜色，然后各自 wait_for_turn。
+
+返回 { participantId, name, seat, state, participants }，participants 列出房间里其他人和他们的座位。
+连接后建议先调用本工具，再调用 wait_for_turn。`,
+      inputSchema: z.object({
+        roomId: roomIdSchema,
+        name: z
+          .string()
+          .min(1)
+          .max(24)
+          .optional()
+          .describe('房间内显示名，如 "dsh"；同名视为重连。'),
+        seat: z
+          .enum(['black', 'white'])
+          .optional()
+          .describe('想执的颜色；省略则只进房间不占座。'),
+        kind: z
+          .enum(['agent', 'human'])
+          .optional()
+          .describe('参与者类型，默认 agent。'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ roomId, name, seat, kind }) =>
+      runTool(() =>
+        api.joinGame(roomId ?? DEFAULT_ROOM_ID, {
+          ...(name === undefined ? {} : { name }),
+          ...(seat === undefined ? {} : { seat }),
+          ...(kind === undefined ? {} : { kind }),
+        }),
+      ),
+  );
+
+  server.registerTool(
+    'leave_room',
+    {
+      title: '离开房间',
+      description: `离开房间并释放座位。对局不会因此结束，只是这个座位变空。重连后需要重新 join_game。`,
+      inputSchema: z.object({ roomId: roomIdSchema }),
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    async ({ roomId }) => runTool(() => api.leaveGame(roomId ?? DEFAULT_ROOM_ID)),
+  );
+
   server.registerTool(
     'new_game',
     {

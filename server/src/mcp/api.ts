@@ -16,8 +16,24 @@ import type {
  * `InProcessApi` (same process as the game server) and `HttpApi` (stdio
  * bridge talking REST to a running server). Both return agent-facing views:
  * boardText + moves + hotPoints instead of the raw nested board array.
+ *
+ * Every method that acts on a seat resolves the caller's identity on the
+ * server side (session binding, then room roster). The model never passes a
+ * participant id, so it cannot act as somebody else.
  */
 export interface GomokuApi {
+  /**
+   * Claim a seat in a room, binding this session to the resulting participant.
+   *
+   * Idempotent: joining again with the same name reconnects to the same
+   * participant, keeping its seat and id.
+   */
+  joinGame(
+    roomId: string,
+    options?: { name?: string; seat?: StoneColor; kind?: 'agent' | 'human' },
+  ): Promise<AgentJoinResponse>;
+  /** Leave the room, freeing the seat. */
+  leaveGame(roomId: string): Promise<{ ok: boolean }>;
   newGame(roomId: string, agentColor?: StoneColor): Promise<AgentStateResponse>;
   getState(roomId: string): Promise<AgentStateResponse>;
   waitForTurn(
@@ -32,6 +48,22 @@ export interface GomokuApi {
     kind?: CommentaryKind,
     mood?: CommentaryMood,
   ): Promise<Commentary>;
+}
+
+/** What a successful `join_game` reports back. */
+export interface AgentJoinResponse {
+  /** This agent's stable id in the room. */
+  participantId: string;
+  name: string;
+  seat: StoneColor | null;
+  state: AgentStateView;
+  /** Everyone else in the room, so the agent knows who it is playing. */
+  participants: Array<{
+    id: string;
+    name: string;
+    kind: string;
+    seat: StoneColor | null;
+  }>;
 }
 
 /**

@@ -18,10 +18,14 @@ import {
   toAgentStateView,
   type AgentViewOptions,
 } from '../core/insights.js';
-import { currentSession, sessionContext } from '../core/session-context.js';
-import { RoomError, type GameRoom } from '../rooms/room.js';
+import { currentSession, SessionBindings, sessionContext } from '../core/session-context.js';
+import { RoomError, type ActorRef, type GameRoom } from '../rooms/room.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
-import { GomokuApiError, type GomokuApi } from './api.js';
+import {
+  GomokuApiError,
+  type AgentJoinResponse,
+  type GomokuApi,
+} from './api.js';
 import { registerTools, SERVER_INSTRUCTIONS } from './tools.js';
 
 function checkRoomId(roomId: string): void {
@@ -51,7 +55,35 @@ export class InProcessApi implements GomokuApi {
   constructor(
     private readonly manager: RoomManager,
     private readonly config: Pick<ServerConfig, 'waitDefaultMs' | 'waitMaxMs'>,
+    private readonly bindings: SessionBindings = new SessionBindings(),
   ) {}
+
+  /**
+   * The participant this call is acting as, if this session has joined.
+   *
+   * Returns undefined for a session that never called `join_game` — those are
+   * the pre-participant clients, which the room still routes by seat kind.
+   */
+  private participantIdOf(roomId: string): string | undefined {
+    const session = currentSession();
+    if (!session?.sessionId) {
+      return undefined;
+    }
+    return this.bindings.participantOf(session.sessionId, roomId);
+  }
+
+  /**
+   * Resolve how to address this caller.
+   *
+   * A session that joined addresses itself by id; one that did not falls back
+   * to the legacy kind, which the room resolves only while it is unambiguous.
+   */
+  private actorRef(roomId: string, fallback: 'agent' | 'human'): ActorRef {
+    const participantId = this.participantIdOf(roomId);
+    return participantId === undefined
+      ? { actor: fallback }
+      : { participantId };
+  }
 
   /**
    * Record that this seat is alive: bind the calling MCP session to the room
@@ -75,6 +107,65 @@ export class InProcessApi implements GomokuApi {
     presence.touch(roomId, seat);
   }
 
+  async joinGame(
+    roomId: string,
+    options: { name?: string; seat?: StoneColor; kind?: 'agent' | 'human' } = {},
+  ): Promise<AgentJoinResponse> {
+    const room = this.getOrCreateRoom(roomId);
+    const session = currentSession();
+
+    // A client that already holds a seat in this room and joins again is
+    // reconnecting: reuse its name so the roster treats it as the same person.
+    const existingId = this.participantIdOf(roomId);
+    const existing = existingId === undefined ? undefined : room.getRoster()
+      .find((participant) => participant.id === existingId);
+
+    const participant = room.join({
+      kind: options.kind ?? 'agent',
+      ...(options.name === undefined
+        ? existing === undefined
+          ? {}
+          : { name: existing.name }
+        : { name: options.name }),
+      ...(options.seat === undefined ? {} : { seat: options.seat }),
+      ...(session?.client === undefined ? {} : { client: session.client }),
+    });
+
+    if (session?.sessionId) {
+      this.bindings.bind(session.sessionId, roomId, participant.id);
+    }
+
+    // Joining is the first proof of life for a new seat.
+    this.notePresence(roomId, participant.seat);
+
+    return {
+      participantId: participant.id,
+      name: participant.name,
+      seat: participant.seat,
+      state: agentView(room),
+      participants: room.getRoster().map((item) => ({
+        id: item.id,
+        name: item.name,
+        kind: item.kind,
+        seat: item.seat,
+      })),
+    };
+  }
+
+  async leaveGame(roomId: string): Promise<{ ok: boolean }> {
+    const room = this.requireRoom(roomId);
+    const participantId = this.participantIdOf(roomId);
+    if (participantId === undefined) {
+      return { ok: false };
+    }
+    const ok = room.leave(participantId);
+    const session = currentSession();
+    if (session?.sessionId) {
+      this.bindings.unbind(session.sessionId, roomId);
+    }
+    return { ok };
+  }
+
   async newGame(
     roomId: string,
     agentColor?: StoneColor,
@@ -96,15 +187,17 @@ export class InProcessApi implements GomokuApi {
     timeoutMs: number,
   ): Promise<AgentWaitForTurnResponse> {
     const room = this.requireRoom(roomId);
-    const seat = room.getAgentSeat();
-    if (!seat) {
+    const ref = this.actorRef(roomId, 'agent');
+    const identity = room.resolve(ref);
+    if (!identity.ok) {
       throw new GomokuApiError(
-        'NO_AGENT_SEAT',
-        `Room "${roomId}" has no agent seat. Start a game with an agent color.`,
+        identity.code,
+        identity.message,
         room.getState(),
         room.getHistory(),
       );
     }
+    const { seat } = identity;
 
     // A parked long-poll is the strongest evidence that this seat is alive, so
     // it is registered for the whole time the call hangs.
@@ -128,8 +221,12 @@ export class InProcessApi implements GomokuApi {
     col: number,
   ): Promise<AgentStateView> {
     const room = this.requireRoom(roomId);
-    this.notePresence(roomId, room.getAgentSeat());
-    const result = room.moveBy('agent', row, col);
+    const ref = this.actorRef(roomId, 'agent');
+    const identity = room.resolve(ref);
+    if (identity.ok) {
+      this.notePresence(roomId, identity.seat);
+    }
+    const result = room.moveAs(ref, row, col);
     if (!result.ok) {
       throw new GomokuApiError(
         result.code,
@@ -143,8 +240,12 @@ export class InProcessApi implements GomokuApi {
 
   async resign(roomId: string): Promise<AgentStateView> {
     const room = this.requireRoom(roomId);
-    this.notePresence(roomId, room.getAgentSeat());
-    const result = room.resignBy('agent');
+    const ref = this.actorRef(roomId, 'agent');
+    const identity = room.resolve(ref);
+    if (identity.ok) {
+      this.notePresence(roomId, identity.seat);
+    }
+    const result = room.resignAs(ref);
     if (!result.ok) {
       throw new GomokuApiError(
         result.code,

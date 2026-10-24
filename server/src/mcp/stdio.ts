@@ -22,7 +22,12 @@ import {
   toAgentStateView,
   type AgentViewOptions,
 } from '../core/insights.js';
-import { agentColorOf, GomokuApiError, type GomokuApi } from './api.js';
+import {
+  agentColorOf,
+  GomokuApiError,
+  type AgentJoinResponse,
+  type GomokuApi,
+} from './api.js';
 import { registerTools, SERVER_INSTRUCTIONS } from './tools.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,9 +45,51 @@ const RECENT: AgentViewOptions = { recentMoves: AGENT_RECENT_MOVES };
  */
 export class HttpApi implements GomokuApi {
   private readonly baseUrl: string;
+  /** Participant id this bridge claimed, sent on every later request. */
+  private participantId: string | undefined;
 
   constructor(baseUrl: string = resolveServerUrl()) {
     this.baseUrl = baseUrl;
+  }
+
+  async joinGame(
+    roomId: string,
+    options: { name?: string; seat?: StoneColor; kind?: 'agent' | 'human' } = {},
+  ): Promise<AgentJoinResponse> {
+    const payload = await this.request<{
+      participantId: string;
+      name: string;
+      seat: StoneColor | null;
+      state: GameState;
+      history: Move[];
+      participants: AgentJoinResponse['participants'];
+    }>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/participants`,
+      options,
+    );
+    // Remember the id: the bridge holds no server-side session, so it has to
+    // present its identity on every later call itself.
+    this.participantId = payload.participantId;
+    return {
+      participantId: payload.participantId,
+      name: payload.name,
+      seat: payload.seat,
+      state: toAgentStateView(payload.state, payload.history),
+      participants: payload.participants,
+    };
+  }
+
+  async leaveGame(roomId: string): Promise<{ ok: boolean }> {
+    if (this.participantId === undefined) {
+      return { ok: false };
+    }
+    const payload = await this.request<{ ok: boolean }>(
+      'DELETE',
+      `/api/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(this.participantId)}`,
+    );
+    this.participantId = undefined;
+    return payload;
   }
 
   async newGame(
@@ -123,18 +170,27 @@ export class HttpApi implements GomokuApi {
   }
 
   private async request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'DELETE',
     path: string,
     body?: unknown,
   ): Promise<T> {
     const url = new URL(path, this.baseUrl);
 
+    // The bridge has no server-side session, so it identifies itself with a
+    // header the REST layer resolves back to a participant.
+    const headers: Record<string, string> = {};
+    if (body !== undefined) {
+      headers['content-type'] = 'application/json';
+    }
+    if (this.participantId !== undefined) {
+      headers['x-gomoku-participant'] = this.participantId;
+    }
+
     let response: Response;
     try {
       response = await fetch(url, {
         method,
-        headers:
-          body === undefined ? undefined : { 'content-type': 'application/json' },
+        headers,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (error) {
