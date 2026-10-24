@@ -93,10 +93,10 @@ export function attachWebSocket(
     // Register the viewer before building the snapshot: `hello` must already
     // report this tab, otherwise the first paint says "unknown" for a human
     // who is plainly looking at the board.
-    const detachViewer = presence?.attachViewer(
-      roomId,
-      room.getHumanSeat() ?? 'black',
-    );
+    //
+    // The tab watches the room, not a seat: starting a new game can move the
+    // human from black to white, and the same tab keeps watching throughout.
+    const detachViewer = presence?.attachViewer(roomId);
 
     const view = room.getView();
     lastFrame.set(socket, JSON.stringify(view.participants));

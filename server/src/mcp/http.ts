@@ -329,6 +329,10 @@ export function mountMcpHttp(
     try {
       await session.transport.handleRequest(req, res);
       sessions.delete(sessionId!);
+      // A DELETE is a client saying goodbye. The transport's own close hook is
+      // not guaranteed to fire on every path, so detach here explicitly — a
+      // departed agent must stop reading as connected.
+      manager.presenceSource?.detachSession(sessionId!);
     } catch (error) {
       console.error('[mcp] DELETE /mcp failed', error);
       if (!res.headersSent) {

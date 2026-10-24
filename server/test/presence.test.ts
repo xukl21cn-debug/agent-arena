@@ -76,7 +76,11 @@ describe('PresenceRegistry', () => {
   };
 
   function registry(clock: { now: number } = { now: NOW }): PresenceRegistry {
-    return new PresenceRegistry({ now: () => clock.now, staleAfterMs: 10_000 });
+    return new PresenceRegistry({
+      now: () => clock.now,
+      staleAfterMs: 10_000,
+      sessionIdleMs: 90_000,
+    });
   }
 
   function snapshot(
@@ -100,7 +104,7 @@ describe('PresenceRegistry', () => {
 
   it('marks the human seat idle while a browser viewer is attached', () => {
     const reg = registry();
-    const detach = reg.attachViewer('r1', 'black');
+    const detach = reg.attachViewer('r1');
     expect(snapshot(reg)[0]?.presence).toBe('idle');
 
     // Closing the tab is a confirmed disconnect: no tab, nobody watching.
@@ -108,13 +112,51 @@ describe('PresenceRegistry', () => {
     expect(snapshot(reg)[0]?.presence).toBe('disconnected');
   });
 
+  it('follows the human seat when a new game moves it to the other color', () => {
+    // The regression this test exists for: the tab used to bind to whichever
+    // seat was human at connect time, so starting a game as white left the
+    // viewer on black — the AI showed "thinking" and the human "disconnected".
+    const reg = registry();
+    reg.attachViewer('r1');
+    reg.attachSession('r1', 'black', 'session-1', 'dsh');
+
+    const asBlackHuman = snapshot(reg);
+    expect(asBlackHuman[0]?.presence).toBe('idle');
+
+    // Now the human plays white and the agent plays black.
+    const swapped = reg.snapshot({
+      roomId: 'r1',
+      seats: {
+        black: { kind: 'agent' },
+        white: { kind: 'human' },
+      },
+      turn: 'black',
+      playing: true,
+    });
+
+    expect(swapped[0]?.presence).toBe('thinking'); // agent to move
+    expect(swapped[1]?.presence).toBe('idle'); // human watching
+  });
+
   it('drops the human seat once its viewer leaves and the stale window passes', () => {
     const clock = { now: NOW };
     const reg = registry(clock);
-    const detach = reg.attachViewer('r1', 'black');
+    const detach = reg.attachViewer('r1');
     detach();
     clock.now += 11_000;
     expect(snapshot(reg)[0]?.presence).toBe('disconnected');
+  });
+
+  it('counts viewers per room and keeps them independent', () => {
+    const reg = registry();
+    reg.attachViewer('r1');
+    reg.attachViewer('r1');
+    const detachOne = reg.attachViewer('r1');
+
+    expect(snapshot(reg)[0]?.presence).toBe('idle');
+    detachOne();
+    // Two tabs remain: the human is still watching.
+    expect(snapshot(reg)[0]?.presence).toBe('idle');
   });
 
   it('marks the agent seat idle while an MCP session is attached', () => {
@@ -141,7 +183,7 @@ describe('PresenceRegistry', () => {
   it('reports thinking for the seat whose turn it is', () => {
     const reg = registry();
     reg.attachSession('r1', 'white', 'session-1', 'dsh');
-    reg.attachViewer('r1', 'black');
+    reg.attachViewer('r1');
 
     const views = snapshot(reg, 'white');
     expect(views[0]?.presence).toBe('idle');
@@ -149,13 +191,30 @@ describe('PresenceRegistry', () => {
     expect(views[1]?.isTurn).toBe(true);
   });
 
-  it('keeps a session-backed seat alive across long silences', () => {
+  it('keeps a session-backed seat alive while the session keeps calling', () => {
+    const clock = { now: NOW };
+    const reg = registry(clock);
+
+    // Each call refreshes the session, the way a waiting agent keeps polling.
+    for (let i = 0; i < 10; i++) {
+      reg.attachSession('r1', 'white', 'session-1', 'dsh');
+      clock.now += 60_000;
+      expect(snapshot(reg)[1]?.presence).toBe('idle');
+    }
+  });
+
+  it('expires a session that stopped calling, because close() never says so', () => {
+    // The MCP SDK's client.close() aborts locally without a DELETE, so silence
+    // is the only signal a vanished client gives the server.
     const clock = { now: NOW };
     const reg = registry(clock);
     reg.attachSession('r1', 'white', 'session-1', 'dsh');
 
-    clock.now += 60 * 60 * 1000;
+    clock.now += 60_000;
     expect(snapshot(reg)[1]?.presence).toBe('idle');
+
+    clock.now += 31_000;
+    expect(snapshot(reg)[1]?.presence).toBe('disconnected');
   });
 
   it('drops the seat to disconnected once its session closes', () => {
@@ -165,6 +224,17 @@ describe('PresenceRegistry', () => {
     reg.detachSession('session-1');
 
     clock.now += 11_000;
+    expect(snapshot(reg)[1]?.presence).toBe('disconnected');
+  });
+
+  it('treats a closed session as disconnected even while the call stamp is fresh', () => {
+    // A session that closes is a confirmed disconnect. The recent-call fallback
+    // exists for the stdio bridge, which never has a session — it must not keep
+    // a departed agent looking alive for the whole stale window.
+    const reg = registry();
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    reg.detachSession('session-1');
+
     expect(snapshot(reg)[1]?.presence).toBe('disconnected');
   });
 
@@ -209,7 +279,7 @@ describe('PresenceRegistry', () => {
     const seen: string[] = [];
     reg.onChange((roomId) => seen.push(roomId));
 
-    reg.attachViewer('r1', 'black');
+    reg.attachViewer('r1');
     clock.now += 60_000;
     seen.length = 0;
     reg.sweep();

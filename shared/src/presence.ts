@@ -29,6 +29,16 @@ export type PresenceState =
  */
 export const PRESENCE_STALE_MS = 120_000;
 
+/**
+ * How long an MCP session may stay silent before it counts as gone.
+ *
+ * Every call refreshes it, including a parked long-poll (which the server caps
+ * at 60s), so a live agent never trips this. It exists because the MCP SDK's
+ * `client.close()` aborts the local connection without telling the server: a
+ * vanished client is only ever observable as silence.
+ */
+export const PRESENCE_SESSION_IDLE_MS = 90_000;
+
 /** Raw signals a room collects for one seat. */
 export interface SeatPresenceSignals {
   /** Something is attached: a session, a browser viewer, or a recent call. */
