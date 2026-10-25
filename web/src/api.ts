@@ -85,10 +85,14 @@ export const api = {
     return request<RoomView>(roomPath(roomId));
   },
 
-  newGame(roomId: string, agentColor: StoneColor): Promise<AnyGameState> {
+  newGame(
+    roomId: string,
+    agentColor: StoneColor,
+    game: 'gomoku' | 'go' = 'gomoku',
+  ): Promise<AnyGameState> {
     return request<MutationPayload>(roomPath(roomId, '/games'), {
       method: 'POST',
-      body: JSON.stringify({ agentColor }),
+      body: JSON.stringify({ agentColor, game }),
     }).then((payload) => payload.state);
   },
 
@@ -101,6 +105,38 @@ export const api = {
 
   resign(roomId: string): Promise<AnyGameState> {
     return request<MutationPayload>(roomPath(roomId, '/resign'), {
+      method: 'POST',
+      body: JSON.stringify({ actor: 'human' }),
+    }).then((payload) => payload.state);
+  },
+
+  /** Go only: forgo this move; two consecutive passes enter scoring. */
+  pass(roomId: string): Promise<AnyGameState> {
+    return request<MutationPayload>(roomPath(roomId, '/pass'), {
+      method: 'POST',
+      body: JSON.stringify({ actor: 'human' }),
+    }).then((payload) => payload.state);
+  },
+
+  /** Go scoring only: toggle the whole block at (row, col) as dead. */
+  markDead(roomId: string, row: number, col: number): Promise<AnyGameState> {
+    return request<MutationPayload>(roomPath(roomId, '/dead-stones'), {
+      method: 'POST',
+      body: JSON.stringify({ row, col, actor: 'human' }),
+    }).then((payload) => payload.state);
+  },
+
+  /** Go scoring only: accept the score under the current dead-stone marks. */
+  confirmScore(roomId: string): Promise<AnyGameState> {
+    return request<MutationPayload>(roomPath(roomId, '/score/confirm'), {
+      method: 'POST',
+      body: JSON.stringify({ actor: 'human' }),
+    }).then((payload) => payload.state);
+  },
+
+  /** Go scoring only: back out of scoring and keep playing. */
+  resumePlay(roomId: string): Promise<AnyGameState> {
+    return request<MutationPayload>(roomPath(roomId, '/score/resume'), {
       method: 'POST',
       body: JSON.stringify({ actor: 'human' }),
     }).then((payload) => payload.state);

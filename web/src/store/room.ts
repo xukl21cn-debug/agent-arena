@@ -3,7 +3,6 @@ import {
   MAX_COMMENTARY_LOG,
   type AnyGameState,
   type Commentary,
-  type GameState,
   type ParticipantView,
   type RoomPhase,
   type StoneColor,
@@ -71,16 +70,24 @@ export interface RoomStore {
     phase: RoomPhase;
   }): void;
 
-  startGame(humanColor: StoneColor): Promise<void>;
+  startGame(humanColor: StoneColor, game: 'gomoku' | 'go'): Promise<void>;
   setReady(ready: boolean): Promise<void>;
   play(row: number, col: number): Promise<void>;
+  /** Go only. */
+  pass(): Promise<void>;
+  /** Go scoring only: toggle the whole block at (row, col) as dead. */
+  markDead(row: number, col: number): Promise<void>;
+  /** Go scoring only. */
+  confirmScore(): Promise<void>;
+  /** Go scoring only: leave scoring and keep playing. */
+  resumePlay(): Promise<void>;
   resign(): Promise<void>;
   dismissResult(): void;
   clearError(): void;
 }
 
 /** Human and agent seat colors, derived once so every surface agrees. */
-export function seatColors(state: GameState | null): {
+export function seatColors(state: AnyGameState | null): {
   human: StoneColor | null;
   agent: StoneColor | null;
   /** True when both seats are agents: this browser holds no seat, only watches. */
@@ -216,12 +223,12 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     }
   },
 
-  async startGame(humanColor) {
+  async startGame(humanColor, game = 'gomoku') {
     const { roomId } = get();
     set({ busy: true, error: null });
     try {
       const agentColor: StoneColor = humanColor === 'black' ? 'white' : 'black';
-      get().applyState(await api.newGame(roomId, agentColor));
+      get().applyState(await api.newGame(roomId, agentColor, game));
     } catch (caught) {
       handleError(caught, set);
     } finally {
@@ -234,6 +241,54 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     set({ busy: true, error: null });
     try {
       get().applyState(await api.move(roomId, row, col));
+    } catch (caught) {
+      handleError(caught, set);
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  async pass() {
+    const { roomId } = get();
+    set({ busy: true, error: null });
+    try {
+      get().applyState(await api.pass(roomId));
+    } catch (caught) {
+      handleError(caught, set);
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  async markDead(row, col) {
+    const { roomId } = get();
+    set({ busy: true, error: null });
+    try {
+      get().applyState(await api.markDead(roomId, row, col));
+    } catch (caught) {
+      handleError(caught, set);
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  async confirmScore() {
+    const { roomId } = get();
+    set({ busy: true, error: null });
+    try {
+      get().applyState(await api.confirmScore(roomId));
+    } catch (caught) {
+      handleError(caught, set);
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  async resumePlay() {
+    const { roomId } = get();
+    set({ busy: true, error: null });
+    try {
+      get().applyState(await api.resumePlay(roomId));
     } catch (caught) {
       handleError(caught, set);
     } finally {

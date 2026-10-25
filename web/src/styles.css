@@ -1261,20 +1261,119 @@ button {
   }
 }
 
-/* Go placeholder: the web board for Go lands after P3b-3. */
-.go-placeholder {
-  border: 1px dashed var(--border, #ccc);
-  border-radius: 12px;
-  padding: 32px 20px;
-  text-align: center;
-  color: var(--muted, #777);
-  display: grid;
-  gap: 6px;
+/* Go: dead-stone marking during scoring — the block reads as removed. */
+.stone--dead {
+  opacity: 0.38;
+  outline: 1.5px dashed var(--seal);
+  outline-offset: 1px;
 }
 
-.go-placeholder-title {
+/* The points the most recent capture emptied. */
+.cap-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: clamp(10px, 2.6vw, 14px);
+  color: rgba(46, 28, 10, 0.55);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------
+   Scoring panel: the Go counting phase, which has no turns.
+------------------------------------------------------------------ */
+.scoring-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(217, 166, 75, 0.35);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    180deg,
+    rgba(217, 166, 75, 0.08),
+    rgba(217, 166, 75, 0.03)
+  );
+}
+
+.scoring-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.scoring-title {
   margin: 0;
-  font-size: 15px;
+  font-family: var(--font-display);
+  font-size: 16px;
   font-weight: 600;
-  color: var(--text, #222);
+  letter-spacing: 0.1em;
+  color: var(--gold);
+}
+
+.scoring-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.scoring-facts {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.scoring-preview {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.scoring-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.scoring-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* Game picker: two pressed-state toggles before the color choice. */
+.btn--toggle {
+  color: var(--text-dim);
+}
+
+.btn--toggle.is-active {
+  color: #221806;
+  border-color: #e9c37e;
+  background: linear-gradient(180deg, #e2b361, #c9953d);
+  font-weight: 600;
+}
+
+/* Score numbers on the Go result card. */
+.result-score {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(217, 166, 75, 0.25);
+  border-radius: var(--radius-sm);
+  background: rgba(217, 166, 75, 0.06);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
 }

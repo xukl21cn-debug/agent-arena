@@ -1,5 +1,5 @@
 import type {
-  GameState,
+  AnyGameState,
   OpponentStatus,
   ParticipantView,
   RoomPhase,
@@ -9,7 +9,7 @@ import { opponentStatus } from '@arena/shared';
 import { SeatBadge } from './SeatBadge';
 
 interface StatusBarProps {
-  state: GameState | null;
+  state: AnyGameState | null;
   humanColor: StoneColor | null;
   agentColor: StoneColor | null;
   /** Both seats are agents: this tab is watching, not playing. */
@@ -32,8 +32,22 @@ const OPPONENT_NOTES: Partial<Record<OpponentStatus, string>> = {
   disconnected: 'AI 已断开，可以继续等待或认输重开',
 };
 
+function finishedReason(state: AnyGameState): string {
+  if (state.game === 'go') {
+    if (state.endReason === 'scored') {
+      return '数子终局';
+    }
+    return state.endReason === 'draw' ? '和棋' : '认输';
+  }
+  return state.endReason === 'resign'
+    ? '认输'
+    : state.endReason === 'draw'
+      ? '棋盘下满'
+      : '五连';
+}
+
 function describe(
-  state: GameState | null,
+  state: AnyGameState | null,
   humanColor: StoneColor | null,
   opponent: OpponentStatus,
   spectator: boolean,
@@ -94,17 +108,20 @@ function describe(
     };
   }
 
+  // Go's scoring phase has no turns — both sides mark dead stones and confirm
+  // independently, so the copy never says whose move it is.
+  if (state.status === 'scoring') {
+    return {
+      title: '数子阶段',
+      detail: '双方各自标记死子并确认，确认一致即出分',
+      turn: null,
+    };
+  }
+
   const draw = state.winner === 'draw';
-  const reason =
-    state.endReason === 'resign'
-      ? '认输'
-      : state.endReason === 'draw'
-        ? '棋盘下满'
-        : '五连';
+  const reason = finishedReason(state);
   const turn =
-    state.winner === 'black' || state.winner === 'white'
-      ? state.winner
-      : null;
+    state.winner === 'black' || state.winner === 'white' ? state.winner : null;
 
   if (spectator) {
     return {

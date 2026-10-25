@@ -9,7 +9,9 @@ import {
 import { Board } from './components/Board';
 import { CommentaryPanel } from './components/CommentaryPanel';
 import { Controls } from './components/Controls';
+import { GoBoard } from './components/GoBoard';
 import { ResultOverlay } from './components/ResultOverlay';
+import { ScoringPanel } from './components/ScoringPanel';
 import { StatusBar } from './components/StatusBar';
 import {
   seatColors,
@@ -48,32 +50,44 @@ export default function App() {
   const startGame = useRoomStore((store) => store.startGame);
   const setReady = useRoomStore((store) => store.setReady);
   const play = useRoomStore((store) => store.play);
+  const pass = useRoomStore((store) => store.pass);
+  const markDead = useRoomStore((store) => store.markDead);
+  const confirmScore = useRoomStore((store) => store.confirmScore);
+  const resumePlay = useRoomStore((store) => store.resumePlay);
   const resign = useRoomStore((store) => store.resign);
   const dismissResult = useRoomStore((store) => store.dismissResult);
   const clearError = useRoomStore((store) => store.clearError);
 
   useEffect(() => connect(roomId), [connect, roomId]);
 
-  // The web renders gomoku only. A Go state cannot appear before P3b-2 wires
-  // Go rooms; until then the discriminated check is the honest narrowing.
+  const goState = state?.game === 'go' ? state : null;
   const gomokuState = state?.game === 'gomoku' ? state : null;
+  const goScoringState = goState?.status === 'scoring' ? goState : null;
 
   const { human: humanColor, agent: agentColor, spectator } =
-    seatColors(gomokuState);
-  const gameId = gomokuState?.gameId ?? null;
+    seatColors(state);
+  const gameId = state?.gameId ?? null;
+  const goPlaying = goState?.status === 'playing';
+
+  // Remount the game surfaces when a different game or a new game arrives, so
+  // no cached board view survives a new_game that switched the game type.
+  const viewKey = gameId !== null ? `${gameId}-${state?.game}` : 'empty';
 
   const canPlay =
     gomokuState?.status === 'playing' &&
     humanColor !== null &&
     gomokuState.turn === humanColor &&
     !busy;
+  const goCanPlay =
+    goPlaying &&
+    humanColor !== null &&
+    goState?.turn === humanColor &&
+    !busy;
 
   // Whose side the commentary panel should track. In a dual-agent room there
-  // is no fixed opponent: the live one is whoever is on turn.
-  const onTurnSeat =
-    gomokuState !== null && gomokuState.status === 'playing'
-      ? gomokuState.turn
-      : null;
+  // is no fixed opponent: the live one is whoever is on turn. Scoring has no
+  // turn, so nobody is tracked there.
+  const onTurnSeat = state?.status === 'playing' ? state.turn : null;
   const trackedSeat = spectator ? onTurnSeat : agentColor;
   const opponent =
     participants.find((item) => item.seat === trackedSeat) ?? null;
@@ -83,8 +97,8 @@ export default function App() {
   // "It is the AI's turn" is not the same as "the AI can move": an agent that
   // never connected must not read as thinking, or the player waits for nobody.
   const opponentState = opponentStatus(opponent, {
-    playing: gomokuState?.status === 'playing',
-    isOpponentTurn: trackedSeat !== null && gomokuState?.status === 'playing',
+    playing: state?.status === 'playing',
+    isOpponentTurn: trackedSeat !== null && state?.status === 'playing',
   });
 
   const visible = useMemo(
@@ -94,17 +108,27 @@ export default function App() {
 
   const handlePlay = useCallback(
     (row: number, col: number) => {
-      if (!canPlay) {
+      if (!canPlay && !goCanPlay) {
         return;
       }
       void play(row, col);
     },
-    [canPlay, play],
+    [canPlay, goCanPlay, play],
+  );
+
+  const handleToggleDead = useCallback(
+    (row: number, col: number) => {
+      if (goScoringState === null || spectator || busy) {
+        return;
+      }
+      void markDead(row, col);
+    },
+    [goScoringState, spectator, busy, markDead],
   );
 
   const handleStart = useCallback(
-    (humanSeat: StoneColor) => {
-      void startGame(humanSeat);
+    (humanSeat: StoneColor, game: 'gomoku' | 'go') => {
+      void startGame(humanSeat, game);
     },
     [startGame],
   );
@@ -116,20 +140,41 @@ export default function App() {
     [setReady],
   );
 
+  const handlePass = useCallback(() => {
+    if (!goPlaying) {
+      return;
+    }
+    void pass();
+  }, [goPlaying, pass]);
+
+  const handleConfirmScore = useCallback(() => {
+    if (goScoringState === null || spectator) {
+      return;
+    }
+    void confirmScore();
+  }, [goScoringState, spectator, confirmScore]);
+
+  const handleResumePlay = useCallback(() => {
+    if (goScoringState === null || spectator) {
+      return;
+    }
+    void resumePlay();
+  }, [goScoringState, spectator, resumePlay]);
+
   const handleResign = useCallback(() => {
     void resign();
   }, [resign]);
 
   const rematch = useCallback(() => {
-    void startGame(humanColor ?? 'black');
-  }, [humanColor, startGame]);
+    void startGame(humanColor ?? 'black', state?.game ?? 'gomoku');
+  }, [humanColor, state?.game, startGame]);
 
   const overlay =
-    gomokuState &&
-    gomokuState.status === 'finished' &&
+    state &&
+    state.status === 'finished' &&
     !resultDismissed ? (
       <ResultOverlay
-        state={gomokuState}
+        state={state}
         humanColor={humanColor}
         spectator={spectator}
         busy={busy}
@@ -138,16 +183,20 @@ export default function App() {
       />
     ) : null;
 
+  const isGo = goState !== null;
+
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
           <p className="eyebrow">Agent Arena · MCP</p>
-          <h1 className="title">五子棋</h1>
+          <h1 className="title">{isGo ? '围棋' : '五子棋'}</h1>
           <p className="subtitle">
             {spectator
               ? '两个 AI 在对弈，你在旁边观战。'
-              : '你在网页落子，AI 通过 MCP 应招。'}
+              : isGo
+                ? '9 路围棋：你在网页落子，AI 通过 MCP 应招。'
+                : '你在网页落子，AI 通过 MCP 应招。'}
           </p>
         </div>
 
@@ -174,7 +223,7 @@ export default function App() {
       <main className="arena">
         <div className="board-column">
           <StatusBar
-            state={gomokuState}
+            state={state}
             humanColor={humanColor}
             agentColor={agentColor}
             spectator={spectator}
@@ -183,14 +232,44 @@ export default function App() {
             participants={participants}
           />
 
-          {gomokuState === null && state !== null ? (
-            // A Go state: the web has no Go board yet (lands after P3b-3).
-            <div className="go-placeholder">
-              <p className="go-placeholder-title">围棋模式</p>
-              <p>网页围棋界面尚未开放。请在 MCP 端对局（new_game 传 game: &quot;go&quot;），或开一局五子棋。</p>
+          {isGo ? (
+            <div key={viewKey}>
+              <GoBoard
+                state={goState}
+                humanColor={humanColor}
+                busy={busy}
+                overlay={overlay}
+                onPlay={handlePlay}
+                onToggleDead={handleToggleDead}
+              />
+
+              {goScoringState ? (
+                <ScoringPanel
+                  state={goScoringState}
+                  humanColor={humanColor}
+                  spectator={spectator}
+                  busy={busy}
+                  onConfirm={handleConfirmScore}
+                  onResume={handleResumePlay}
+                />
+              ) : null}
+
+              <Controls
+                state={state}
+                humanColor={humanColor}
+                spectator={spectator}
+                phase={phase}
+                yourReady={yourReady}
+                waitingSince={waitingSince}
+                busy={busy}
+                onStart={handleStart}
+                onReady={handleReady}
+                onPass={handlePass}
+                onResign={handleResign}
+              />
             </div>
           ) : (
-            <>
+            <div key={viewKey}>
               <Board
                 state={gomokuState}
                 humanColor={humanColor}
@@ -200,7 +279,7 @@ export default function App() {
               />
 
               <Controls
-                state={gomokuState}
+                state={state}
                 humanColor={humanColor}
                 spectator={spectator}
                 phase={phase}
@@ -209,12 +288,17 @@ export default function App() {
                 busy={busy}
                 onStart={handleStart}
                 onReady={handleReady}
+                onPass={handlePass}
                 onResign={handleResign}
               />
-            </>
+            </div>
           )}
 
-          <p className="rule-note">15 × 15 · 黑先 · 无禁手 · 五连获胜</p>
+          <p className="rule-note">
+            {isGo
+              ? `9 × 9 · 黑先 · 贴 ${goState?.rules.komi ?? 7.5} 目（白） · 中国规则数子`
+              : '15 × 15 · 黑先 · 无禁手 · 五连获胜'}
+          </p>
         </div>
 
         <CommentaryPanel
