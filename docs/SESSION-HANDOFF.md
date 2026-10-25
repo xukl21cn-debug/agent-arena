@@ -191,10 +191,12 @@ node E:\data\node_global\node_modules\@deepseek-ai\dsh\lib\bin.js --profile web 
 | 坑 | 说明 |
 |---|---|
 | 热重载不迁移内存状态 | 改 presence/room 后重启服务 |
+| **服务重启 = 所有 MCP 会话失效** | 会话表在内存里，重启后旧 `Mcp-Session-Id` 一律 404 `Session not found`；客户端不会自动重连（它只在传输层 onclose 时重连，而 404 只是普通错误）。**重启服务后必须新开客户端会话**，否则工具全部报错 |
 | MCP SDK `client.close()` 不发 DELETE | 服务端靠 90 秒静默判定掉线 |
 | `wait_for_turn` 的 `moves` 是截断的 | 只带最近 8 手，判断空格要 `get_state` |
 | 网页开局会抢座 | 双 AI 场景让 agent 自己 `new_game` |
 | 端口 3000 可能被占 | 上一轮的 node 进程可能没退干净 |
+| 改完代码别急着重启 3000 | 有对局在跑时重启会杀掉它；要验证修复就在别的端口起独立实例（`$env:PORT=3100`） |
 
 ---
 
