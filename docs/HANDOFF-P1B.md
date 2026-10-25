@@ -1,7 +1,7 @@
 # 交接：参与者模型（P1b）剩余工作
 
 > 面向：接手继续开发的 AI agent（GLM）
-> 状态：P1b 已完成约 70%，剩余 presence 改造 + Web 接入
+> 状态：**P1b 已完成**（任务 A、B 及掉线推送修复均已落地、实测通过）。仅剩可选的任务 C
 > 最后更新：2026-10-25
 > 分支：`feat/participants-model`（worktree `E:\code\fun\gomoku-mcp-p1b`）
 
@@ -134,14 +134,14 @@ REST（`server/src/http/routes.ts`）：
 
 ### 2.8 测试现状
 
-**163 个测试全绿**。相关文件：
+**166 个测试全绿**。相关文件：
 
 | 文件 | 覆盖 |
 |---|---|
 | `server/test/participant-roster.test.ts` | 名册语义（8 个） |
 | `server/test/room-identity.test.ts` | 身份路由（12 个） |
 | `server/test/dual-agent.test.ts` | **双 AI 端到端**（4 个，两个真实 MCP 会话打完一盘） |
-| `server/test/presence.test.ts` | presence 规则（29 个） |
+| `server/test/presence.test.ts` | presence 规则（31 个，含 participantId 断言） |
 | `server/test/presence-wire.test.ts` | presence 跨 WS/MCP（4 个） |
 
 跑测试：
@@ -151,11 +151,44 @@ cd E:\code\fun\gomoku-mcp-p1b
 pnpm test
 ```
 
+### 2.9 任务 A：presence 视图带身份（f2d7942，2026-10-25）
+
+`ParticipantView` 新增**可选** `participantId`，`snapshot()` 从 `PlayerSpec.id` 读取；
+座位后面没人（engine 默认、旧快照）时省略该字段。`getParticipants()` 的无注册表兜底
+路径同样填充。信号键保持按座位（见任务 A 的「注意」）。新增断言：单元测试 2 个
+（presence.test.ts）+ 端到端 RoomView 与 roster 一致（dual-agent.test.ts）。
+
+### 2.10 任务 B：Web 双 AI 观战（6a2f741，2026-10-25）
+
+`seatColors()` 在两座皆 agent 时返回 `spectator: true`（human/agent 均为 null），
+各表面随之渲染：
+
+- **StatusBar**：观战文案（观战中 / 轮到黑棋 / 黑方获胜），座位卡按黑白各渲染一张，
+  双方名字 + presence 都显示
+- **Controls**：开局/认输按钮换成「观战中」chip
+- **ResultOverlay**：印章与标题报获胜方颜色（黑/白），不提供「再来一局」
+- **CommentaryPanel**：meta 显示「双 AI 对弈」，thinking 指示跟随当前行棋方
+- 页眉副标题对观战者不再说「你在网页落子」
+
+棋盘无需改动：`canPlay` 依赖 `humanColor`，观战时天然只读。人类局走
+`spectator: false` 路径，渲染与之前逐字节一致（已实测）。
+
+### 2.11 掉线推送修复（d65b152，2026-10-25）
+
+实测任务 B 时发现：**agent 掉线后，打开着的网页不刷新就看不到「已断开」**。原因是
+sweep() 跳过所有带 viewer 的房间——这是 c348f45 里 `watchedAt` 时代的语义，
+ad9b870 删掉 `watchedAt` 后成了遗留：它不再保护任何东西，唯一效果是阻止过期
+agent 会话触发 emit，于是正在看棋盘的那一个标签页永远收不到掉线推送（REST 和
+刷新后的页面倒是对的，因为 snapshot 按空闲窗口现算）。修复：sweep 不再跳过
+watched 房间；viewer 只是人类座位的证据，对 agent 会话毫无说明力。 parked wait
+的逐座跳过保留。已实测：页面开着不动，两个 agent 消失后 90s+15s 内标签页自行
+翻成「已断开」。
+
 ---
 
 ## 3. 你要做的（按顺序）
 
-### 任务 A：presence 改为按 participant 键 ⭐ 最重要
+### 任务 A：presence 改为按 participant 键 ⭐ 最重要 —— **已完成（f2d7942，见 2.9）**
 
 **问题**：`server/src/core/presence.ts` 现在按**座位**存信号（`keyOf(roomId, seat)`）。双 AI 时两个 agent 都叫「agent 座位」，但座位只有黑/白两个——信号是对的，**但 `ParticipantView` 里没有 participantId**，UI 无法把 presence 和具体的人对应起来。
 
@@ -172,7 +205,7 @@ pnpm test
 
 **注意**：presence 的信号键**保持按座位**是对的，因为「谁占着黑座」本身由 roster 决定。**不要**把整个 presence 改成按 participantId 键，那会牵动 `rebindSeats` 等一堆逻辑，收益为零。
 
-### 任务 B：Web 双 AI 观战布局
+### 任务 B：Web 双 AI 观战布局 —— **已完成（6a2f741，见 2.10）**
 
 **问题**：`web/src/store/room.ts` 的 `seatColors()` 假设「一个 human + 一个 agent」。双 AI 时两个座位都是 agent，`humanColor` 为 null，页面会显示「还没有开局」之类的错误文案。
 
@@ -190,7 +223,7 @@ pnpm test
 - 两个 agent 入座后，网页显示双方名字 + 在线状态，棋盘不可点，没有「执黑开局」按钮
 - 人类局（一 human 一 agent）行为完全不变
 
-### 任务 C（可选）：`join_game` 的 seat 缺省行为
+### 任务 C（可选，未做）：`join_game` 的 seat 缺省行为
 
 现在 `join_game` 不带 `seat` 时，参与者进房间但不占座。可以再加一个便利：**如果房间有空座，自动占一个**。这样 agent 只调 `join_game(name: 'dsh')` 就能开始。
 
@@ -313,13 +346,13 @@ curl http://127.0.0.1:3000/api/rooms/default/participants  # roster
 任务 A + B 做完，应该满足：
 
 ```text
-[ ] 两个 agent 各 join_game 占一色
-[ ] 网页显示双方名字 + 在线/思考状态
-[ ] 网页棋盘不可点，无「执黑开局」按钮
-[ ] 一个 agent 掉线，网页显示「已断开」
-[ ] 人类 vs agent 的老流程完全不变
-[ ] pnpm test 全绿（≥ 165 个）
-[ ] pnpm typecheck 通过
+[x] 两个 agent 各 join_game 占一色
+[x] 网页显示双方名字 + 在线/思考状态
+[x] 网页棋盘不可点，无「执黑开局」按钮
+[x] 一个 agent 掉线，网页显示「已断开」（需 2.11 的修复，实测通过）
+[x] 人类 vs agent 的老流程完全不变
+[x] pnpm test 全绿（166 个）
+[x] pnpm typecheck 通过
 ```
 
-做完后把这份文档的「已完成」部分更新，然后告诉用户 P2 可以开始了。
+以上均已实测（2026-10-25，两个真实 MCP 会话 + 浏览器观战页）。**P2 可以开始了。**
