@@ -100,9 +100,9 @@ P0 文档与决策
 |---|---|---|---|
 | P1a | presence + `RoomView.participants` + WS 事件（**不改座位**） | 网页能看到「等待中 / 思考中 / 未连接」 | ✅ **已完成** |
 | P1b | Participant 替换 PlayerSpec；按 id 落子/等待；兼容层 | 旧客户端不返工 + 双 AI 可跑 | ✅ **已完成** |
-| P1c | lobby/ready/phase + 前端准备态 | 双方 ready 才开局；60s 未齐给提示 | ⬜ 未开始 |
+| P1c | lobby/ready/phase + 前端准备态 | 双方 ready 才开局；60s 未齐给提示 | ⬅ **下一步**，工作单 [`HANDOFF-P1C.md`](HANDOFF-P1C.md) |
 
-P1a + P1b 已合入 main，**167 个测试全绿**（P2 修 bug 时 +1）。
+P1a + P1b 已合入 main，**193 个测试全绿**（P2 修 bug +1，P3a 引擎 +26）。
 
 P1b 交付的能力：
 
@@ -134,12 +134,12 @@ agent 座位，白方 agent 被告知自己执黑，而且它的 MCP 会话被�
 
 ### P3 围棋（引擎 2–3 天并行，集成 1 天）
 
-- **P3a**（= M1）：`go.ts` 纯函数规则引擎 + 测试。**工作单见 [`HANDOFF-P3A.md`](HANDOFF-P3A.md)**。⬅ **下一步**
+- **P3a**（= M1）：`go.ts` 纯函数规则引擎 + 测试。✅ **已完成**，见 [`REVIEW-P3A.md`](REVIEW-P3A.md)
 - **P3b**（= M0 + M2 + M3）：接入 `game` 变体、`AgentStateView(go)`、MCP 工具、scoring。**要等 P1c 定下来**。
 - 对现有 GO 提案的修改见第 5 节。
 
-> ⚠️ **P3b 必须等 P1c 定下来再做**：P3b 要改 `new_game` 加 `game` 参数，
-> 而 P1c 也要改 `new_game` 加准备阶段，同时做必冲突。
+> ⚠️ **P3b 必须等 P1c 做完再做**：P3b 要改 `new_game` 加 `game` 参数，
+> 而 P1c 也要改 `new_game` 加准备阶段，同时做必冲突。所以顺序是 **P1c → P3b**。
 >
 > **P3a 不受这个约束**：它只写 `go.ts` + 测试，不碰 `new_game`、不碰座位、
 > 不碰 `shared` 类型，所以 P2 一完成就能开工。P3a 期间 `git diff --stat`
@@ -164,9 +164,8 @@ agent 座位，白方 agent 被告知自己执黑，而且它的 MCP 会话被�
 
 | 分支 | 内容 | 状态 |
 |---|---|---|
-| `main` | P1a + P1b + P2（含 `yourColor` 修复） | ✅ 167 测试全绿 |
-| `feat/go-engine`（待建） | P3a 围棋规则引擎 | ⬜ **下一步** |
-| `feat/lobby`（待建） | P1c lobby/ready | ⬜ 未开始 |
+| `main` | P1a + P1b + P2 + P3a | ✅ **193 测试全绿** |
+| `feat/lobby`（待建） | P1c lobby/ready | ⬅ **下一步** |
 | `feat/go-mode`（待建） | P3b 围棋集成 | ⬜ 等 P1c |
 
 **关于 worktree**：P1 时用了多个 worktree 并行开发，现在已不需要——串行开发直接在 main 目录建分支即可：
