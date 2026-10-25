@@ -54,12 +54,18 @@ export class HttpApi implements ArenaApi {
 
   async joinGame(
     roomId: string,
-    options: { name?: string; seat?: StoneColor; kind?: 'agent' | 'human' } = {},
+    options: {
+      name?: string;
+      seat?: StoneColor;
+      kind?: 'agent' | 'human';
+      ready?: boolean;
+    } = {},
   ): Promise<AgentJoinResponse> {
     const payload = await this.request<{
       participantId: string;
       name: string;
       seat: StoneColor | null;
+      phase: AgentJoinResponse['phase'];
       state: GameState;
       history: Move[];
       participants: AgentJoinResponse['participants'];
@@ -75,6 +81,7 @@ export class HttpApi implements ArenaApi {
       participantId: payload.participantId,
       name: payload.name,
       seat: payload.seat,
+      phase: payload.phase,
       state: toAgentStateView(payload.state, payload.history),
       participants: payload.participants,
     };

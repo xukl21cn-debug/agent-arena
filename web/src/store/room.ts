@@ -4,6 +4,7 @@ import {
   type Commentary,
   type GameState,
   type ParticipantView,
+  type RoomPhase,
   type StoneColor,
 } from '@arena/shared';
 import { ApiError, api, errorMessage } from '../api';
@@ -40,6 +41,10 @@ export interface RoomStore {
   connection: ConnectionStatus;
   /** Latest game state, from whichever source is newer. */
   state: GameState | null;
+  /** Room lifecycle; idle games and room gathering are different facts. */
+  phase: RoomPhase;
+  /** When the room entered waiting, for the "opponent never came" hint. */
+  waitingSince: number | null;
   /** Presence per seat, as the server reports it. */
   participants: ParticipantView[];
   commentary: Commentary[];
@@ -56,14 +61,17 @@ export interface RoomStore {
   applyState(state: GameState): void;
   applyParticipants(participants: ParticipantView[]): void;
   applyCommentary(commentary: Commentary): void;
+  applyPhase(phase: RoomPhase): void;
   /** Full replace, used by `hello` after a reconnect. */
   reset(input: {
     state: GameState;
     participants: ParticipantView[];
     commentary: Commentary[];
+    phase: RoomPhase;
   }): void;
 
   startGame(humanColor: StoneColor): Promise<void>;
+  setReady(ready: boolean): Promise<void>;
   play(row: number, col: number): Promise<void>;
   resign(): Promise<void>;
   dismissResult(): void;
@@ -127,6 +135,8 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   roomId: '',
   connection: 'connecting',
   state: null,
+  phase: 'lobby',
+  waitingSince: null,
   participants: [],
   commentary: [],
   busy: false,
@@ -138,6 +148,8 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
       roomId,
       connection: 'connecting',
       state: null,
+      phase: 'lobby',
+      waitingSince: null,
       participants: [],
       commentary: [],
       error: null,
@@ -167,13 +179,40 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
     }));
   },
 
-  reset({ state, participants, commentary }) {
+  applyPhase(phase) {
+    set((current) => ({
+      phase,
+      // Client-side clock for the 60s hint: remember when waiting began,
+      // forget it the moment the phase moves on.
+      waitingSince:
+        phase === 'waiting' ? (current.waitingSince ?? Date.now()) : null,
+    }));
+  },
+
+  reset({ state, participants, commentary, phase }) {
     set({
       state,
       participants,
       commentary: commentary.slice(-MAX_COMMENTARY_LOG),
+      phase,
+      waitingSince: phase === 'waiting' ? Date.now() : null,
       resultDismissed: false,
     });
+  },
+
+  async setReady(ready) {
+    const { roomId } = get();
+    set({ busy: true, error: null });
+    try {
+      const view = await api.ready(roomId, ready);
+      get().applyState(view.state);
+      get().applyParticipants(view.participants);
+      get().applyPhase(view.phase);
+    } catch (caught) {
+      handleError(caught, set);
+    } finally {
+      set({ busy: false });
+    }
   },
 
   async startGame(humanColor) {
@@ -313,14 +352,19 @@ function subscribeToRoom(
             state: GameState;
             participants: ParticipantView[];
             commentary: Commentary[];
+            phase: RoomPhase;
           };
           store.reset({
             state: hello.state,
             participants: hello.participants,
             commentary: hello.commentary,
+            phase: hello.phase,
           });
           break;
         }
+        case 'phase':
+          store.applyPhase((message as { phase: RoomPhase }).phase);
+          break;
         case 'state':
           store.applyState((message as { state: GameState }).state);
           break;
@@ -375,6 +419,7 @@ function subscribeToRoom(
       if (store.participants.length === 0) {
         store.applyParticipants(view.participants);
       }
+      store.applyPhase(view.phase);
     })
     .catch(() => {
       // The socket keeps retrying; a failed first fetch is not fatal.

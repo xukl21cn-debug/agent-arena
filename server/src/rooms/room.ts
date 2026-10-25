@@ -13,6 +13,7 @@ import {
   type Participant,
   type ParticipantView,
   type PlayerSpec,
+  type RoomPhase,
   type RoomSummary,
   type RoomView,
   type RuleSet,
@@ -43,6 +44,7 @@ export class RoomError extends Error {
 export type StateChangeCause = 'new_game' | 'move' | 'resign';
 export type StateListener = (state: GameState, cause: StateChangeCause) => void;
 export type CommentaryListener = (commentary: Commentary) => void;
+export type PhaseListener = (roomId: string, phase: RoomPhase) => void;
 
 export interface WaitResult {
   state: GameState;
@@ -150,6 +152,7 @@ export class GameRoom {
   private readonly presence: PresenceSource | undefined;
   private readonly stateListeners = new Set<StateListener>();
   private readonly commentaryListeners = new Set<CommentaryListener>();
+  private readonly phaseListeners = new Set<PhaseListener>();
   private readonly waiters = new Set<Waiter>();
   /** Who is in this room; outlives any single game. */
   private readonly roster = new ParticipantRoster();
@@ -157,6 +160,8 @@ export class GameRoom {
   private state: GameState;
   private history: Move[] = [];
   private commentaryLog: Commentary[] = [];
+  /** Last phase listeners were told about, so repeats stay silent. */
+  private lastPhase: RoomPhase = 'lobby';
 
   constructor(id: string, options: GameRoomOptions = {}) {
     this.id = id;
@@ -173,6 +178,7 @@ export class GameRoom {
     if (persisted) {
       this.restore(persisted);
     }
+    this.lastPhase = this.computePhase();
   }
 
   getState(): GameState {
@@ -184,17 +190,43 @@ export class GameRoom {
       state: this.state,
       history: [...this.history],
       commentary: [...this.commentaryLog],
+      phase: this.getPhase(),
       participants: this.getParticipants(),
     };
   }
 
   /**
+   * The room's lifecycle phase, derived on demand so it can never drift
+   * from the state it summarizes.
+   *
+   * A game underway or over answers for itself; while idle, one ready voice
+   * anywhere in the room means the room is waiting (even if the other side
+   * has not joined yet), otherwise it is just open. The legacy path —
+   * new_game without any ready call — lands directly in `playing`.
+   */
+  getPhase(): RoomPhase {
+    if (this.state.status === 'playing') {
+      return 'playing';
+    }
+    if (this.state.status === 'finished') {
+      return 'finished';
+    }
+    return this.roster.list().some((participant) => participant.ready)
+      ? 'waiting'
+      : 'lobby';
+  }
+
+  /**
    * Presence for both seats. Without a registry (pure-logic tests) every seat
    * reports `unknown`, which is the honest answer: nothing is attached.
+   *
+   * The roster's ready flags are merged in afterwards: presence knows about
+   * connections, readiness is a room fact, and neither should own the other.
    */
   getParticipants(): ParticipantView[] {
+    let views: ParticipantView[];
     if (!this.presence) {
-      return (['black', 'white'] as const).map((seat) => {
+      views = (['black', 'white'] as const).map((seat) => {
         const spec = this.state.seats[seat];
         return {
           seat,
@@ -207,13 +239,24 @@ export class GameRoom {
           isTurn: false,
         };
       });
+    } else {
+      views = this.presence.snapshot({
+        roomId: this.id,
+        seats: this.state.seats,
+        turn: this.state.turn,
+        playing: this.state.status === 'playing',
+      });
     }
 
-    return this.presence.snapshot({
-      roomId: this.id,
-      seats: this.state.seats,
-      turn: this.state.turn,
-      playing: this.state.status === 'playing',
+    if (this.roster.list().length === 0) {
+      return views;
+    }
+    return views.map((view) => {
+      const seated =
+        view.participantId !== undefined
+          ? this.roster.get(view.participantId)
+          : this.roster.bySeat(view.seat);
+      return seated === undefined ? view : { ...view, ready: seated.ready };
     });
   }
 
@@ -221,6 +264,7 @@ export class GameRoom {
     return {
       roomId: this.id,
       status: this.state.status,
+      phase: this.getPhase(),
       gameId: this.state.gameId,
       moveCount: this.state.moveCount,
       version: this.state.version,
@@ -263,6 +307,7 @@ export class GameRoom {
     name?: string;
     kind: Participant['kind'];
     seat?: StoneColor | null;
+    ready?: boolean;
     client?: string;
     now?: number;
   }): Participant {
@@ -270,8 +315,50 @@ export class GameRoom {
     if (participant.seat !== null) {
       this.syncSeat(participant.seat, participant);
     }
+    // A join may carry ready=true, which is how an agent seats and arms the
+    // start in one call instead of two.
+    if (request.ready === true) {
+      this.maybeStartWhenReady();
+    }
     this.emitRoster();
     return participant;
+  }
+
+  /**
+   * Set one side's ready flag.
+   *
+   * While a game runs or has finished the call is an idempotent no-op: the
+   * room answers with the current phase instead of an error, because
+   * "press ready twice" is a client hiccup, not a rule violation. Cancelling
+   * is the same call with false — the derived phase falls back to
+   * waiting/lobby on its own.
+   */
+  setReady(
+    participantId: string,
+    ready: boolean,
+  ):
+    | { ok: true; participant: Participant; phase: RoomPhase }
+    | { ok: false; code: ErrorCode; message: string } {
+    const participant = this.roster.get(participantId);
+    if (!participant) {
+      return {
+        ok: false,
+        code: 'PARTICIPANT_NOT_FOUND',
+        message: `Participant "${participantId}" is not in room "${this.id}".`,
+      };
+    }
+
+    if (this.state.status === 'idle') {
+      this.roster.setReady(participantId, ready);
+      this.maybeStartWhenReady();
+      this.emitRoster();
+    }
+
+    return {
+      ok: true,
+      participant: this.roster.get(participantId)!,
+      phase: this.getPhase(),
+    };
   }
 
   /** Leave the room, freeing the seat. */
@@ -358,6 +445,7 @@ export class GameRoom {
         name: ref.actor,
         kind: ref.actor,
         seat,
+        ready: false,
         lastSeenAt: Date.now(),
         joinedAt: new Date().toISOString(),
       },
@@ -390,6 +478,14 @@ export class GameRoom {
     this.state = startGame(this.state, seats, { rules: this.state.rules });
     this.history = [];
     this.commentaryLog = [];
+
+    // The legacy path starts without any ready call, so mark everyone seated
+    // as ready: a game in progress must not read as "still gathering".
+    for (const participant of this.roster.list()) {
+      if (participant.seat !== null) {
+        this.roster.setReady(participant.id, true);
+      }
+    }
 
     // Seats change hands between games, and presence is keyed by seat: the
     // human's activity from the previous game must not make this game's agent
@@ -555,6 +651,13 @@ export class GameRoom {
     };
   }
 
+  onPhase(listener: PhaseListener): () => void {
+    this.phaseListeners.add(listener);
+    return () => {
+      this.phaseListeners.delete(listener);
+    };
+  }
+
   getHistory(): readonly Move[] {
     return this.history;
   }
@@ -623,6 +726,46 @@ export class GameRoom {
         console.error('[room] state listener failed', error);
       }
     }
+
+    // Every phase-relevant mutation funnels through here (moves, resigns,
+    // new games, roster changes), so this is the one place a phase change
+    // needs to be detected and announced.
+    this.notifyPhase();
+  }
+
+  /**
+   * Both seats filled and both sides ready: start the game the lobby was
+   * waiting for. Seats come from the roster exactly like a manual new_game,
+   * so identity and colors survive the transition.
+   */
+  private maybeStartWhenReady(): void {
+    if (this.state.status !== 'idle') {
+      return;
+    }
+    const black = this.roster.bySeat('black');
+    const white = this.roster.bySeat('white');
+    if (black && white && black.ready && white.ready) {
+      this.newGame();
+    }
+  }
+
+  private notifyPhase(): void {
+    const phase = this.computePhase();
+    if (phase === this.lastPhase) {
+      return;
+    }
+    this.lastPhase = phase;
+    for (const listener of this.phaseListeners) {
+      try {
+        listener(this.id, phase);
+      } catch (error) {
+        console.error('[room] phase listener failed', error);
+      }
+    }
+  }
+
+  private computePhase(): RoomPhase {
+    return this.getPhase();
   }
 
   private emitCommentary(commentary: Commentary): void {

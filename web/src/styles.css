@@ -822,6 +822,33 @@ button {
   background: rgba(20, 23, 15, 0.6);
 }
 
+.ready-note {
+  font-size: 12px;
+  color: var(--text-dim);
+  align-self: center;
+}
+
+.ready-hint {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(200, 166, 92, 0.45);
+  border-radius: var(--radius-sm);
+  background: rgba(200, 166, 92, 0.12);
+  color: #e8d9b8;
+  font-size: 12.5px;
+}
+
+.ready-check {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-left: 2px;
+}
+
+.ready-check.is-ready {
+  color: var(--ok);
+  font-weight: 700;
+}
+
 .spectator-chip::before {
   content: '';
   width: 7px;

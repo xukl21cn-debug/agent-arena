@@ -105,7 +105,12 @@ export function attachWebSocket(
       roomId,
       state: view.state,
       commentary: view.commentary,
+      phase: view.phase,
       participants: view.participants,
+    });
+
+    const unsubscribePhase = room.onPhase((phaseRoomId, phase) => {
+      sendJson(socket, { type: 'phase', roomId: phaseRoomId, phase });
     });
 
     const unsubscribeState = room.onState((state) => {
@@ -124,6 +129,7 @@ export function attachWebSocket(
       }
       cleanedUp = true;
       unsubscribeState();
+      unsubscribePhase();
       unsubscribeCommentary();
       detachViewer?.();
       socketRoom.delete(socket);

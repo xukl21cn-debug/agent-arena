@@ -1,3 +1,4 @@
+import type { RoomPhase } from './participant.js';
 import type { ParticipantView } from './presence.js';
 
 export type StoneColor = 'black' | 'white';
@@ -156,6 +157,8 @@ export interface RoomView {
   state: GameState;
   history: Move[];
   commentary: Commentary[];
+  /** Room lifecycle, independent of the game's own status. */
+  phase: RoomPhase;
   /** Per-seat presence, so the UI can tell "thinking" from "not connected". */
   participants: ParticipantView[];
 }
@@ -163,6 +166,8 @@ export interface RoomView {
 export interface RoomSummary {
   roomId: string;
   status: GameStatus;
+  /** Room lifecycle, independent of the game's own status. */
+  phase: RoomPhase;
   gameId: string;
   moveCount: number;
   version: number;

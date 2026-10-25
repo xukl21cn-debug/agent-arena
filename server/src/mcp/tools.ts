@@ -149,7 +149,7 @@ export function registerTools(server: McpServer, api: ArenaApi): void {
 - seat：想执的颜色。省略则只进房间不占座（观战/等待）。占座会把原占座者挤成无座。
 - 两个 agent 可以同房间对弈：各自 join_game 占不同颜色，然后各自 wait_for_turn。
 
-返回 { participantId, name, seat, state, participants }，participants 列出房间里其他人和他们的座位。
+返回 { participantId, name, seat, phase, state, participants }，participants 列出房间里其他人和他们的座位与 ready 状态。
 连接后建议先调用本工具，再调用 wait_for_turn。`,
       inputSchema: z.object({
         roomId: roomIdSchema,
@@ -167,15 +167,20 @@ export function registerTools(server: McpServer, api: ArenaApi): void {
           .enum(['agent', 'human'])
           .optional()
           .describe('参与者类型，默认 agent。'),
+        ready: z
+          .boolean()
+          .optional()
+          .describe('加入即声明准备就绪（true）。双方都 ready 且座位齐全时会自动开局。'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async ({ roomId, name, seat, kind }) =>
+    async ({ roomId, name, seat, kind, ready }) =>
       runTool(() =>
         api.joinGame(roomId ?? DEFAULT_ROOM_ID, {
           ...(name === undefined ? {} : { name }),
           ...(seat === undefined ? {} : { seat }),
           ...(kind === undefined ? {} : { kind }),
+          ...(ready === undefined ? {} : { ready }),
         }),
       ),
   );

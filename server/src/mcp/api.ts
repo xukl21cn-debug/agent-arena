@@ -8,6 +8,7 @@ import type {
   ErrorCode,
   GameState,
   Move,
+  RoomPhase,
   StoneColor,
 } from '@arena/shared';
 
@@ -56,6 +57,8 @@ export interface AgentJoinResponse {
   participantId: string;
   name: string;
   seat: StoneColor | null;
+  /** Room lifecycle after this join (lobby / waiting / playing / …). */
+  phase: RoomPhase;
   state: AgentStateView;
   /** Everyone else in the room, so the agent knows who it is playing. */
   participants: Array<{
@@ -63,6 +66,7 @@ export interface AgentJoinResponse {
     name: string;
     kind: string;
     seat: StoneColor | null;
+    ready: boolean;
   }>;
 }
 

@@ -109,7 +109,12 @@ export class InProcessApi implements ArenaApi {
 
   async joinGame(
     roomId: string,
-    options: { name?: string; seat?: StoneColor; kind?: 'agent' | 'human' } = {},
+    options: {
+      name?: string;
+      seat?: StoneColor;
+      kind?: 'agent' | 'human';
+      ready?: boolean;
+    } = {},
   ): Promise<AgentJoinResponse> {
     const room = this.getOrCreateRoom(roomId);
     const session = currentSession();
@@ -128,6 +133,7 @@ export class InProcessApi implements ArenaApi {
           : { name: existing.name }
         : { name: options.name }),
       ...(options.seat === undefined ? {} : { seat: options.seat }),
+      ...(options.ready === undefined ? {} : { ready: options.ready }),
       ...(session?.client === undefined ? {} : { client: session.client }),
     });
 
@@ -142,12 +148,14 @@ export class InProcessApi implements ArenaApi {
       participantId: participant.id,
       name: participant.name,
       seat: participant.seat,
+      phase: room.getPhase(),
       state: agentView(room),
       participants: room.getRoster().map((item) => ({
         id: item.id,
         name: item.name,
         kind: item.kind,
         seat: item.seat,
+        ready: item.ready,
       })),
     };
   }

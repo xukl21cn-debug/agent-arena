@@ -13,6 +13,7 @@ import type {
   StoneColor,
   WaitReason,
 } from './game.js';
+import type { RoomPhase } from './participant.js';
 import type { ParticipantView } from './presence.js';
 
 export interface NewRoomRequest {
@@ -104,6 +105,7 @@ export type ServerMessage =
       roomId: string;
       state: GameState;
       commentary: Commentary[];
+      phase: RoomPhase;
       participants: ParticipantView[];
     }
   | {
@@ -116,6 +118,12 @@ export type ServerMessage =
       type: 'participants';
       roomId: string;
       participants: ParticipantView[];
+    }
+  | {
+      /** The room moved through its lifecycle (lobby/waiting/playing/…). */
+      type: 'phase';
+      roomId: string;
+      phase: RoomPhase;
     }
   | {
       type: 'commentary';

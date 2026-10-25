@@ -106,6 +106,17 @@ export const api = {
     }).then((payload) => payload.state);
   },
 
+  /**
+   * Lobby ready. The server seats this browser's human participant on first
+   * press, so no participantId is needed here.
+   */
+  ready(roomId: string, ready: boolean): Promise<RoomView> {
+    return request<RoomView>(roomPath(roomId, '/ready'), {
+      method: 'POST',
+      body: JSON.stringify({ ready }),
+    });
+  },
+
   say(
     roomId: string,
     text: string,

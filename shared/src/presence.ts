@@ -89,6 +89,8 @@ export interface ParticipantView {
   waiting: boolean;
   /** True when the game is running and this seat is to move. */
   isTurn: boolean;
+  /** Whether the seated participant said ready; absent on legacy seats. */
+  ready?: boolean;
 }
 
 /**

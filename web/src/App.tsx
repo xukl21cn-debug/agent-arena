@@ -3,6 +3,7 @@ import {
   DEFAULT_ROOM_ID,
   ROOM_ID_PATTERN,
   opponentStatus,
+  type RoomPhase,
   type StoneColor,
 } from '@arena/shared';
 import { Board } from './components/Board';
@@ -40,9 +41,12 @@ export default function App() {
   const commentary = useRoomStore((store) => store.commentary);
   const busy = useRoomStore((store) => store.busy);
   const error = useRoomStore((store) => store.error);
+  const phase = useRoomStore((store) => store.phase);
+  const waitingSince = useRoomStore((store) => store.waitingSince);
   const resultDismissed = useRoomStore((store) => store.resultDismissed);
 
   const startGame = useRoomStore((store) => store.startGame);
+  const setReady = useRoomStore((store) => store.setReady);
   const play = useRoomStore((store) => store.play);
   const resign = useRoomStore((store) => store.resign);
   const dismissResult = useRoomStore((store) => store.dismissResult);
@@ -66,6 +70,9 @@ export default function App() {
   const trackedSeat = spectator ? onTurnSeat : agentColor;
   const opponent =
     participants.find((item) => item.seat === trackedSeat) ?? null;
+  // The human side's ready flag, for the seat check and the button label.
+  const yourReady =
+    participants.find((item) => item.seat === humanColor)?.ready ?? false;
   // "It is the AI's turn" is not the same as "the AI can move": an agent that
   // never connected must not read as thinking, or the player waits for nobody.
   const opponentState = opponentStatus(opponent, {
@@ -93,6 +100,13 @@ export default function App() {
       void startGame(humanSeat);
     },
     [startGame],
+  );
+
+  const handleReady = useCallback(
+    (ready: boolean) => {
+      void setReady(ready);
+    },
+    [setReady],
   );
 
   const handleResign = useCallback(() => {
@@ -155,6 +169,8 @@ export default function App() {
             humanColor={humanColor}
             agentColor={agentColor}
             spectator={spectator}
+            phase={phase}
+            yourReady={yourReady}
             participants={participants}
           />
 
@@ -170,8 +186,12 @@ export default function App() {
             state={state}
             humanColor={humanColor}
             spectator={spectator}
+            phase={phase}
+            yourReady={yourReady}
+            waitingSince={waitingSince}
             busy={busy}
             onStart={handleStart}
+            onReady={handleReady}
             onResign={handleResign}
           />
 

@@ -358,11 +358,15 @@ export function createApiRouter(
     }
 
     const seat = body.seat === undefined ? undefined : colorOf(body.seat);
+    if (body.ready !== undefined && typeof body.ready !== 'boolean') {
+      throw new RoomError('INVALID_REQUEST', 'ready must be a boolean.');
+    }
 
     const participant = room.join({
       kind: (kind as Participant['kind'] | undefined) ?? 'agent',
       ...(name === undefined ? {} : { name }),
       ...(seat === undefined ? {} : { seat }),
+      ...(body.ready === undefined ? {} : { ready: body.ready }),
     });
 
     const view = room.getView();
@@ -370,6 +374,7 @@ export function createApiRouter(
       participantId: participant.id,
       name: participant.name,
       seat: participant.seat,
+      phase: view.phase,
       state: view.state,
       history: view.history,
       participants: room.getRoster().map((item) => ({
@@ -377,7 +382,68 @@ export function createApiRouter(
         name: item.name,
         kind: item.kind,
         seat: item.seat,
+        ready: item.ready,
       })),
+    });
+  });
+
+  /**
+   * Ready for the lobby flow: one side says it is set; both sides ready with
+   * both seats filled starts the game.
+   *
+   * Without a participantId the caller is the web human, who never joined
+   * through any API — the server seats a human participant at the human seat
+   * on first press, so "clicking ready" stays one step.
+   */
+  router.post('/rooms/:roomId/ready', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const body = bodyOf(req);
+
+    // Absent means true — the ordinary press; cancelling is an explicit false.
+    const ready = body.ready === undefined ? true : body.ready;
+    if (typeof ready !== 'boolean') {
+      throw new RoomError('INVALID_REQUEST', 'ready must be a boolean.');
+    }
+
+    let participantId =
+      typeof body.participantId === 'string' ? body.participantId : undefined;
+    if (participantId === undefined) {
+      const humanSeat = room.getHumanSeat();
+      const existing =
+        humanSeat === null
+          ? undefined
+          : room
+              .getRoster()
+              .find((item) => item.seat === humanSeat && item.kind === 'human');
+      if (existing) {
+        participantId = existing.id;
+      } else if (humanSeat !== null) {
+        participantId = room.join({ kind: 'human', seat: humanSeat }).id;
+      }
+    }
+    if (participantId === undefined) {
+      throw new RoomError(
+        'IDENTITY_REQUIRED',
+        'No participantId given and no human seat to infer one from.',
+      );
+    }
+
+    const result = room.setReady(participantId, ready);
+    if (!result.ok) {
+      const payload: ErrorResponse = {
+        error: { code: result.code, message: result.message },
+      };
+      res.status(statusForCode(result.code)).json(payload);
+      return;
+    }
+
+    const view = room.getView();
+    res.json({
+      state: view.state,
+      history: view.history,
+      commentary: view.commentary,
+      phase: view.phase,
+      participants: view.participants,
     });
   });
 

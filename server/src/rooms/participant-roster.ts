@@ -23,6 +23,8 @@ export interface SeatRequest {
   name?: string;
   kind: ParticipantKind;
   seat?: StoneColor | null;
+  /** Ready-to-start flag, so a joining client can seat and ready in one step. */
+  ready?: boolean;
   client?: string;
   now?: number;
 }
@@ -83,6 +85,9 @@ export class ParticipantRoster {
       if (request.seat !== undefined) {
         this.assignSeat(existing, request.seat);
       }
+      if (request.ready !== undefined) {
+        existing.ready = request.ready;
+      }
       return existing;
     }
 
@@ -92,6 +97,7 @@ export class ParticipantRoster {
       name: normalizeName(request.name ?? '', defaultName(request.kind, this)),
       kind: request.kind,
       seat: null,
+      ready: request.ready ?? false,
       lastSeenAt: request.now ?? Date.now(),
       joinedAt: new Date(request.now ?? Date.now()).toISOString(),
       ...(request.client === undefined ? {} : { client: request.client }),
@@ -102,6 +108,20 @@ export class ParticipantRoster {
       this.assignSeat(participant, request.seat);
     }
     return participant;
+  }
+
+  /**
+   * Flip a participant's ready flag. False when the id is unknown — the room
+   * turns that into the participant-not-found error; the roster knows no
+   * error codes.
+   */
+  setReady(id: string, ready: boolean): boolean {
+    const participant = this.byId.get(id);
+    if (!participant) {
+      return false;
+    }
+    participant.ready = ready;
+    return true;
   }
 
   /** Leave the room; frees the seat for somebody else. */

@@ -2,6 +2,7 @@ import type {
   GameState,
   OpponentStatus,
   ParticipantView,
+  RoomPhase,
   StoneColor,
 } from '@arena/shared';
 import { opponentStatus } from '@arena/shared';
@@ -13,6 +14,9 @@ interface StatusBarProps {
   agentColor: StoneColor | null;
   /** Both seats are agents: this tab is watching, not playing. */
   spectator: boolean;
+  /** Room lifecycle, for the lobby/waiting status copy. */
+  phase: RoomPhase;
+  yourReady: boolean;
   participants: ParticipantView[];
 }
 
@@ -33,19 +37,29 @@ function describe(
   humanColor: StoneColor | null,
   opponent: OpponentStatus,
   spectator: boolean,
+  phase: RoomPhase,
+  yourReady: boolean,
 ): StatusCopy {
   if (!state || state.status === 'idle') {
-    return spectator
-      ? {
-          title: '观战中',
-          detail: '等待两个 AI 开始对局',
-          turn: null,
-        }
-      : {
-          title: '还没有开局',
-          detail: '选一边坐在棋盘前，AI 会通过 MCP 接入',
-          turn: null,
-        };
+    if (spectator) {
+      return {
+        title: '观战中',
+        detail: '等待两个 AI 开始对局',
+        turn: null,
+      };
+    }
+    if (phase === 'waiting') {
+      return {
+        title: yourReady ? '等待对方准备' : '等你准备',
+        detail: '双方都准备好后自动开局',
+        turn: null,
+      };
+    }
+    return {
+      title: '还没有开局',
+      detail: '点「准备」，双方就绪后自动开局',
+      turn: null,
+    };
   }
 
   if (state.status === 'playing') {
@@ -117,6 +131,8 @@ export function StatusBar({
   humanColor,
   agentColor,
   spectator,
+  phase,
+  yourReady,
   participants,
 }: StatusBarProps) {
   const agent = participants.find((item) => item.seat === agentColor) ?? null;
@@ -133,6 +149,8 @@ export function StatusBar({
     humanColor,
     opponent,
     spectator,
+    phase,
+    yourReady,
   );
 
   return (
@@ -150,17 +168,39 @@ export function StatusBar({
       </div>
 
       <div className="seats" aria-label="对局双方">
+        {/* While gathering, the ready flag is the question the room is
+            actually asking; presence dots say nothing about readiness. */}
         {spectator ? (
           // Both seats are agents: show each one's name and presence instead
           // of the human/agent pair, which would render two empty badges.
           <>
-            <SeatBadge participant={black} color="black" side="agent" />
-            <SeatBadge participant={white} color="white" side="agent" />
+            <SeatBadge
+              participant={black}
+              color="black"
+              side="agent"
+              showReady={phase === 'lobby' || phase === 'waiting'}
+            />
+            <SeatBadge
+              participant={white}
+              color="white"
+              side="agent"
+              showReady={phase === 'lobby' || phase === 'waiting'}
+            />
           </>
         ) : (
           <>
-            <SeatBadge participant={human} color={humanColor} side="human" />
-            <SeatBadge participant={agent} color={agentColor} side="agent" />
+            <SeatBadge
+              participant={human}
+              color={humanColor}
+              side="human"
+              showReady={phase === 'lobby' || phase === 'waiting'}
+            />
+            <SeatBadge
+              participant={agent}
+              color={agentColor}
+              side="agent"
+              showReady={phase === 'lobby' || phase === 'waiting'}
+            />
           </>
         )}
       </div>

@@ -5,6 +5,8 @@ interface SeatBadgeProps {
   /** Fallback color when the seat is empty. */
   color: StoneColor | null;
   side: 'human' | 'agent';
+  /** Lobby/waiting: show the ready flag instead of just presence. */
+  showReady?: boolean;
 }
 
 /** Short label for the dot; the full sentence lives in the tooltip. */
@@ -41,7 +43,12 @@ function describe(participant: ParticipantView, side: 'human' | 'agent'): string
  * connected, or am I waiting for nobody?" — without ever mistaking a long
  * think for a disconnect.
  */
-export function SeatBadge({ participant, color, side }: SeatBadgeProps) {
+export function SeatBadge({
+  participant,
+  color,
+  side,
+  showReady = false,
+}: SeatBadgeProps) {
   const presence = participant?.presence ?? 'unknown';
   const active = participant?.isTurn ?? false;
   const label =
@@ -63,6 +70,14 @@ export function SeatBadge({ participant, color, side }: SeatBadgeProps) {
         <i className="presence-dot" aria-hidden="true" />
         {PRESENCE_LABELS[presence]}
       </span>
+      {showReady ? (
+        <span
+          className={`ready-check ${participant?.ready ? 'is-ready' : ''}`}
+          title={participant?.ready ? '已准备' : '未准备'}
+        >
+          {participant?.ready ? '✓' : '○'}
+        </span>
+      ) : null}
     </span>
   );
 }
