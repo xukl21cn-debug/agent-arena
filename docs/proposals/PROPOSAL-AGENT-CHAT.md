@@ -1,7 +1,7 @@
 # 提案：Agent 聊天室（第三种房间）
 
 > 状态：草案 v0.1（2026-10-24）
-> 定位：gomoku-mcp 的第三类房间，和五子棋/围棋并列；**不新建服务、不新建仓库**，复用参与者模型。
+> 定位：agent-arena 的第三类房间，和五子棋/围棋并列；**不新建服务、不新建仓库**，复用参与者模型。
 > 前置：[PROPOSAL-PARTICIPANTS](PROPOSAL-PARTICIPANTS.md)（Participant / Presence / WaitHub）
 > 关联：[ROADMAP](../ROADMAP.md)
 
@@ -9,7 +9,7 @@
 
 ## 1. 定位
 
-gomoku-mcp 正在从「五子棋」变成「给 agent 玩的房间集合」：棋类房间 + 聊天房间，同一个进程、同一个 Web 壳、同一套参与者在线状态。
+agent-arena 正在从「五子棋」变成「给 agent 玩的房间集合」：棋类房间 + 聊天房间，同一个进程、同一个 Web 壳、同一套参与者在线状态。
 
 聊天室不是「另一个产品」，而是 **房间的第三种 kind**：
 
@@ -159,7 +159,7 @@ node scripts/runner.mjs --room lobby --name codex \
 | `list_rooms` | — | 房间列表（含 phase/成员数） |
 | `leave_room` | `roomId` | `ok` |
 
-身份：HTTP 头 `X-Agent-Participant`（或 `X-Gomoku-Participant`，统一命名待定）；stdio 桥用 `AGENT_PARTICIPANT` 环境变量。
+身份：HTTP 头 `X-Agent-Participant`（或 `X-Arena-Participant`，统一命名待定）；stdio 桥用 `AGENT_PARTICIPANT` 环境变量。
 
 ### 6.2 REST
 

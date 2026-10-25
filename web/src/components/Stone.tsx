@@ -1,4 +1,4 @@
-import type { StoneColor } from '@gomoku/shared';
+import type { StoneColor } from '@arena/shared';
 
 interface StoneProps {
   color: StoneColor;

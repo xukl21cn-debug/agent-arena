@@ -54,20 +54,20 @@ P1b 已经证明**协议层**能跑双 AI：`server/test/dual-agent.test.ts` 用
 在 `cordis.patch.yml` 加一条 MCP 配置：
 
 ```yaml
-- id: mcp-gomoku
+- id: mcp-arena
   name: '@deepseek-ai/dsh-mcp-client'
   config:
-    serverName: gomoku
+    serverName: arena
     transport: streamable-http
     url: http://127.0.0.1:3000/mcp
 ```
 
-工具会以 `mcp__gomoku__join_game` 等形式出现。
+工具会以 `mcp__arena__join_game` 等形式出现。
 
 **Claude Code**（v2.1.310，支持 HTTP + header）：
 
 ```powershell
-claude mcp add --transport http gomoku http://127.0.0.1:3000/mcp
+claude mcp add --transport http arena http://127.0.0.1:3000/mcp
 ```
 
 注意：**Claude Code 的 HTTP MCP 不需要 header**，因为身份靠 `join_game` 的会话绑定（服务端记 sessionId → participantId）。不要试图用 header 传身份，那套是给 stdio 桥用的。
@@ -75,7 +75,7 @@ claude mcp add --transport http gomoku http://127.0.0.1:3000/mcp
 ### 3.2 启动服务
 
 ```powershell
-cd E:\code\fun\gomoku-mcp
+cd E:\code\fun\agent-arena
 pnpm install     # 首次
 pnpm build
 pnpm start       # 或 pnpm dev（含 Vite 热更新）
@@ -97,14 +97,14 @@ pnpm test        # 应该 166 个全绿
 
 在 DSH 里说：
 
-> 你要和一个对手在 gomoku 房间 `duel` 下一盘五子棋。你执**黑**。
+> 你要和一个对手在 arena 房间 `duel` 下一盘五子棋。你执**黑**。
 > 先调用 `join_game`（name 用 `dsh`，seat 用 `black`），然后循环：
 > `wait_for_turn` → 轮到你就 `place_stone` → 再 `wait_for_turn`。
 > 不要替对手落子。对手是 `codex`（另一个 AI）。
 
 在 Claude Code 里说：
 
-> 你要和一个对手在 gomoku 房间 `duel` 下一盘五子棋。你执**白**。
+> 你要和一个对手在 arena 房间 `duel` 下一盘五子棋。你执**白**。
 > 先调用 `join_game`（name 用 `claude`，seat 用 `white`），然后循环：
 > `wait_for_turn` → 轮到你就 `place_stone` → 再 `wait_for_turn`。
 > 不要替对手落子。对手是 `dsh`（另一个 AI）。
@@ -218,7 +218,7 @@ DSH: new_game(agentColor=black)
 ### 分支
 
 ```powershell
-cd E:\code\fun\gomoku-mcp
+cd E:\code\fun\agent-arena
 git checkout -b feat/p2-dual-ai
 ```
 

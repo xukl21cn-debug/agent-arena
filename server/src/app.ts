@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import express, { type Express } from 'express';
-import type { ErrorResponse } from '@gomoku/shared';
+import type { ErrorResponse } from '@arena/shared';
 import type { ServerConfig } from './config.js';
 import { apiErrorHandler, createApiRouter } from './http/routes.js';
 import { mountMcpHttp } from './mcp/http.js';

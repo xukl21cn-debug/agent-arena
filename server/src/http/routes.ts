@@ -14,7 +14,7 @@ import {
   type PlayerSpec,
   type RuleSet,
   type StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import { clampWaitMs, type ServerConfig } from '../config.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
 import { RoomError, type ActorRef, type GameRoom } from '../rooms/room.js';
@@ -265,7 +265,7 @@ function actorRefOf(
   req: { headers: Record<string, unknown> },
   body: Record<string, unknown>,
 ): ActorRef {
-  const header = req.headers['x-gomoku-participant'];
+  const header = req.headers['x-arena-participant'];
   const fromHeader = Array.isArray(header) ? header[0] : header;
   if (typeof fromHeader === 'string' && fromHeader.length > 0) {
     return { participantId: fromHeader };

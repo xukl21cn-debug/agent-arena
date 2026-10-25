@@ -1,10 +1,14 @@
-# gomoku-mcp
+# agent-arena
 
-在浏览器里和 AI Agent 下五子棋：网页是棋盘与互动面板，后端通过 MCP 把同一局棋暴露给任意标准 MCP 客户端。
+给 AI Agent 玩的本地竞技场：房间里有棋盘、参与者和在线状态，通过 MCP 把同一局棋暴露给任意标准 MCP 客户端。
+
+当前支持**五子棋**：人类 vs AI，或两个 AI 互相对弈、人类观战。围棋与聊天室在规划中（见 [`docs/ROADMAP.md`](docs/ROADMAP.md)）。
 
 ## 状态
 
-M1–M6 代码完成：`shared` 类型、规则引擎、房间与长轮询、REST + WebSocket、MCP 双传输（Streamable HTTP / stdio）、React 棋盘与 AI 互动面板。106 个测试，包含 HTTP / WS / MCP 集成用例。已用 zcode 实测完整对局（49 手 + 26 条解说；第二局 25 手复盘见 `docs/GAME-2026-10-23-2.md`）。
+P1a + P1b 完成：参与者模型（稳定 id、同名重连、会话绑定身份）、双 AI 对弈、在线状态（等待中 / 思考中 / 已断开）、观战布局。**166 个测试**，含双 agent 端到端集成用例。
+
+下一步是 P2（真实模型对弈验证），见 [`docs/HANDOFF-P2.md`](docs/HANDOFF-P2.md)。
 
 ## Agent 视图：LLM 友好的棋盘表达
 
@@ -60,7 +64,7 @@ pnpm typecheck   # server + web 类型检查
 | Streamable HTTP | URL `http://127.0.0.1:3000/mcp` |
 | stdio 桥接 | `node <项目目录>/server/dist/mcp/stdio.js` |
 
-stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的后端；可用 `GOMOKU_SERVER_URL` 指定后端地址（默认 `http://127.0.0.1:3000`）。后端未启动时工具会返回明确的连接错误。
+stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的后端；可用 `ARENA_SERVER_URL` 指定后端地址（默认 `http://127.0.0.1:3000`）。后端未启动时工具会返回明确的连接错误。
 
 仓库根目录的 `.mcp.json` 已按 HTTP 方式配好项目级 MCP。工具共 6 个：
 
@@ -75,7 +79,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 
 对 Agent 直接说：
 
-> 用 gomoku 工具和我下一局五子棋。每步先用 say 评价我的落子，落子后再评论一下局势，输赢时给点反应。
+> 用 arena 工具和我下一局五子棋。每步先用 say 评价我的落子，落子后再评论一下局势，输赢时给点反应。
 
 ## 对局流程
 
@@ -95,7 +99,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `HOST` | 127.0.0.1 | 监听地址，默认仅本机 |
 | `WAIT_DEFAULT_MS` | 20000 | `wait_for_turn` 默认超时 |
 | `WAIT_MAX_MS` | 60000 | `wait_for_turn` 上限 |
-| `GOMOKU_SERVER_URL` | `http://127.0.0.1:3000` | stdio 桥接访问的后端地址，也用于 Vite 代理 |
+| `ARENA_SERVER_URL` | `http://127.0.0.1:3000` | stdio 桥接访问的后端地址，也用于 Vite 代理 |
 | `DEFAULT_ROOM_ID` | default | 默认房间 |
 
 ## 架构
@@ -104,7 +108,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 core/       纯规则与纯函数，零 I/O
 rooms/      房间编排：状态、waiters、互动日志、历史
 http/       REST + WebSocket
-mcp/        GomokuApi 接口、6 个工具、HTTP 入口、stdio 桥接
+mcp/        ArenaApi 接口、6 个工具、HTTP 入口、stdio 桥接
 web/        Vite + React，只依赖 shared 类型与 REST/WS 协议
 ```
 

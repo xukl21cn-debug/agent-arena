@@ -10,7 +10,7 @@ P0-1 ~ P0-4 全部处理；P1-1 ~ P1-4 全部处理。验收清单（§5.3）逐
 
 ```text
 [x] pnpm build:shared
-[x] pnpm --filter @gomoku/server test        # 99/99 全绿（基线 93 → +6 净新增）
+[x] pnpm --filter @arena/server test        # 99/99 全绿（基线 93 → +6 净新增）
 [x] pnpm typecheck                            # 0 错误（server + web）
 [x] pnpm build                                # shared / server / web 全部通过
 [x] node scripts/demo-agent-view.mjs          # (9,4) open4 + fiveAt (7,2)(12,7)
@@ -29,7 +29,7 @@ P0-1 ~ P0-4 全部处理；P1-1 ~ P1-4 全部处理。验收清单（§5.3）逐
 | P0-1 | 五级防守优先级写入 `SERVER_INSTRUCTIONS` 与 `get_state`/`wait_for_turn`/`place_stone` 三个工具描述。核心纪律：**对手 open4 候选点必须本手直接占掉该点本身**。`defense` 派生字段按审查建议暂不实现（提示词先行）。行为级验收（白 46 手应选 (9,4)）需重启服务后实盘确认，见 §7 备注 |
 | P0-2 | `toAgentStateView(state, history, { recentMoves })`；`AGENT_RECENT_MOVES = 8`（shared/constants）。热路径（wait/place/resign/错误）带最近 8 手 + `movesOmitted` 显式标注；`get_state` 永远全量；两传输一致。历史不可得时 `movesOmitted = state.moveCount`，不伪装空历史 |
 | P0-3 | 列号 3 字符右对齐（空白分隔）、行号两位补零；测试断言表头 `trim().split(/\s+/)` === 0..14、行标签 00..14 |
-| P0-4 | `GomokuApiError` 增加 `history` 字段；InProcessApi 所有带 state 的错误附 `room.getHistory()`；REST `ErrorResponse` 增加可选 `history`（moves/resign 错误、wait-for-turn 的 NO_AGENT_SEAT 直接返回而非 throw）；stdio 桥 `toApiError` 解析 `payload.history`；集成测试：3 手后 CELL_OCCUPIED 错误中 `moves.length === moveCount === 3` |
+| P0-4 | `ArenaApiError` 增加 `history` 字段；InProcessApi 所有带 state 的错误附 `room.getHistory()`；REST `ErrorResponse` 增加可选 `history`（moves/resign 错误、wait-for-turn 的 NO_AGENT_SEAT 直接返回而非 throw）；stdio 桥 `toApiError` 解析 `payload.history`；集成测试：3 手后 CELL_OCCUPIED 错误中 `moves.length === moveCount === 3` |
 | P1-1 | `classifyPlacement` 的 win 判定改为临时落子后调用引擎 `findWinLine`；每个 `fiveAt` 候选同样经 `findWinLine` 验证（exact-five 规则下六连补全会被拒绝）。`winLength≠5` 时 four/open3 命名失真已在代码注释与 DESIGN §4.4 注明 |
 | P1-2 | 采用最低成本方案：**删除 `three` 分级**，只保留 win/open4/four/open3（open3 为参考级、cap 10）。实测盘面热区条目从 13/12 降到 7/6 |
 | P1-3 | DESIGN 版本头 v0.7 + §17 变更记录；§8.2 `RoomView` 补 history；§10.1 MCP 输出全部改为 `AgentStateView`（含 movesOmitted 语义）并同步 instructions 草稿；§10.2 REST 表改为 `{ state, history }`；§4bis 改为正式 §4.4；§4.3 记录 v0.7 已知破坏；README 同步 |
@@ -186,7 +186,7 @@ boardText size: 837 chars
 +++ server/src/core/insights.ts	2026-10-23 20:20:58.543827100 +0800
 @@ -10,6 +10,7 @@
    StoneColor,
- } from '@gomoku/shared';
+ } from '@arena/shared';
  import { opposite } from './engine.js';
 +import { findWinLine } from './rules.js';
  
@@ -408,7 +408,7 @@ boardText size: 837 chars
    GameState,
 +  Move,
    StoneColor,
- } from '@gomoku/shared';
+ } from '@arena/shared';
  
 @@ -33,16 +34,26 @@
    ): Promise<Commentary>;
@@ -419,7 +419,7 @@ boardText size: 837 chars
 + * Expected, model-actionable failure; carries the current state and move
 + * history when known, so error views never contradict themselves.
 + */
- export class GomokuApiError extends Error {
+ export class ArenaApiError extends Error {
    readonly code: ErrorCode;
    readonly state: GameState | null;
 +  readonly history: readonly Move[] | null;
@@ -432,7 +432,7 @@ boardText size: 837 chars
 +    history: readonly Move[] | null = null,
 +  ) {
      super(message);
-     this.name = 'GomokuApiError';
+     this.name = 'ArenaApiError';
      this.code = code;
      this.state = state;
 +    this.history = history;
@@ -444,8 +444,8 @@ boardText size: 837 chars
 @@ -12,8 +12,12 @@
    CommentaryMood,
    StoneColor,
- } from '@gomoku/shared';
-+import { AGENT_RECENT_MOVES } from '@gomoku/shared';
+ } from '@arena/shared';
++import { AGENT_RECENT_MOVES } from '@arena/shared';
  import { clampWaitMs, type ServerConfig } from '../config.js';
 -import { toAgentStateView } from '../core/insights.js';
 +import {
@@ -454,7 +454,7 @@ boardText size: 837 chars
 +} from '../core/insights.js';
  import { RoomError, type GameRoom } from '../rooms/room.js';
  import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
- import { GomokuApiError, type GomokuApi } from './api.js';
+ import { ArenaApiError, type ArenaApi } from './api.js';
 @@ -31,10 +35,13 @@
  }
  
@@ -469,7 +469,7 @@ boardText size: 837 chars
 +const RECENT: AgentViewOptions = { recentMoves: AGENT_RECENT_MOVES };
 +
  /**
-  * `GomokuApi` backed by the RoomManager living in this process. This is the
+  * `ArenaApi` backed by the RoomManager living in this process. This is the
   * same object graph the web UI mutates, so there is exactly one game state.
 @@ -70,6 +77,7 @@
          'NO_AGENT_SEAT',
@@ -492,8 +492,8 @@ boardText size: 837 chars
      const room = this.requireRoom(roomId);
      const result = room.moveBy('agent', row, col);
      if (!result.ok) {
--      throw new GomokuApiError(result.code, result.message, result.state);
-+      throw new GomokuApiError(
+-      throw new ArenaApiError(result.code, result.message, result.state);
++      throw new ArenaApiError(
 +        result.code,
 +        result.message,
 +        result.state,
@@ -508,8 +508,8 @@ boardText size: 837 chars
      const room = this.requireRoom(roomId);
      const result = room.resignBy('agent');
      if (!result.ok) {
--      throw new GomokuApiError(result.code, result.message, result.state);
-+      throw new GomokuApiError(
+-      throw new ArenaApiError(result.code, result.message, result.state);
++      throw new ArenaApiError(
 +        result.code,
 +        result.message,
 +        result.state,
@@ -525,8 +525,8 @@ boardText size: 837 chars
        return room.say(text, kind, mood);
      } catch (error) {
        if (error instanceof RoomError) {
--        throw new GomokuApiError(error.code, error.message, room.getState());
-+        throw new GomokuApiError(
+-        throw new ArenaApiError(error.code, error.message, room.getState());
++        throw new ArenaApiError(
 +          error.code,
 +          error.message,
 +          room.getState(),
@@ -546,15 +546,15 @@ boardText size: 837 chars
    RoomView,
    StoneColor,
    WaitForTurnResponse,
- } from '@gomoku/shared';
-+import { AGENT_RECENT_MOVES } from '@gomoku/shared';
+ } from '@arena/shared';
++import { AGENT_RECENT_MOVES } from '@arena/shared';
  import { resolveServerUrl } from '../config.js';
 -import { toAgentStateView } from '../core/insights.js';
 +import {
 +  toAgentStateView,
 +  type AgentViewOptions,
 +} from '../core/insights.js';
- import { agentColorOf, GomokuApiError, type GomokuApi } from './api.js';
+ import { agentColorOf, ArenaApiError, type ArenaApi } from './api.js';
  import { registerTools, SERVER_INSTRUCTIONS } from './tools.js';
  
 @@ -24,6 +29,9 @@
@@ -565,7 +565,7 @@ boardText size: 837 chars
 +const RECENT: AgentViewOptions = { recentMoves: AGENT_RECENT_MOVES };
 +
  /**
-  * `GomokuApi` that proxies to a running gomoku server over REST. Used by the
+  * `ArenaApi` that proxies to a running gomoku server over REST. Used by the
   * stdio bridge, which deliberately holds no game state of its own. REST
 @@ -73,7 +81,7 @@
        `/api/rooms/${encodeURIComponent(roomId)}/wait-for-turn?actor=agent&timeoutMs=${encodeURIComponent(String(timeoutMs))}`,
@@ -601,7 +601,7 @@ boardText size: 837 chars
 +      const history = Array.isArray(payload.history)
 +        ? (payload.history as unknown as Move[])
 +        : null;
-       return new GomokuApiError(
+       return new ArenaApiError(
          typeof code === 'string' ? (code as ErrorCode) : 'INTERNAL_ERROR',
          typeof message === 'string' ? message : `HTTP ${status}`,
          state,
@@ -754,9 +754,9 @@ boardText size: 837 chars
 +++ server/test/insights.test.ts	2026-10-23 20:29:29.405484400 +0800
 @@ -1,5 +1,6 @@
  import { describe, expect, it } from 'vitest';
--import type { HotPoint, StoneColor } from '@gomoku/shared';
-+import type { HotPoint, Move, StoneColor } from '@gomoku/shared';
-+import { AGENT_RECENT_MOVES } from '@gomoku/shared';
+-import type { HotPoint, StoneColor } from '@arena/shared';
++import type { HotPoint, Move, StoneColor } from '@arena/shared';
++import { AGENT_RECENT_MOVES } from '@arena/shared';
  import {
    createBoard,
    findWinLine,

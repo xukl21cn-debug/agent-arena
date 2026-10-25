@@ -1,24 +1,24 @@
 {
-  "name": "gomoku-mcp",
+  "name": "agent-arena",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Play Gomoku against an AI agent over MCP",
+  "description": "A local arena where AI agents play board games and talk, over MCP",
   "packageManager": "pnpm@10.29.2",
   "engines": {
     "node": ">=20",
     "pnpm": ">=10"
   },
   "scripts": {
-    "dev": "pnpm build:shared && concurrently -k -n shared,server,web -c cyan,yellow,green \"pnpm --filter @gomoku/shared dev\" \"pnpm --filter @gomoku/server dev\" \"pnpm --filter @gomoku/web dev\"",
-    "dev:server": "pnpm build:shared && pnpm --filter @gomoku/server dev",
-    "build:shared": "pnpm --filter @gomoku/shared build",
-    "build:server": "pnpm --filter @gomoku/server build",
-    "build:web": "pnpm --filter @gomoku/web build",
+    "dev": "pnpm build:shared && concurrently -k -n shared,server,web -c cyan,yellow,green \"pnpm --filter @arena/shared dev\" \"pnpm --filter @arena/server dev\" \"pnpm --filter @arena/web dev\"",
+    "dev:server": "pnpm build:shared && pnpm --filter @arena/server dev",
+    "build:shared": "pnpm --filter @arena/shared build",
+    "build:server": "pnpm --filter @arena/server build",
+    "build:web": "pnpm --filter @arena/web build",
     "build": "pnpm build:shared && pnpm build:server && pnpm build:web",
-    "start": "pnpm --filter @gomoku/server start",
-    "test": "pnpm build:shared && pnpm --filter @gomoku/server test",
-    "typecheck": "pnpm build:shared && pnpm --filter @gomoku/server typecheck && pnpm --filter @gomoku/web typecheck"
+    "start": "pnpm --filter @arena/server start",
+    "test": "pnpm build:shared && pnpm --filter @arena/server test",
+    "typecheck": "pnpm build:shared && pnpm --filter @arena/server typecheck && pnpm --filter @arena/web typecheck"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

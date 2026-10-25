@@ -2,7 +2,7 @@
 
 > 版本：v0.8（Agent 视图：double 威胁合并 + 防守纪律）
 > 日期：2026-10-23
-> 项目路径：`E:\code\fun\gomoku-mcp`
+> 项目路径：`E:\code\fun\agent-arena`
 > 技术栈：Node.js + TypeScript（单进程后端） / Vite + React（前端）
 
 ---
@@ -224,7 +224,7 @@ web/        只依赖 shared 类型与 REST/WS 协议
 
 - 规则引擎不知道房间、传输、Agent 的存在
 - Room 不知道 HTTP / MCP，只暴露方法与事件
-- MCP 工具不知道底层是进程内调用还是 REST，只依赖 `GomokuApi`
+- MCP 工具不知道底层是进程内调用还是 REST，只依赖 `ArenaApi`
 
 ### 4.3 兼容性策略
 
@@ -327,7 +327,7 @@ web/        只依赖 shared 类型与 REST/WS 协议
 ## 7. 目录结构
 
 ```
-gomoku-mcp/
+agent-arena/
 ├── package.json                 # 根脚本、devDependencies、packageManager
 ├── pnpm-workspace.yaml          # pnpm workspace: shared / server
 ├── .gitignore
@@ -336,7 +336,7 @@ gomoku-mcp/
 │   └── DESIGN.md                # 本文件
 ├── .mcp.json                    # Command Code project 级 MCP 配置
 ├── shared/
-│   ├── package.json             # @gomoku/shared，只放类型与常量
+│   ├── package.json             # @arena/shared，只放类型与常量
 │   ├── tsconfig.json
 │   └── src/
 │       ├── index.ts
@@ -362,7 +362,7 @@ gomoku-mcp/
 │   │   │   ├── routes.ts        # REST API
 │   │   │   └── ws.ts            # WebSocket 广播
 │   │   └── mcp/
-│   │       ├── api.ts           # GomokuApi 接口
+│   │       ├── api.ts           # ArenaApi 接口
 │   │       ├── tools.ts         # 6 个工具的唯一实现
 │   │       ├── http.ts          # HTTP 适配：InProcessApi -> RoomManager
 │   │       └── stdio.ts         # stdio 桥接：HttpApi -> 后端 REST
@@ -391,14 +391,14 @@ gomoku-mcp/
 
 ### 7.1 共享类型
 
-- `@gomoku/shared` 只包含纯类型和常量，不引入运行时依赖
+- `@arena/shared` 只包含纯类型和常量，不引入运行时依赖
 - server 与 web 都从它导入，避免协议漂移
 - 开发时 `tsc --watch` 增量构建；生产构建先 build shared
 
 ### 7.2 MCP 层设计原则
 
 - `tools.ts` 是唯一的工具定义来源：名称、description、zod schema、handler 都在这里
-- handler 只依赖 `GomokuApi` 接口，不关心底层是进程内调用还是 HTTP
+- handler 只依赖 `ArenaApi` 接口，不关心底层是进程内调用还是 HTTP
 - 两种 transport 只是装配方式不同：
 
 ```ts
@@ -938,9 +938,9 @@ Client → Server：
 
 - 独立入口 `src/mcp/stdio.ts`，由客户端按需拉起
 - 使用 `StdioServerTransport` + 同一套 `registerTools`
-- `GomokuApi` 的实现是 `HttpApi`，调用后端 REST（默认 `http://127.0.0.1:3000`）
+- `ArenaApi` 的实现是 `HttpApi`，调用后端 REST（默认 `http://127.0.0.1:3000`）
 - **必须先启动后端**；桥接进程自身不保存棋局
-- 环境变量：`GOMOKU_SERVER_URL`（默认 `http://127.0.0.1:3000`）
+- 环境变量：`ARENA_SERVER_URL`（默认 `http://127.0.0.1:3000`）
 - 后端未启动时，工具调用返回明确的连接错误，提示先运行 `npm start`
 
 ### 12.4 静态资源
@@ -956,7 +956,7 @@ Client → Server：
 | `HOST` | 127.0.0.1 | 监听地址 |
 | `WAIT_DEFAULT_MS` | 20000 | `wait_for_turn` 默认超时 |
 | `WAIT_MAX_MS` | 60000 | `wait_for_turn` 上限 |
-| `GOMOKU_SERVER_URL` | `http://127.0.0.1:3000` | stdio 桥接访问的后端地址 |
+| `ARENA_SERVER_URL` | `http://127.0.0.1:3000` | stdio 桥接访问的后端地址 |
 | `DEFAULT_ROOM_ID` | `default` | 默认房间 |
 
 ---
@@ -990,7 +990,7 @@ Claude Code、Codex 等标准 MCP 客户端协议上同样可用，但不在本�
 cmd mcp add --transport http gomoku http://127.0.0.1:3000/mcp
 
 # 任意支持 stdio 的客户端
-cmd mcp add gomoku -- node E:/code/fun/gomoku-mcp/server/dist/mcp/stdio.js
+cmd mcp add gomoku -- node E:/code/fun/agent-arena/server/dist/mcp/stdio.js
 ```
 
 项目级 `.mcp.json`（Command Code project scope）：

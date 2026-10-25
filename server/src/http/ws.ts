@@ -1,6 +1,6 @@
 import type { Server } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import type { ServerMessage } from '@gomoku/shared';
+import type { ServerMessage } from '@arena/shared';
 import type { PresenceRegistry } from '../core/presence.js';
 import type { RoomManager } from '../rooms/room-manager.js';
 

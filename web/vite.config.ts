@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-const backend = process.env.GOMOKU_SERVER_URL ?? 'http://127.0.0.1:3000';
+const backend = process.env.ARENA_SERVER_URL ?? 'http://127.0.0.1:3000';
 
 export default defineConfig({
   plugins: [react()],

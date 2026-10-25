@@ -6,7 +6,7 @@ import type {
   PlayerSpec,
   RuleSet,
   StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import {
   createBoard,
   findWinLine,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GameState, StoneColor } from '@gomoku/shared';
+import type { GameState, StoneColor } from '@arena/shared';
 
 interface ControlsProps {
   state: GameState | null;

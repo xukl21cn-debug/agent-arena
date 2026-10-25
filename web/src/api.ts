@@ -4,7 +4,7 @@ import type {
   GameState,
   RoomView,
   StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 
 interface ErrorPayload {
   error?: {

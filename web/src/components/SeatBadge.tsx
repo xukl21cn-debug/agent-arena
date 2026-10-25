@@ -1,4 +1,4 @@
-import type { ParticipantView, PresenceState, StoneColor } from '@gomoku/shared';
+import type { ParticipantView, PresenceState, StoneColor } from '@arena/shared';
 
 interface SeatBadgeProps {
   participant: ParticipantView | null;

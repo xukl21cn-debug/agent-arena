@@ -3,7 +3,7 @@ import type {
   Participant,
   ParticipantKind,
   StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 
 /** Short, readable id: `p_3f9a2c`. Room-scoped, never reused. */
 function newId(): string {

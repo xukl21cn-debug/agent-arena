@@ -3,7 +3,7 @@ import {
   DEFAULT_WAIT_MS,
   MAX_WAIT_MS,
   MIN_WAIT_MS,
-} from '@gomoku/shared';
+} from '@arena/shared';
 
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_HOST = '127.0.0.1';
@@ -60,14 +60,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     waitDefaultMs,
     waitMaxMs: Math.max(waitDefaultMs, waitMaxMs),
     defaultRoomId: env.DEFAULT_ROOM_ID?.trim() || DEFAULT_ROOM_ID,
-    serverUrl: env.GOMOKU_SERVER_URL?.trim() || DEFAULT_SERVER_URL,
+    serverUrl: env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL,
   };
 }
 
 export function resolveServerUrl(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return env.GOMOKU_SERVER_URL?.trim() || DEFAULT_SERVER_URL;
+  return env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL;
 }
 
 /**

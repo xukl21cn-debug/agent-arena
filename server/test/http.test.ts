@@ -7,7 +7,7 @@ import type {
   ErrorResponse,
   ServerMessage,
   WaitForTurnResponse,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { attachWebSocket } from '../src/http/ws';

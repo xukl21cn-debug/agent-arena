@@ -5,7 +5,7 @@ import {
   type ParticipantView,
   type PlayerSpec,
   type StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 
 /**
  * Raw connection evidence for one seat.

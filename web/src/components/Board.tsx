@@ -3,7 +3,7 @@ import {
   DEFAULT_BOARD_SIZE,
   type GameState,
   type StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import { Stone } from './Stone';
 
 interface BoardProps {

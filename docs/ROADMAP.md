@@ -127,7 +127,7 @@ P1b 交付的能力：
 
 ## 4. 并行、分支与合并
 
-**当前只有一个目录**：`E:\code\fun\gomoku-mcp`（main 分支）。P1 阶段的 worktree 已全部清理合并。
+**当前只有一个目录**：`E:\code\fun\agent-arena`（main 分支）。P1 阶段的 worktree 已全部清理合并。
 
 | 分支 | 内容 | 状态 |
 |---|---|---|
@@ -138,7 +138,7 @@ P1b 交付的能力：
 **关于 worktree**：P1 时用了多个 worktree 并行开发，现在已不需要——串行开发直接在 main 目录建分支即可：
 
 ```powershell
-cd E:\code\fun\gomoku-mcp
+cd E:\code\fun\agent-arena
 git checkout -b feat/p2-dual-ai
 # ... 工作 ...
 git checkout main && git merge --ff-only feat/p2-dual-ai

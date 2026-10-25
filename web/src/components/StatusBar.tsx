@@ -3,8 +3,8 @@ import type {
   OpponentStatus,
   ParticipantView,
   StoneColor,
-} from '@gomoku/shared';
-import { opponentStatus } from '@gomoku/shared';
+} from '@arena/shared';
+import { opponentStatus } from '@arena/shared';
 import { SeatBadge } from './SeatBadge';
 
 interface StatusBarProps {

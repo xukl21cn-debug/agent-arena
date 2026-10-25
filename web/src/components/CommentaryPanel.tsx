@@ -5,7 +5,7 @@ import {
   type CommentaryKind,
   type OpponentStatus,
   type StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 
 const KIND_LABELS: Record<CommentaryKind, string> = {
   evaluation: '评价',

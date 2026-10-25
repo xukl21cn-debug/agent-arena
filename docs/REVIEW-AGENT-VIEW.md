@@ -38,7 +38,7 @@
 ### 2.1 测试与性能
 
 ```text
-pnpm --filter @gomoku/server test
+pnpm --filter @arena/server test
 Test Files  5 passed (5)
 Tests       93 passed (93)
 ```
@@ -259,7 +259,7 @@ state: error.state ? toAgentStateView(error.state, []) : null,
 
 **改法（必须）**
 
-- 给 `GomokuApiError` 增加 `history?: readonly Move[]`（或 `AgentStateView`）；
+- 给 `ArenaApiError` 增加 `history?: readonly Move[]`（或 `AgentStateView`）；
 - `InProcessApi` 在构造错误时带上 `room.getHistory()`；
 - `HttpApi` 在 REST 错误响应中携带 `history`（需要给 `ErrorResponse` 加可选 `history`，并同步 `routes.ts` 的所有错误返回）；
 - `errorResult` 使用 `error.history ?? []`，并按 P0-2 的截断策略处理；如果历史不可得，显式标记 `historyOmitted`，不要伪装成空历史。
@@ -387,7 +387,7 @@ expect(pointsAt(hot.black, 7, 4)?.effect).toBe('three');
 
 ```text
 [ ] pnpm build:shared
-[ ] pnpm --filter @gomoku/server test        # ≥ 93 且全绿
+[ ] pnpm --filter @arena/server test        # ≥ 93 且全绿
 [ ] pnpm typecheck
 [ ] pnpm build
 [ ] node scripts/demo-agent-view.mjs         # 输出 (9,4) open4 + fiveAt (7,2)(12,7)

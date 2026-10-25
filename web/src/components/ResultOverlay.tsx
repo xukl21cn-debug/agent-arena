@@ -1,4 +1,4 @@
-import type { GameState, StoneColor } from '@gomoku/shared';
+import type { GameState, StoneColor } from '@arena/shared';
 
 interface ResultOverlayProps {
   state: GameState;

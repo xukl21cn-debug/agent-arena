@@ -3,7 +3,7 @@
 > 面向：接手继续开发的 AI agent（GLM）
 > 状态：**✅ P1b 已完成并合入 main**（任务 A、B 及掉线推送修复均已落地、实测通过）。仅剩可选的任务 C
 > 最后更新：2026-10-25
-> 分支：已合入 `main`；worktree `gomoku-mcp-p1b` 已清理
+> 分支：已合入 `main`；worktree `agent-arena-p1b` 已清理
 >
 > **下一步是 P2**，见 [`HANDOFF-P2.md`](HANDOFF-P2.md)。本文件保留作为 P1b 的历史记录和约束参考。
 
@@ -115,7 +115,7 @@ REST（`server/src/http/routes.ts`）：
 | `POST` | `/api/rooms/:roomId/participants` |
 | `DELETE` | `/api/rooms/:roomId/participants/:participantId` |
 
-身份传递：HTTP header `X-Gomoku-Participant`，或 body 字段 `participantId`，或 query `participantId`。
+身份传递：HTTP header `X-Arena-Participant`，或 body 字段 `participantId`，或 query `participantId`。
 
 ### 2.6 修掉的两个 bug（别改回去）
 
@@ -149,7 +149,7 @@ REST（`server/src/http/routes.ts`）：
 跑测试：
 
 ```powershell
-cd E:\code\fun\gomoku-mcp-p1b
+cd E:\code\fun\agent-arena-p1b
 pnpm test
 ```
 
@@ -274,7 +274,7 @@ type RoomPhase = 'lobby' | 'waiting' | 'playing' | 'paused' | 'finished';
 
 ### 分支
 
-当前 worktree：`E:\code\fun\gomoku-mcp-p1b`，分支 `feat/participants-model`。
+当前 worktree：`E:\code\fun\agent-arena-p1b`，分支 `feat/participants-model`。
 
 **不要直接改 main。** 做完一个任务就提交一次，提交信息用现有风格（看 `git log`）：
 
@@ -289,7 +289,7 @@ chore(web): ...
 ### 每次提交前
 
 ```powershell
-cd E:\code\fun\gomoku-mcp-p1b
+cd E:\code\fun\agent-arena-p1b
 pnpm test          # 必须全绿
 pnpm typecheck     # 必须通过
 ```

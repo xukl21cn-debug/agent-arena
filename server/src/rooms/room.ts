@@ -18,7 +18,7 @@ import {
   type RuleSet,
   type StoneColor,
   type WaitReason,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import {
   applyMove,
   createInitialState,
@@ -138,7 +138,7 @@ function cloneSeats(
 }
 
 /**
- * A single Gomoku room: owns the one authoritative GameState, serializes all
+ * A single game room: owns the one authoritative GameState, serializes all
  * mutations, and fans state / commentary changes out to listeners (WS, tests).
  *
  * The room knows nothing about HTTP, WebSocket or MCP.

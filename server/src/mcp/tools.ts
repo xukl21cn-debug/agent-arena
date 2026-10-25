@@ -11,8 +11,8 @@ import {
   ROOM_ID_PATTERN,
   type CommentaryKind,
   type CommentaryMood,
-} from '@gomoku/shared';
-import { GomokuApiError, type GomokuApi } from './api.js';
+} from '@arena/shared';
+import { ArenaApiError, type ArenaApi } from './api.js';
 import { toAgentStateView } from '../core/insights.js';
 
 const COMMENTARY_KINDS = [
@@ -91,7 +91,7 @@ function textResult(payload: unknown): CallToolResult {
 }
 
 function errorResult(error: unknown): CallToolResult {
-  if (error instanceof GomokuApiError) {
+  if (error instanceof ArenaApiError) {
     return {
       isError: true,
       content: [
@@ -138,7 +138,7 @@ async function runTool(action: () => Promise<unknown>): Promise<CallToolResult> 
  * transport and the stdio bridge register exactly these definitions, so every
  * client sees identical behaviour and descriptions.
  */
-export function registerTools(server: McpServer, api: GomokuApi): void {
+export function registerTools(server: McpServer, api: ArenaApi): void {
   server.registerTool(
     'join_game',
     {

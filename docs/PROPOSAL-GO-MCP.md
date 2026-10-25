@@ -1,4 +1,4 @@
-# 提案：9 路围棋模式并入 gomoku-mcp
+# 提案：9 路围棋模式并入 agent-arena
 
 > 状态：**v3，DeepSeek 评审修订**｜原作者：GLM (ZCode)｜日期：2026-10-24
 > 评审结论：**方向可行，但 v2 不能直接开工。** 规则引擎本身不难，真正的成本在
@@ -354,7 +354,7 @@ interface GoGroupsView {
 
 错误码新增：`SUICIDE`、`KO`、`WRONG_GAME`、`NOT_SCORING`、`INVALID_DEAD_STONE`、
 `UNSUPPORTED_RULE`。错误响应仍带 `{state, history}`。
-传输接口 `GomokuApi` 建议改名 `GameApi`（保留 `GomokuApi` 类型别名以免一次性改太多），
+传输接口 `ArenaApi` 建议改名 `GameApi`（保留 `ArenaApi` 类型别名以免一次性改太多），
 并新增 `pass / markDead / confirmScore / resumePlay`；`InProcessApi` 与 `HttpApi` 同步。
 
 `new_game` 的兼容性：不传 `game` 时等同于现在的五子棋行为；旧客户端不需要改。

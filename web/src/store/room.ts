@@ -5,7 +5,7 @@ import {
   type GameState,
   type ParticipantView,
   type StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import { ApiError, api, errorMessage } from '../api';
 
 /**

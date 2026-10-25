@@ -1,5 +1,5 @@
 {
-  "name": "@gomoku/web",
+  "name": "@arena/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@gomoku/shared": "workspace:*",
+    "@arena/shared": "workspace:*",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zustand": "^5.0.16"

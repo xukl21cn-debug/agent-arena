@@ -39,24 +39,24 @@ function main(): void {
 
   server.listen(config.port, config.host, () => {
     const base = `http://${config.host}:${config.port}`;
-    console.log(`[gomoku] server ready at ${base}`);
-    console.log(`[gomoku] REST  ${base}/api`);
-    console.log(`[gomoku] MCP   ${base}/mcp`);
-    console.log(`[gomoku] WS    ws://${config.host}:${config.port}/ws`);
+    console.log(`[arena] server ready at ${base}`);
+    console.log(`[arena] REST  ${base}/api`);
+    console.log(`[arena] MCP   ${base}/mcp`);
+    console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
     console.log(
-      `[gomoku] room  "${defaultRoom.id}" (${defaultRoom.getState().status})`,
+      `[arena] room  "${defaultRoom.id}" (${defaultRoom.getState().status})`,
     );
     if (serveWeb) {
-      console.log(`[gomoku] web   ${base}/`);
+      console.log(`[arena] web   ${base}/`);
     } else {
       console.log(
-        '[gomoku] web/dist not found - run "pnpm build" to serve the UI from here, or use "pnpm dev" with Vite on 5173',
+        '[arena] web/dist not found - run "pnpm build" to serve the UI from here, or use "pnpm dev" with Vite on 5173',
       );
     }
   });
 
   const shutdown = (signal: string): void => {
-    console.log(`[gomoku] ${signal} received, shutting down`);
+    console.log(`[arena] ${signal} received, shutting down`);
     clearInterval(sweepTimer);
     wss.close();
     server.close(() => {

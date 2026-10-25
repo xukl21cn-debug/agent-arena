@@ -1,11 +1,11 @@
 {
-  "name": "@gomoku/server",
+  "name": "@arena/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "gomoku-mcp": "./dist/mcp/stdio.js"
+    "agent-arena": "./dist/mcp/stdio.js"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@gomoku/shared": "workspace:*",
+    "@arena/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "express": "^5.3.0",
     "ws": "^8.22.0",

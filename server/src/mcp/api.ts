@@ -9,7 +9,7 @@ import type {
   GameState,
   Move,
   StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 
 /**
  * The only surface MCP tools know about. Two implementations exist:
@@ -21,7 +21,7 @@ import type {
  * server side (session binding, then room roster). The model never passes a
  * participant id, so it cannot act as somebody else.
  */
-export interface GomokuApi {
+export interface ArenaApi {
   /**
    * Claim a seat in a room, binding this session to the resulting participant.
    *
@@ -70,7 +70,7 @@ export interface AgentJoinResponse {
  * Expected, model-actionable failure; carries the current state and move
  * history when known, so error views never contradict themselves.
  */
-export class GomokuApiError extends Error {
+export class ArenaApiError extends Error {
   readonly code: ErrorCode;
   readonly state: GameState | null;
   readonly history: readonly Move[] | null;
@@ -82,7 +82,7 @@ export class GomokuApiError extends Error {
     history: readonly Move[] | null = null,
   ) {
     super(message);
-    this.name = 'GomokuApiError';
+    this.name = 'ArenaApiError';
     this.code = code;
     this.state = state;
     this.history = history;

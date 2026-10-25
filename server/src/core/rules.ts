@@ -3,7 +3,7 @@ import {
   type Cell,
   type RuleSet,
   type StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 
 const DIRECTIONS = [
   [0, 1],

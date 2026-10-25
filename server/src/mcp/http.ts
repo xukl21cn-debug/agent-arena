@@ -11,8 +11,8 @@ import type {
   CommentaryKind,
   CommentaryMood,
   StoneColor,
-} from '@gomoku/shared';
-import { AGENT_RECENT_MOVES } from '@gomoku/shared';
+} from '@arena/shared';
+import { AGENT_RECENT_MOVES } from '@arena/shared';
 import { clampWaitMs, type ServerConfig } from '../config.js';
 import {
   toAgentStateView,
@@ -22,9 +22,9 @@ import { currentSession, SessionBindings, sessionContext } from '../core/session
 import { RoomError, type ActorRef, type GameRoom } from '../rooms/room.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
 import {
-  GomokuApiError,
+  ArenaApiError,
   type AgentJoinResponse,
-  type GomokuApi,
+  type ArenaApi,
 } from './api.js';
 import { registerTools, SERVER_INSTRUCTIONS } from './tools.js';
 
@@ -33,7 +33,7 @@ function checkRoomId(roomId: string): void {
     assertRoomId(roomId);
   } catch (error) {
     if (error instanceof RoomError) {
-      throw new GomokuApiError(error.code, error.message);
+      throw new ArenaApiError(error.code, error.message);
     }
     throw error;
   }
@@ -48,10 +48,10 @@ function agentView(room: GameRoom, options?: AgentViewOptions): AgentStateView {
 const RECENT: AgentViewOptions = { recentMoves: AGENT_RECENT_MOVES };
 
 /**
- * `GomokuApi` backed by the RoomManager living in this process. This is the
+ * `ArenaApi` backed by the RoomManager living in this process. This is the
  * same object graph the web UI mutates, so there is exactly one game state.
  */
-export class InProcessApi implements GomokuApi {
+export class InProcessApi implements ArenaApi {
   constructor(
     private readonly manager: RoomManager,
     private readonly config: Pick<ServerConfig, 'waitDefaultMs' | 'waitMaxMs'>,
@@ -190,7 +190,7 @@ export class InProcessApi implements GomokuApi {
     const ref = this.actorRef(roomId, 'agent');
     const identity = room.resolve(ref);
     if (!identity.ok) {
-      throw new GomokuApiError(
+      throw new ArenaApiError(
         identity.code,
         identity.message,
         room.getState(),
@@ -228,7 +228,7 @@ export class InProcessApi implements GomokuApi {
     }
     const result = room.moveAs(ref, row, col);
     if (!result.ok) {
-      throw new GomokuApiError(
+      throw new ArenaApiError(
         result.code,
         result.message,
         result.state,
@@ -247,7 +247,7 @@ export class InProcessApi implements GomokuApi {
     }
     const result = room.resignAs(ref);
     if (!result.ok) {
-      throw new GomokuApiError(
+      throw new ArenaApiError(
         result.code,
         result.message,
         result.state,
@@ -269,7 +269,7 @@ export class InProcessApi implements GomokuApi {
       return room.say(text, kind, mood);
     } catch (error) {
       if (error instanceof RoomError) {
-        throw new GomokuApiError(
+        throw new ArenaApiError(
           error.code,
           error.message,
           room.getState(),
@@ -284,7 +284,7 @@ export class InProcessApi implements GomokuApi {
     checkRoomId(roomId);
     const room = this.manager.get(roomId);
     if (!room) {
-      throw new GomokuApiError('ROOM_NOT_FOUND', `Room "${roomId}" not found.`);
+      throw new ArenaApiError('ROOM_NOT_FOUND', `Room "${roomId}" not found.`);
     }
     return room;
   }
@@ -328,7 +328,7 @@ export function mountMcpHttp(
 
   const createMcpServer = (): McpServer => {
     const server = new McpServer(
-      { name: 'gomoku', version: '0.1.0' },
+      { name: 'arena', version: '0.1.0' },
       { instructions: SERVER_INSTRUCTIONS },
     );
     registerTools(server, api);

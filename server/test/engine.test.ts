@@ -5,7 +5,7 @@ import {
   type PlayerSpec,
   type RuleSet,
   type StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import {
   applyMove,
   createInitialState,

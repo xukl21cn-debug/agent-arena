@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PlayerSpec, StoneColor } from '@gomoku/shared';
+import type { PlayerSpec, StoneColor } from '@arena/shared';
 import { GameRoom } from '../src/rooms/room';
 
 const SEATS: Record<StoneColor, PlayerSpec> = {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computePresence, type PresenceInput } from '@gomoku/shared';
+import { computePresence, type PresenceInput } from '@arena/shared';
 import { PresenceRegistry, seatLabel } from '../src/core/presence';
 
 const NOW = 1_800_000_000_000;

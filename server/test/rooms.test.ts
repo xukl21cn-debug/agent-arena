@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ErrorCode } from '@gomoku/shared';
+import type { ErrorCode } from '@arena/shared';
 import { MemoryRoomRepository } from '../src/rooms/repository';
 import { RoomManager } from '../src/rooms/room-manager';
 

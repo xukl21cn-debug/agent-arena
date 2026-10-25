@@ -2,7 +2,7 @@ import {
   DEFAULT_ROOM_ID,
   ROOM_ID_PATTERN,
   type RoomSummary,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import type { PresenceSource } from '../core/presence.js';
 import { RoomError, GameRoom, type RoomConfig } from './room.js';
 import {

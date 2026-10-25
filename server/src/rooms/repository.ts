@@ -3,7 +3,7 @@ import type {
   GameState,
   Move,
   RoomSummary,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import type { GameRoom } from './room.js';
 
 /** Serializable snapshot of a room, the unit the repository persists. */

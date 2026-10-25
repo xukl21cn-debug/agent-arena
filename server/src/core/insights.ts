@@ -8,7 +8,7 @@ import type {
   MoveRecord,
   RuleSet,
   StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import { opposite } from './engine.js';
 import { findWinLine } from './rules.js';
 

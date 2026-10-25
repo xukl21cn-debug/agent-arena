@@ -7,7 +7,7 @@ import type {
   ParticipantView,
   RoomView,
   ServerMessage,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { PresenceRegistry } from '../src/core/presence';

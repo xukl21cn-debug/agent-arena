@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Actor, PlayerSpec, StoneColor } from '@gomoku/shared';
+import type { Actor, PlayerSpec, StoneColor } from '@arena/shared';
 import { GameRoom, RoomError } from '../src/rooms/room';
 import { MemoryRoomRepository } from '../src/rooms/repository';
 

@@ -8,7 +8,7 @@
 
 ## 1. 背景
 
-现在 gomoku-mcp 的座位模型是 **「一个人 + 一个 agent」**：
+现在 agent-arena 的座位模型是 **「一个人 + 一个 agent」**：
 
 - `PlayerSpec = { kind: ParticipantKind, name? }`，`GameState.seats` 固定黑白两席；
 - 落子用 `moveBy(actor: 'human' | 'agent')` 按 kind 找座位；
@@ -255,8 +255,8 @@ agent 连接 MCP（initialize，带 clientInfo）
 
 | 客户端 | 方式 |
 |---|---|
-| Streamable HTTP（DSH/Claude Code） | 请求头 `X-Gomoku-Participant: <name>`（DSH `headers` 可配） |
-| stdio 桥 | 环境变量 `GOMOKU_PARTICIPANT=<name>` |
+| Streamable HTTP（DSH/Claude Code） | 请求头 `X-Arena-Participant: <name>`（DSH `headers` 可配） |
+| stdio 桥 | 环境变量 `ARENA_PARTICIPANT=<name>` |
 | 网页 | 服务端分配 `human` 参与者，随 `?room=` 建立 WS 时绑定 |
 | 都没有 | 回退旧逻辑：房间内唯一 agent 座位；双 AI 时返回 `IDENTITY_REQUIRED` |
 
@@ -297,7 +297,7 @@ server/src/rooms/
 
 - **WaitHub**：`Map<participantId, Set<Waiter>>`；`notify(participantId)` 在落子/换人/终局时调用；超时用定时器。聊天室的 `wait_for_messages` 可以复用同一个类（key 换成 memberId）。
 - **Presence**：维护「连接注册表」——WS 连接、MCP 会话、runner 子进程各自登记；有挂起长轮询标 `waiting`，轮到某人标 `thinking`，传输断开标 `disconnected`。`touch(participantId)` 只用于兜底的「无响应」判断，不再决定在线。
-- **会话绑定**：Streamable HTTP 的每个 session 在 initialize 时记录 `clientInfo`；`X-Gomoku-Participant` 头把 session 绑到 participant。stdio 客户端直接读环境变量。
+- **会话绑定**：Streamable HTTP 的每个 session 在 initialize 时记录 `clientInfo`；`X-Arena-Participant` 头把 session 绑到 participant。stdio 客户端直接读环境变量。
 - **重启恢复**：参与者从仓库加载，全部 `disconnected`（连接已不存在），`phase=paused`。
 - **并发**：Node 单线程 + 同步内存操作；落子与 waiter 唤醒在同一 tick 内完成，避免「落子后对手还睡着」。
 
@@ -324,7 +324,7 @@ server/src/rooms/
 
 集成：
 
-- 两个 MCP client（不同 `X-Gomoku-Participant`）各自 `join_game` + `wait_for_turn`，交替落子 10 手。
+- 两个 MCP client（不同 `X-Arena-Participant`）各自 `join_game` + `wait_for_turn`，交替落子 10 手。
 - 一个 client 挂起 wait，另一个落子 → 200ms 内唤醒。
 - 沉默：轮到 agent 后 60s 无调用仍是 `thinking`；关闭 WS/会话后立即 `disconnected`。
 - 旧脚本回归：`gomoku-client.mjs` 不改跑通一局。

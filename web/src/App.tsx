@@ -4,7 +4,7 @@ import {
   ROOM_ID_PATTERN,
   opponentStatus,
   type StoneColor,
-} from '@gomoku/shared';
+} from '@arena/shared';
 import { Board } from './components/Board';
 import { CommentaryPanel } from './components/CommentaryPanel';
 import { Controls } from './components/Controls';
@@ -119,7 +119,7 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <p className="eyebrow">Gomoku · MCP</p>
+          <p className="eyebrow">Agent Arena · MCP</p>
           <h1 className="title">五子棋</h1>
           <p className="subtitle">
             {spectator

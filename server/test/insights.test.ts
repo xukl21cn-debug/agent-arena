@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { GameState, HotPoint, Move, StoneColor } from '@gomoku/shared';
-import { AGENT_RECENT_MOVES } from '@gomoku/shared';
+import type { GameState, HotPoint, Move, StoneColor } from '@arena/shared';
+import { AGENT_RECENT_MOVES } from '@arena/shared';
 import {
   createBoard,
   findWinLine,

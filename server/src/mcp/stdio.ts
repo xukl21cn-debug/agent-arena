@@ -15,8 +15,8 @@ import type {
   RoomView,
   StoneColor,
   WaitForTurnResponse,
-} from '@gomoku/shared';
-import { AGENT_RECENT_MOVES } from '@gomoku/shared';
+} from '@arena/shared';
+import { AGENT_RECENT_MOVES } from '@arena/shared';
 import { resolveServerUrl } from '../config.js';
 import {
   toAgentStateView,
@@ -24,9 +24,9 @@ import {
 } from '../core/insights.js';
 import {
   agentColorOf,
-  GomokuApiError,
+  ArenaApiError,
   type AgentJoinResponse,
-  type GomokuApi,
+  type ArenaApi,
 } from './api.js';
 import { registerTools, SERVER_INSTRUCTIONS } from './tools.js';
 
@@ -38,12 +38,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 const RECENT: AgentViewOptions = { recentMoves: AGENT_RECENT_MOVES };
 
 /**
- * `GomokuApi` that proxies to a running gomoku server over REST. Used by the
+ * `ArenaApi` that proxies to a running arena server over REST. Used by the
  * stdio bridge, which deliberately holds no game state of its own. REST
  * responses carry the move history so the bridge can build the same
  * agent-facing views (boardText / moves / hotPoints) as the in-process API.
  */
-export class HttpApi implements GomokuApi {
+export class HttpApi implements ArenaApi {
   private readonly baseUrl: string;
   /** Participant id this bridge claimed, sent on every later request. */
   private participantId: string | undefined;
@@ -183,7 +183,7 @@ export class HttpApi implements GomokuApi {
       headers['content-type'] = 'application/json';
     }
     if (this.participantId !== undefined) {
-      headers['x-gomoku-participant'] = this.participantId;
+      headers['x-arena-participant'] = this.participantId;
     }
 
     let response: Response;
@@ -195,9 +195,9 @@ export class HttpApi implements GomokuApi {
       });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      throw new GomokuApiError(
+      throw new ArenaApiError(
         'BACKEND_UNAVAILABLE',
-        `无法连接 gomoku 后端 ${this.baseUrl}。请先运行 "pnpm start"（生产）或 "pnpm dev"（开发）启动服务，然后重试。(${detail})`,
+        `无法连接 arena 后端 ${this.baseUrl}。请先运行 "pnpm start"（生产）或 "pnpm dev"（开发）启动服务，然后重试。(${detail})`,
       );
     }
 
@@ -213,7 +213,7 @@ export class HttpApi implements GomokuApi {
     }
 
     if (payload === null) {
-      throw new GomokuApiError(
+      throw new ArenaApiError(
         'INTERNAL_ERROR',
         `后端返回了非 JSON 响应 (HTTP ${response.status})。`,
       );
@@ -222,7 +222,7 @@ export class HttpApi implements GomokuApi {
     return payload as T;
   }
 
-  private toApiError(payload: unknown, status: number): GomokuApiError {
+  private toApiError(payload: unknown, status: number): ArenaApiError {
     if (isRecord(payload) && isRecord(payload.error)) {
       const { code, message } = payload.error;
       const state = isRecord(payload.state)
@@ -231,7 +231,7 @@ export class HttpApi implements GomokuApi {
       const history = Array.isArray(payload.history)
         ? (payload.history as unknown as Move[])
         : null;
-      return new GomokuApiError(
+      return new ArenaApiError(
         typeof code === 'string' ? (code as ErrorCode) : 'INTERNAL_ERROR',
         typeof message === 'string' ? message : `HTTP ${status}`,
         state,
@@ -239,16 +239,16 @@ export class HttpApi implements GomokuApi {
       );
     }
 
-    return new GomokuApiError(
+    return new ArenaApiError(
       'INTERNAL_ERROR',
       `后端请求失败 (HTTP ${status})。`,
     );
   }
 }
 
-export function createStdioServer(api: GomokuApi): McpServer {
+export function createStdioServer(api: ArenaApi): McpServer {
   const server = new McpServer(
-    { name: 'gomoku', version: '0.1.0' },
+    { name: 'arena', version: '0.1.0' },
     { instructions: SERVER_INSTRUCTIONS },
   );
   registerTools(server, api);
@@ -261,10 +261,10 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   // stdout is the JSON-RPC channel: logs must go to stderr.
-  console.error(`[gomoku-mcp] stdio bridge ready, backend: ${serverUrl}`);
+  console.error(`[agent-arena] stdio bridge ready, backend: ${serverUrl}`);
 }
 
 main().catch((error: unknown) => {
-  console.error('[gomoku-mcp] fatal error', error);
+  console.error('[agent-arena] fatal error', error);
   process.exit(1);
 });
