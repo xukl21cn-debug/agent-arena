@@ -996,20 +996,23 @@ export class GameRoom {
     }
   }
 
-  /** Mirror a seated participant into `GameState.seats` so the board agrees. */
+  /** Mirror a seated participant into `seats` so the board agrees. */
   private syncSeat(seat: StoneColor, participant: Participant): void {
-    const current = this.gomoku();
-    this.state = {
-      ...current,
-      seats: {
-        ...current.seats,
-        [seat]: {
-          id: participant.id,
-          kind: participant.kind,
-          name: participant.name,
-        },
+    // Either game: the seats record has the same shape on GameState and
+    // GoState, and joining must work whatever the room currently runs.
+    const seats = {
+      ...this.state.seats,
+      [seat]: {
+        id: participant.id,
+        kind: participant.kind,
+        name: participant.name,
       },
     };
+    if (this.state.game === 'go') {
+      this.state = { ...this.go(), seats };
+      return;
+    }
+    this.state = { ...this.gomoku(), seats };
   }
 
   /**
