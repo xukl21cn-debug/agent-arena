@@ -329,17 +329,32 @@ describe('PresenceRegistry', () => {
     expect(seen).toEqual(['r1']);
   });
 
-  it('does not sweep rooms that still have a viewer or a parked wait', () => {
+  it('sweeps watched rooms too, so an open tab sees the agent drop', () => {
+    // A viewer is evidence about the human seat only; agent sessions must
+    // still expire underneath it, or the watching tab never learns the agent
+    // is gone until some unrelated event re-renders the room.
     const clock = { now: NOW };
     const reg = registry(clock);
     const seen: string[] = [];
     reg.onChange((roomId) => seen.push(roomId));
 
-    reg.attachViewer('r1');
-    clock.now += 60_000;
+    const detach = reg.attachViewer('r1');
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    clock.now += 91_000;
     seen.length = 0;
     reg.sweep();
-    expect(seen).toEqual([]);
+    expect(seen).toEqual(['r1']);
+    expect(snapshot(reg)[1]?.presence).toBe('disconnected');
+    // The viewer itself keeps the human seat alive through the same sweep.
+    expect(snapshot(reg)[0]?.presence).toBe('idle');
+
+    detach();
+  });
+
+  it('does not sweep seats that have a parked wait', () => {
+    const reg = registry();
+    const seen: string[] = [];
+    reg.onChange((roomId) => seen.push(roomId));
 
     reg.beginWait('r1', 'white');
     seen.length = 0;

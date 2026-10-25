@@ -342,6 +342,11 @@ export class PresenceRegistry implements PresenceSource {
    * Two windows matter: a session that stopped calling expires at
    * `sessionIdleMs`, while a seat with no session at all expires at
    * `staleAfterMs`. Both only change what the UI shows.
+   *
+   * A watching browser tab does not stop the sweep: it is evidence about the
+   * human seat only (judged by watchers in snapshot), never about agent
+   * sessions. Skipping watched rooms would keep the one tab that is looking
+   * at the board from ever learning that an agent went silent.
    */
   sweep(): void {
     const now = this.now();
@@ -350,9 +355,6 @@ export class PresenceRegistry implements PresenceSource {
     for (const [key, signals] of this.seats) {
       const roomId = roomOf(key);
       if (signals.waits > 0) {
-        continue;
-      }
-      if ((this.viewers.get(roomId) ?? 0) > 0) {
         continue;
       }
 
