@@ -8,6 +8,7 @@ import type {
   CommentaryKind,
   CommentaryMood,
   ErrorCode,
+  NewGameRequest,
   RoomPhase,
   StoneColor,
 } from '@arena/shared';
@@ -35,13 +36,21 @@ export interface ArenaApi {
   ): Promise<AgentJoinResponse>;
   /** Leave the room, freeing the seat. */
   leaveGame(roomId: string): Promise<{ ok: boolean }>;
-  newGame(roomId: string, agentColor?: StoneColor): Promise<AgentStateResponse>;
+  newGame(roomId: string, options?: NewGameRequest): Promise<AgentStateResponse>;
   getState(roomId: string): Promise<AgentStateResponse>;
   waitForTurn(
     roomId: string,
     timeoutMs: number,
   ): Promise<AgentWaitForTurnResponse>;
   placeStone(roomId: string, row: number, col: number): Promise<AnyAgentStateView>;
+  /** Pass a turn (Go only; a gomoku room answers WRONG_GAME). */
+  passGame(roomId: string): Promise<AnyAgentStateView>;
+  /** Mark a dead stone during scoring (Go only; NOT_SCORING until M3). */
+  markDead(roomId: string, row: number, col: number): Promise<AnyAgentStateView>;
+  /** Confirm the score (Go only; NOT_SCORING until M3). */
+  confirmScore(roomId: string): Promise<AnyAgentStateView>;
+  /** Leave scoring and resume playing (Go only; NOT_SCORING until M3). */
+  resumePlay(roomId: string): Promise<AnyAgentStateView>;
   resign(roomId: string): Promise<AnyAgentStateView>;
   say(
     roomId: string,

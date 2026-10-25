@@ -29,6 +29,18 @@ export interface NewRoomRequest {
 
 export interface NewGameRequest {
   agentColor?: StoneColor;
+  /**
+   * Which game to play; omitted stays gomoku so existing clients keep their
+   * behaviour. Go rule parameters outside the v1 envelope (non-9 board,
+   * non-simple ko) are rejected with UNSUPPORTED_RULE.
+   */
+  game?: 'gomoku' | 'go';
+  /** Go: must be 9 in v1. Gomoku: forwarded to the existing rule set. */
+  boardSize?: number;
+  /** Go only (default 7.5); rejected for gomoku. */
+  komi?: number;
+  /** Go only (default simple); rejected for gomoku. */
+  koRule?: 'simple';
 }
 
 export interface MoveRequest {

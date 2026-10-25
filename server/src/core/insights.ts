@@ -5,6 +5,8 @@ import type {
   AnyMove,
   Cell,
   GameState,
+  GoAgentStateView,
+  GoState,
   HotPoint,
   HotPointEffect,
   MoveRecord,
@@ -12,6 +14,7 @@ import type {
   StoneColor,
 } from '@arena/shared';
 import { opposite } from './engine.js';
+import { renderGoBoardText, summarizeGroups } from './go.js';
 import { findWinLine } from './rules.js';
 
 const DIRECTIONS = [
@@ -483,17 +486,59 @@ export function toAgentStateView(
 }
 
 /**
- * Discriminating entry for the state union. Go rendering lands with the Go
- * room wiring (P3b-2); until then a Go state reaching this line is a bug
- * upstream, and failing loudly beats rendering a gomoku view of it.
+ * GoState rendered for LLM agents: monospace board picture, compact move
+ * records, prisoner counts and block summaries. Facts only — the liberties,
+ * sizes and coordinates say what the position is; whether a group should run
+ * or die stays the model's judgement (PROPOSAL-GO-MCP §5.2).
+ */
+export function toGoAgentStateView(
+  state: GoState,
+  history: readonly AnyMove[] | null,
+  options: AgentViewOptions = {},
+): GoAgentStateView {
+  const recent = options.recentMoves;
+  const known = history ?? [];
+  const moves =
+    recent !== undefined && known.length > recent ? known.slice(-recent) : known;
+
+  // renderGoBoardText highlights a placement's point; a pass has none, so it
+  // renders as a plain board plus the move record.
+  const lastPlacement =
+    state.lastMove && !('kind' in state.lastMove) ? state.lastMove : null;
+
+  const { board: _board, ...rest } = state;
+  return {
+    ...rest,
+    boardText: renderGoBoardText(state.board, {
+      lastMove: lastPlacement,
+      lastCaptured: state.lastCaptured,
+    }),
+    moves: moves.map(toMoveRecord),
+    movesOmitted:
+      history === null ? state.moveCount : known.length - moves.length,
+    captures: {
+      black: state.captures.black,
+      white: state.captures.white,
+      lastCaptured: state.lastCaptured,
+    },
+    groups: summarizeGroups(state.board),
+    // M3 owns the scoring phase; until it lands 'scoring' is unreachable and
+    // there is nothing to preview.
+    scorePreview: null,
+  };
+}
+
+/**
+ * Discriminating entry for the state union: the view is picked by `game`,
+ * so a Go room gets the Go radar and a gomoku room the gomoku view.
  */
 export function toAnyAgentStateView(
   state: AnyGameState,
   history: readonly AnyMove[] | null,
   options: AgentViewOptions = {},
 ): AnyAgentStateView {
-  if (state.game !== 'gomoku') {
-    throw new Error('Go agent views are not implemented yet (P3b-2).');
+  if (state.game === 'go') {
+    return toGoAgentStateView(state, history, options);
   }
   return toAgentStateView(state, history, options);
 }

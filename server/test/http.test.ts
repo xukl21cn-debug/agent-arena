@@ -20,12 +20,16 @@ let baseUrl: string;
 let wsUrl: string;
 
 const TOOL_NAMES = [
+  'confirm_score',
   'get_state',
   'join_game',
   'leave_room',
+  'mark_dead',
   'new_game',
+  'pass',
   'place_stone',
   'resign',
+  'resume_play',
   'say',
   'wait_for_turn',
 ];

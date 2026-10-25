@@ -10,8 +10,10 @@ import {
   type CommentaryMood,
   type ErrorCode,
   type GameState,
+  type GoState,
   type IdentityProblem,
   type Move,
+  type NewGameRequest,
   type Participant,
   type ParticipantView,
   type PlayerSpec,
@@ -29,6 +31,14 @@ import {
   resignGame,
   startGame,
 } from '../core/engine.js';
+import { resolveRules } from '../core/rules.js';
+import {
+  applyGoPass,
+  applyGoPlacement,
+  resignGoGame,
+  resolveGoRules,
+  startGoGame,
+} from '../core/go-game.js';
 import { seatLabel, type PresenceSource } from '../core/presence.js';
 import { ParticipantRoster } from './participant-roster.js';
 import type { PersistedRoom, RoomRepository } from './repository.js';
@@ -67,11 +77,11 @@ export interface RoomActionFailure {
 }
 
 export type MoveActionResult =
-  | { ok: true; state: GameState; move: Move }
+  | { ok: true; state: AnyGameState; move: AnyMove }
   | RoomActionFailure;
 
 export type StateActionResult =
-  | { ok: true; state: GameState }
+  | { ok: true; state: AnyGameState }
   | RoomActionFailure;
 
 interface Waiter {
@@ -464,8 +474,15 @@ export class GameRoom {
    * and identity across rematches, which is what lets a connected agent simply
    * keep playing instead of re-joining every game. `agentColor` seeds the
    * seats only when the roster has nobody seated — the pre-participant path.
+   *
+   * `game` picks what is played; omitted it stays gomoku, so every existing
+   * client keeps its exact behaviour. A room binds one game per game: playing
+   * the other one means starting a new game. Go rule parameters outside the
+   * v1 envelope (anything but 9×9 / simple ko) are rejected with
+   * UNSUPPORTED_RULE instead of silently accepted.
    */
-  newGame(options: { agentColor?: StoneColor } = {}): AnyGameState {
+  newGame(options: NewGameRequest = {}): AnyGameState {
+    const game = options.game ?? 'gomoku';
     const agentColor = options.agentColor ?? this.getAgentSeat() ?? 'white';
     const humanColor = opposite(agentColor);
 
@@ -479,8 +496,37 @@ export class GameRoom {
       white: seatSpecOf(seated.white, agentColor === 'white' ? 'agent' : 'human'),
     };
 
-    const prev = this.gomoku();
-    this.state = startGame(prev, seats, { rules: prev.rules });
+    const prev = this.state;
+    if (game === 'go') {
+      const resolved = resolveGoRules({
+        ...(options.boardSize === undefined ? {} : { boardSize: options.boardSize }),
+        ...(options.komi === undefined ? {} : { komi: options.komi }),
+        ...(options.koRule === undefined ? {} : { koRule: options.koRule }),
+      });
+      if (!resolved.ok) {
+        throw new RoomError('UNSUPPORTED_RULE', resolved.message);
+      }
+      this.state = startGoGame(prev, seats, { rules: resolved.rules });
+    } else {
+      if (options.komi !== undefined || options.koRule !== undefined) {
+        throw new RoomError(
+          'UNSUPPORTED_RULE',
+          'komi and koRule are Go-only parameters.',
+        );
+      }
+      // Gomoku rules carry over from the previous gomoku game; a Go state has
+      // none to inherit, so the defaults apply.
+      const baseRules = prev.game === 'gomoku' ? prev.rules : undefined;
+      const rules = resolveRules({
+        ...(baseRules ?? {}),
+        ...(options.boardSize === undefined ? {} : { boardSize: options.boardSize }),
+      });
+      this.state = startGame(
+        { roomId: prev.roomId, version: prev.version },
+        seats,
+        { rules },
+      );
+    }
     this.history = [];
     this.commentaryLog = [];
 
@@ -526,8 +572,102 @@ export class GameRoom {
     return this.moveAt(identity.seat, row, col);
   }
 
+  /**
+   * Pass for an explicit caller. Go only: a gomoku room answers WRONG_GAME,
+   * which is also what keeps the four Go-only tools distinguishable from a
+   * plain mistake.
+   */
+  passAs(ref: ActorRef): MoveActionResult {
+    const identity = this.resolve(ref);
+    if (!identity.ok) {
+      return this.failure(identity.code, identity.message);
+    }
+    return this.passAt(identity.seat);
+  }
+
+  /** Mark dead stones; the scoring flow itself lands in M3. */
+  markDeadAs(ref: ActorRef, row: number, col: number): StateActionResult {
+    void row;
+    void col;
+    return this.scoringStub('mark_dead');
+  }
+
+  /** Confirm the score; the scoring flow itself lands in M3. */
+  confirmScoreAs(ref: ActorRef): StateActionResult {
+    return this.scoringStub('confirm_score');
+  }
+
+  /** Return to playing from scoring; the scoring flow itself lands in M3. */
+  resumePlayAs(ref: ActorRef): StateActionResult {
+    return this.scoringStub('resume_play');
+  }
+
+  /**
+   * Every scoring-phase action lands here until M3: the rooms can only reach
+   * playing/finished for Go, so the honest answer is NOT_SCORING (or
+   * WRONG_GAME in a gomoku room), never a made-up confirmation.
+   */
+  private scoringStub(tool: 'mark_dead' | 'confirm_score' | 'resume_play'): StateActionResult {
+    if (this.state.game !== 'go') {
+      return this.failure('WRONG_GAME', `${tool} is only available in Go.`);
+    }
+    return this.failure('NOT_SCORING', `${tool} needs the scoring phase (not implemented yet).`);
+  }
+
   private moveAt(seat: StoneColor, row: number, col: number): MoveActionResult {
+    if (this.state.game === 'go') {
+      return this.moveGoAt(seat, row, col);
+    }
+    return this.moveGomokuAt(seat, row, col);
+  }
+
+  private moveGomokuAt(seat: StoneColor, row: number, col: number): MoveActionResult {
     const result = applyMove(this.gomoku(), seat, row, col);
+    if (!result.ok) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+        state: this.state,
+      };
+    }
+
+    this.state = result.state;
+    this.history.push(result.move);
+
+    this.emitState('move');
+    this.save();
+    return result;
+  }
+
+  /**
+   * Go placement: the rules (capture / ko / suicide) live in core/go.ts and
+   * this only forwards the engine's verdict and moves the bookkeeping along.
+   */
+  private moveGoAt(seat: StoneColor, row: number, col: number): MoveActionResult {
+    const result = applyGoPlacement(this.go(), seat, row, col);
+    if (!result.ok) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+        state: this.state,
+      };
+    }
+
+    this.state = result.state;
+    this.history.push(result.move);
+
+    this.emitState('move');
+    this.save();
+    return result;
+  }
+
+  private passAt(seat: StoneColor): MoveActionResult {
+    if (this.state.game !== 'go') {
+      return this.failure('WRONG_GAME', 'pass is only available in Go.');
+    }
+    const result = applyGoPass(this.state, seat);
     if (!result.ok) {
       return {
         ok: false,
@@ -564,7 +704,10 @@ export class GameRoom {
   }
 
   private resignAt(seat: StoneColor): StateActionResult {
-    const result = resignGame(this.gomoku(), seat);
+    const result =
+      this.state.game === 'go'
+        ? resignGoGame(this.state, seat)
+        : resignGame(this.gomoku(), seat);
     if (!result.ok) {
       return {
         ok: false,
@@ -689,13 +832,22 @@ export class GameRoom {
   }
 
   /**
-   * The gomoku engine entry for this room. P3b-2 wires Go rooms into the
-   * room layer; until then no code path can put a Go state in a room, and
-   * this guard keeps that type-level claim honest without a cast.
+   * The gomoku engine entry for this room: narrows the union or fails loudly.
+   * Called from paths that are gomoku-only by construction (the dispatcher
+   * has already checked `state.game`), so the throw is unreachable in
+   * practice — it keeps the narrowing honest without a cast.
    */
   private gomoku(): GameState {
     if (this.state.game !== 'gomoku') {
-      throw new RoomError('UNSUPPORTED_RULE', 'Go is not wired into rooms yet.');
+      throw new RoomError('WRONG_GAME', 'This room is not running gomoku.');
+    }
+    return this.state;
+  }
+
+  /** The Go counterpart of {@link gomoku}: narrows the union or fails loudly. */
+  private go(): GoState {
+    if (this.state.game !== 'go') {
+      throw new RoomError('WRONG_GAME', 'This room is not running Go.');
     }
     return this.state;
   }

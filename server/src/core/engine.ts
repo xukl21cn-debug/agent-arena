@@ -68,7 +68,7 @@ export function createInitialState(
 }
 
 export function startGame(
-  prev: GameState,
+  prev: { roomId: string; version: number; rules?: RuleSet },
   seats: Record<StoneColor, PlayerSpec>,
   options: StartGameOptions = {},
 ): GameState {

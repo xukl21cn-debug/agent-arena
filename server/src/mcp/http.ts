@@ -10,6 +10,7 @@ import type {
   Commentary,
   CommentaryKind,
   CommentaryMood,
+  NewGameRequest,
   StoneColor,
 } from '@arena/shared';
 import { AGENT_RECENT_MOVES } from '@arena/shared';
@@ -19,7 +20,7 @@ import {
   type AgentViewOptions,
 } from '../core/insights.js';
 import { currentSession, SessionBindings, sessionContext } from '../core/session-context.js';
-import { RoomError, type ActorRef, type GameRoom } from '../rooms/room.js';
+import { RoomError, type ActorRef, type GameRoom, type StateActionResult } from '../rooms/room.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
 import {
   ArenaApiError,
@@ -194,10 +195,24 @@ export class InProcessApi implements ArenaApi {
 
   async newGame(
     roomId: string,
-    agentColor?: StoneColor,
+    options: NewGameRequest = {},
   ): Promise<AgentStateResponse> {
     const room = this.getOrCreateRoom(roomId);
-    room.newGame({ agentColor });
+    try {
+      room.newGame(options);
+    } catch (error) {
+      // Unsupported rule shapes (non-9 board, non-simple ko) are model-facing
+      // answers, not crashes.
+      if (error instanceof RoomError) {
+        throw new ArenaApiError(
+          error.code,
+          error.message,
+          room.getState(),
+          room.getHistory(),
+        );
+      }
+      throw error;
+    }
     const seat = this.callerSeat(room);
     this.notePresence(roomId, seat);
     return { state: agentView(room), yourColor: seat };
@@ -264,6 +279,49 @@ export class InProcessApi implements ArenaApi {
       );
     }
     return agentView(room, RECENT);
+  }
+
+  /**
+   * Shared body of the four Go-only actions: resolve the caller, act on the
+   * room, and turn a failure into a model-actionable error that still carries
+   * state and history.
+   */
+  private async goAction(
+    roomId: string,
+    action: (room: GameRoom, ref: ActorRef) => StateActionResult,
+  ): Promise<AnyAgentStateView> {
+    const room = this.requireRoom(roomId);
+    const ref = this.actorRef(roomId, 'agent');
+    const identity = room.resolve(ref);
+    if (identity.ok) {
+      this.notePresence(roomId, identity.seat);
+    }
+    const result = action(room, ref);
+    if (!result.ok) {
+      throw new ArenaApiError(
+        result.code,
+        result.message,
+        result.state,
+        room.getHistory(),
+      );
+    }
+    return agentView(room, RECENT);
+  }
+
+  async passGame(roomId: string): Promise<AnyAgentStateView> {
+    return this.goAction(roomId, (room, ref) => room.passAs(ref));
+  }
+
+  async markDead(roomId: string, row: number, col: number): Promise<AnyAgentStateView> {
+    return this.goAction(roomId, (room, ref) => room.markDeadAs(ref, row, col));
+  }
+
+  async confirmScore(roomId: string): Promise<AnyAgentStateView> {
+    return this.goAction(roomId, (room, ref) => room.confirmScoreAs(ref));
+  }
+
+  async resumePlay(roomId: string): Promise<AnyAgentStateView> {
+    return this.goAction(roomId, (room, ref) => room.resumePlayAs(ref));
   }
 
   async resign(roomId: string): Promise<AnyAgentStateView> {

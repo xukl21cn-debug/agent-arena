@@ -1260,3 +1260,21 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+/* Go placeholder: the web board for Go lands after P3b-3. */
+.go-placeholder {
+  border: 1px dashed var(--border, #ccc);
+  border-radius: 12px;
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--muted, #777);
+  display: grid;
+  gap: 6px;
+}
+
+.go-placeholder-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text, #222);
+}

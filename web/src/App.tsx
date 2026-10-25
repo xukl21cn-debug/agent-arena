@@ -183,26 +183,36 @@ export default function App() {
             participants={participants}
           />
 
-          <Board
-            state={gomokuState}
-            humanColor={humanColor}
-            busy={busy}
-            overlay={overlay}
-            onPlay={handlePlay}
-          />
+          {gomokuState === null && state !== null ? (
+            // A Go state: the web has no Go board yet (lands after P3b-3).
+            <div className="go-placeholder">
+              <p className="go-placeholder-title">围棋模式</p>
+              <p>网页围棋界面尚未开放。请在 MCP 端对局（new_game 传 game: &quot;go&quot;），或开一局五子棋。</p>
+            </div>
+          ) : (
+            <>
+              <Board
+                state={gomokuState}
+                humanColor={humanColor}
+                busy={busy}
+                overlay={overlay}
+                onPlay={handlePlay}
+              />
 
-          <Controls
-            state={gomokuState}
-            humanColor={humanColor}
-            spectator={spectator}
-            phase={phase}
-            yourReady={yourReady}
-            waitingSince={waitingSince}
-            busy={busy}
-            onStart={handleStart}
-            onReady={handleReady}
-            onResign={handleResign}
-          />
+              <Controls
+                state={gomokuState}
+                humanColor={humanColor}
+                spectator={spectator}
+                phase={phase}
+                yourReady={yourReady}
+                waitingSince={waitingSince}
+                busy={busy}
+                onStart={handleStart}
+                onReady={handleReady}
+                onResign={handleResign}
+              />
+            </>
+          )}
 
           <p className="rule-note">15 × 15 · 黑先 · 无禁手 · 五连获胜</p>
         </div>

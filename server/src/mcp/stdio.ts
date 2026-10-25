@@ -12,6 +12,7 @@ import type {
   CommentaryMood,
   ErrorCode,
   MutationResponse,
+  NewGameRequest,
   RoomView,
   StoneColor,
   WaitForTurnResponse,
@@ -101,12 +102,12 @@ export class HttpApi implements ArenaApi {
 
   async newGame(
     roomId: string,
-    agentColor?: StoneColor,
+    options: NewGameRequest = {},
   ): Promise<AgentStateResponse> {
     const payload = await this.request<MutationResponse>(
       'POST',
       `/api/rooms/${encodeURIComponent(roomId)}/games`,
-      agentColor === undefined ? {} : { agentColor },
+      options,
     );
     const state = payload.state;
     return {
@@ -161,6 +162,39 @@ export class HttpApi implements ArenaApi {
       { actor: 'agent' },
     );
     return toAnyAgentStateView(payload.state, payload.history, RECENT);
+  }
+
+  async passGame(roomId: string): Promise<AnyAgentStateView> {
+    const payload = await this.request<MutationResponse>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/pass`,
+      { actor: 'agent' },
+    );
+    return toAnyAgentStateView(payload.state, payload.history, RECENT);
+  }
+
+  /**
+   * The three scoring actions answer NOT_SCORING at the bridge until M3 ships
+   * the REST endpoints; the in-process API answers the same way. The code is
+   * still the honest one — the phase cannot be reached yet.
+   */
+  private scoringUnavailable(tool: string): never {
+    throw new ArenaApiError(
+      'NOT_SCORING',
+      `${tool} needs the scoring phase (not implemented yet).`,
+    );
+  }
+
+  async markDead(_roomId: string, _row: number, _col: number): Promise<AnyAgentStateView> {
+    this.scoringUnavailable('mark_dead');
+  }
+
+  async confirmScore(_roomId: string): Promise<AnyAgentStateView> {
+    this.scoringUnavailable('confirm_score');
+  }
+
+  async resumePlay(_roomId: string): Promise<AnyAgentStateView> {
+    this.scoringUnavailable('resume_play');
   }
 
   async say(

@@ -98,6 +98,36 @@ function colorOf(value: unknown): StoneColor | undefined {
   throw new RoomError('INVALID_REQUEST', 'agentColor must be "black" or "white".');
 }
 
+function gameOf(value: unknown): 'gomoku' | 'go' | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === 'gomoku' || value === 'go') {
+    return value;
+  }
+  throw new RoomError('INVALID_REQUEST', 'game must be "gomoku" or "go".');
+}
+
+function koRuleOf(value: unknown): 'simple' | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === 'simple') {
+    return value;
+  }
+  throw new RoomError('INVALID_REQUEST', 'koRule only supports "simple" in v1.');
+}
+
+function komiOf(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new RoomError('INVALID_REQUEST', 'komi must be a finite number.');
+  }
+  return value;
+}
+
 function integerOf(value: unknown, name: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     throw new RoomError('INVALID_REQUEST', `${name} must be an integer.`);
@@ -463,8 +493,47 @@ export function createApiRouter(
   router.post('/rooms/:roomId/games', (req, res) => {
     const room = roomOrThrow(manager, req.params.roomId);
     const body = bodyOf(req);
-    const state = room.newGame({ agentColor: colorOf(body.agentColor) });
+    // Omitted game stays gomoku — the exact pre-Go behaviour for old clients.
+    // Unsupported rule shapes throw UNSUPPORTED_RULE (never silently
+    // accepted); the error handler turns it into a 400.
+    const state = room.newGame({
+      ...(gameOf(body.game) === undefined ? {} : { game: gameOf(body.game) }),
+      ...(colorOf(body.agentColor) === undefined
+        ? {}
+        : { agentColor: colorOf(body.agentColor) }),
+      ...(body.boardSize === undefined
+        ? {}
+        : { boardSize: integerOf(body.boardSize, 'boardSize') }),
+      ...(komiOf(body.komi) === undefined ? {} : { komi: komiOf(body.komi) }),
+      ...(koRuleOf(body.koRule) === undefined
+        ? {}
+        : { koRule: koRuleOf(body.koRule) }),
+    });
     res.json({ state, history: [...room.getHistory()] });
+  });
+
+  /** Pass a turn (Go only; a gomoku room answers WRONG_GAME). */
+  router.post('/rooms/:roomId/pass', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const body = bodyOf(req);
+
+    const ref = actorRefOf(req, body);
+    if ('actor' in ref) {
+      touchActor(manager, room, ref.actor);
+    }
+
+    const result = room.passAs(ref);
+    if (!result.ok) {
+      const payload: ErrorResponse = {
+        error: { code: result.code, message: result.message },
+        state: result.state,
+        history: [...room.getHistory()],
+      };
+      res.status(statusForCode(result.code)).json(payload);
+      return;
+    }
+
+    res.json({ state: result.state, history: [...room.getHistory()] });
   });
 
   router.post('/rooms/:roomId/moves', (req, res) => {
