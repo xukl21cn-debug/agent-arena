@@ -10,8 +10,8 @@ import {
 /**
  * Raw connection evidence for one seat.
  *
- * P1a keys signals by seat; P1b moves the key to participant id when seats
- * become participants.
+ * Signals stay keyed by seat on purpose: who holds a seat is the roster's
+ * call, and the rendered view carries the seated participantId instead.
  */
 interface SeatSignals {
   /** MCP sessions currently attached to this seat, with their last activity. */
@@ -306,6 +306,9 @@ export class PresenceRegistry implements PresenceSource {
 
       views.push({
         seat,
+        // The roster decides who holds a seat; naming them here is what lets
+        // the UI tell two agents apart without guessing from labels.
+        ...(spec.id === undefined ? {} : { participantId: spec.id }),
         kind: spec.kind,
         label: seatLabel(seat, spec),
         presence: computePresence({

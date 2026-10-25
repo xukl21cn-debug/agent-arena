@@ -194,15 +194,19 @@ export class GameRoom {
    */
   getParticipants(): ParticipantView[] {
     if (!this.presence) {
-      return (['black', 'white'] as const).map((seat) => ({
-        seat,
-        kind: this.state.seats[seat].kind,
-        label: seatLabel(seat, this.state.seats[seat]),
-        presence: 'unknown' as const,
-        lastSeenAt: null,
-        waiting: false,
-        isTurn: false,
-      }));
+      return (['black', 'white'] as const).map((seat) => {
+        const spec = this.state.seats[seat];
+        return {
+          seat,
+          ...(spec.id === undefined ? {} : { participantId: spec.id }),
+          kind: spec.kind,
+          label: seatLabel(seat, spec),
+          presence: 'unknown' as const,
+          lastSeenAt: null,
+          waiting: false,
+          isTurn: false,
+        };
+      });
     }
 
     return this.presence.snapshot({

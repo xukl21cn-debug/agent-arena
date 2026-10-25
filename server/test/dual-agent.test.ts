@@ -120,6 +120,18 @@ describe('two agents in one room', () => {
       const state = await call(black, 'get_state', { roomId: 'duo' });
       expect(state.state.seats.black.name).toBe('dsh');
       expect(state.state.seats.white.name).toBe('codex');
+
+      // The rendered RoomView names both participants, so the UI can tell the
+      // two agents apart: ids differ and match what join_game handed out.
+      const response = await fetch(`${baseUrl}/api/rooms/duo`);
+      const view = (await response.json()) as {
+        participants: Array<{ seat: string; participantId?: string }>;
+      };
+      const ids = Object.fromEntries(
+        view.participants.map((item) => [item.seat, item.participantId]),
+      );
+      expect(ids.black).toBe(blackJoin.participantId);
+      expect(ids.white).toBe(whiteJoin.participantId);
     } finally {
       await black.close().catch(() => undefined);
       await white.close().catch(() => undefined);

@@ -76,8 +76,9 @@ export function computePresence(input: PresenceInput): PresenceState {
 
 /** One seat as the web UI and MCP responses render it. */
 export interface ParticipantView {
-  /** P1a keys identity by seat; the participant model lands in P1b. */
   seat: StoneColor;
+  /** Who holds the seat, when the roster knows; legacy seats have none. */
+  participantId?: string;
   kind: ParticipantKind;
   /** Display label: the declared name, else 你 / AI. */
   label: string;

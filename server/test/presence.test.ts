@@ -379,4 +379,31 @@ describe('PresenceRegistry', () => {
     reg.clearRoom('r1');
     expect(snapshot(reg)[1]?.presence).toBe('unknown');
   });
+
+  it('names the seated participant in the view', () => {
+    // Two agents cannot be told apart by label or kind alone; the id is the
+    // link from a rendered seat back to the roster entry.
+    const reg = registry();
+    const views = reg.snapshot({
+      roomId: 'duo',
+      seats: {
+        black: { kind: 'agent', id: 'p_black', name: 'dsh' },
+        white: { kind: 'agent', id: 'p_white', name: 'codex' },
+      },
+      turn: null,
+      playing: false,
+    });
+    expect(views.map((view) => view.participantId)).toEqual([
+      'p_black',
+      'p_white',
+    ]);
+  });
+
+  it('omits participantId when the seat has nobody behind it', () => {
+    const views = snapshot(registry());
+    expect(views.map((view) => view.participantId)).toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
 });
