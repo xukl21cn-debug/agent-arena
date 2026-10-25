@@ -13,7 +13,7 @@ import {
   type CommentaryMood,
 } from '@arena/shared';
 import { ArenaApiError, type ArenaApi } from './api.js';
-import { toAgentStateView } from '../core/insights.js';
+import { toAnyAgentStateView } from '../core/insights.js';
 
 const COMMENTARY_KINDS = [
   'evaluation',
@@ -103,7 +103,7 @@ function errorResult(error: unknown): CallToolResult {
             // Errors carry history when the transport knows it; when it is
             // genuinely unavailable the view says so via movesOmitted.
             state: error.state
-              ? toAgentStateView(error.state, error.history, {
+              ? toAnyAgentStateView(error.state, error.history, {
                   recentMoves: AGENT_RECENT_MOVES,
                 })
               : null,

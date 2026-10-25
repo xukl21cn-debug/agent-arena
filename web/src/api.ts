@@ -1,7 +1,7 @@
 import type {
+  AnyGameState,
   Commentary,
   ErrorCode,
-  GameState,
   RoomView,
   StoneColor,
 } from '@arena/shared';
@@ -11,21 +11,21 @@ interface ErrorPayload {
     code?: string;
     message?: string;
   };
-  state?: GameState;
+  state?: AnyGameState;
 }
 
 interface MutationPayload {
-  state: GameState;
+  state: AnyGameState;
 }
 
 export class ApiError extends Error {
   readonly code: ErrorCode | 'NETWORK_ERROR';
-  readonly state: GameState | null;
+  readonly state: AnyGameState | null;
 
   constructor(
     code: ErrorCode | 'NETWORK_ERROR',
     message: string,
-    state: GameState | null = null,
+    state: AnyGameState | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -85,21 +85,21 @@ export const api = {
     return request<RoomView>(roomPath(roomId));
   },
 
-  newGame(roomId: string, agentColor: StoneColor): Promise<GameState> {
+  newGame(roomId: string, agentColor: StoneColor): Promise<AnyGameState> {
     return request<MutationPayload>(roomPath(roomId, '/games'), {
       method: 'POST',
       body: JSON.stringify({ agentColor }),
     }).then((payload) => payload.state);
   },
 
-  move(roomId: string, row: number, col: number): Promise<GameState> {
+  move(roomId: string, row: number, col: number): Promise<AnyGameState> {
     return request<MutationPayload>(roomPath(roomId, '/moves'), {
       method: 'POST',
       body: JSON.stringify({ row, col, actor: 'human' }),
     }).then((payload) => payload.state);
   },
 
-  resign(roomId: string): Promise<GameState> {
+  resign(roomId: string): Promise<AnyGameState> {
     return request<MutationPayload>(roomPath(roomId, '/resign'), {
       method: 'POST',
       body: JSON.stringify({ actor: 'human' }),

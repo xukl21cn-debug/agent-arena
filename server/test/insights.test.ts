@@ -461,9 +461,9 @@ describe('toAgentStateView', () => {
     expect(view.moveCount).toBe(3);
     expect(view.movesOmitted).toBe(0);
     expect(view.moves).toEqual([
-      { row: 7, col: 7, color: 'black', index: 1 },
-      { row: 8, col: 8, color: 'white', index: 2 },
-      { row: 7, col: 8, color: 'black', index: 3 },
+      { kind: 'place', row: 7, col: 7, color: 'black', index: 1 },
+      { kind: 'place', row: 8, col: 8, color: 'white', index: 2 },
+      { kind: 'place', row: 7, col: 8, color: 'black', index: 3 },
     ]);
     expect(view.boardText).toContain('O'); // white stone (black moved last)
     expect(view.boardText).toContain('x'); // latest move marker on (7,8)

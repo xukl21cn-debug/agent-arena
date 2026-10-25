@@ -3,6 +3,8 @@ import {
   MAX_COMMENTARY_LENGTH,
   MAX_COMMENTARY_LOG,
   type Actor,
+  type AnyGameState,
+  type AnyMove,
   type Commentary,
   type CommentaryKind,
   type CommentaryMood,
@@ -42,12 +44,12 @@ export class RoomError extends Error {
 }
 
 export type StateChangeCause = 'new_game' | 'move' | 'resign';
-export type StateListener = (state: GameState, cause: StateChangeCause) => void;
+export type StateListener = (state: AnyGameState, cause: StateChangeCause) => void;
 export type CommentaryListener = (commentary: Commentary) => void;
 export type PhaseListener = (roomId: string, phase: RoomPhase) => void;
 
 export interface WaitResult {
-  state: GameState;
+  state: AnyGameState;
   reason: WaitReason;
 }
 
@@ -61,7 +63,7 @@ export interface RoomActionFailure {
   ok: false;
   code: ErrorCode;
   message: string;
-  state: GameState;
+  state: AnyGameState;
 }
 
 export type MoveActionResult =
@@ -157,8 +159,8 @@ export class GameRoom {
   /** Who is in this room; outlives any single game. */
   private readonly roster = new ParticipantRoster();
 
-  private state: GameState;
-  private history: Move[] = [];
+  private state: AnyGameState;
+  private history: AnyMove[] = [];
   private commentaryLog: Commentary[] = [];
   /** Last phase listeners were told about, so repeats stay silent. */
   private lastPhase: RoomPhase = 'lobby';
@@ -181,7 +183,7 @@ export class GameRoom {
     this.lastPhase = this.computePhase();
   }
 
-  getState(): GameState {
+  getState(): AnyGameState {
     return this.state;
   }
 
@@ -263,6 +265,7 @@ export class GameRoom {
   getSummary(): RoomSummary {
     return {
       roomId: this.id,
+      game: this.state.game,
       status: this.state.status,
       phase: this.getPhase(),
       gameId: this.state.gameId,
@@ -372,11 +375,12 @@ export class GameRoom {
     if (seat !== null) {
       // The seat stays on the board but is no longer anyone's; keep the kind so
       // the UI can still label it.
+      const current = this.gomoku();
       this.state = {
-        ...this.state,
+        ...current,
         seats: {
-          ...this.state.seats,
-          [seat]: { kind: this.state.seats[seat].kind },
+          ...current.seats,
+          [seat]: { kind: current.seats[seat].kind },
         },
       };
     }
@@ -461,7 +465,7 @@ export class GameRoom {
    * keep playing instead of re-joining every game. `agentColor` seeds the
    * seats only when the roster has nobody seated — the pre-participant path.
    */
-  newGame(options: { agentColor?: StoneColor } = {}): GameState {
+  newGame(options: { agentColor?: StoneColor } = {}): AnyGameState {
     const agentColor = options.agentColor ?? this.getAgentSeat() ?? 'white';
     const humanColor = opposite(agentColor);
 
@@ -475,7 +479,8 @@ export class GameRoom {
       white: seatSpecOf(seated.white, agentColor === 'white' ? 'agent' : 'human'),
     };
 
-    this.state = startGame(this.state, seats, { rules: this.state.rules });
+    const prev = this.gomoku();
+    this.state = startGame(prev, seats, { rules: prev.rules });
     this.history = [];
     this.commentaryLog = [];
 
@@ -522,7 +527,7 @@ export class GameRoom {
   }
 
   private moveAt(seat: StoneColor, row: number, col: number): MoveActionResult {
-    const result = applyMove(this.state, seat, row, col);
+    const result = applyMove(this.gomoku(), seat, row, col);
     if (!result.ok) {
       return {
         ok: false,
@@ -559,7 +564,7 @@ export class GameRoom {
   }
 
   private resignAt(seat: StoneColor): StateActionResult {
-    const result = resignGame(this.state, seat);
+    const result = resignGame(this.gomoku(), seat);
     if (!result.ok) {
       return {
         ok: false,
@@ -658,7 +663,7 @@ export class GameRoom {
     };
   }
 
-  getHistory(): readonly Move[] {
+  getHistory(): readonly AnyMove[] {
     return this.history;
   }
 
@@ -681,6 +686,18 @@ export class GameRoom {
 
   private failure(code: ErrorCode, message: string): RoomActionFailure {
     return { ok: false, code, message, state: this.state };
+  }
+
+  /**
+   * The gomoku engine entry for this room. P3b-2 wires Go rooms into the
+   * room layer; until then no code path can put a Go state in a room, and
+   * this guard keeps that type-level claim honest without a cast.
+   */
+  private gomoku(): GameState {
+    if (this.state.game !== 'gomoku') {
+      throw new RoomError('UNSUPPORTED_RULE', 'Go is not wired into rooms yet.');
+    }
+    return this.state;
   }
 
   private reasonFor(seat: StoneColor, gameId: string): WaitReason | null {
@@ -780,10 +797,11 @@ export class GameRoom {
 
   /** Mirror a seated participant into `GameState.seats` so the board agrees. */
   private syncSeat(seat: StoneColor, participant: Participant): void {
+    const current = this.gomoku();
     this.state = {
-      ...this.state,
+      ...current,
       seats: {
-        ...this.state.seats,
+        ...current.seats,
         [seat]: {
           id: participant.id,
           kind: participant.kind,

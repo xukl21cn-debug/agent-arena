@@ -5,8 +5,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type {
   AgentStateResponse,
-  AgentStateView,
   AgentWaitForTurnResponse,
+  AnyAgentStateView,
   Commentary,
   CommentaryKind,
   CommentaryMood,
@@ -15,7 +15,7 @@ import type {
 import { AGENT_RECENT_MOVES } from '@arena/shared';
 import { clampWaitMs, type ServerConfig } from '../config.js';
 import {
-  toAgentStateView,
+  toAnyAgentStateView,
   type AgentViewOptions,
 } from '../core/insights.js';
 import { currentSession, SessionBindings, sessionContext } from '../core/session-context.js';
@@ -40,8 +40,8 @@ function checkRoomId(roomId: string): void {
 }
 
 /** Build the agent-facing view of a room's current game. */
-function agentView(room: GameRoom, options?: AgentViewOptions): AgentStateView {
-  return toAgentStateView(room.getState(), room.getHistory(), options);
+function agentView(room: GameRoom, options?: AgentViewOptions): AnyAgentStateView {
+  return toAnyAgentStateView(room.getState(), room.getHistory(), options);
 }
 
 /** Hot-path responses keep only recent moves; get_state returns everything. */
@@ -247,7 +247,7 @@ export class InProcessApi implements ArenaApi {
     roomId: string,
     row: number,
     col: number,
-  ): Promise<AgentStateView> {
+  ): Promise<AnyAgentStateView> {
     const room = this.requireRoom(roomId);
     const ref = this.actorRef(roomId, 'agent');
     const identity = room.resolve(ref);
@@ -266,7 +266,7 @@ export class InProcessApi implements ArenaApi {
     return agentView(room, RECENT);
   }
 
-  async resign(roomId: string): Promise<AgentStateView> {
+  async resign(roomId: string): Promise<AnyAgentStateView> {
     const room = this.requireRoom(roomId);
     const ref = this.actorRef(roomId, 'agent');
     const identity = room.resolve(ref);

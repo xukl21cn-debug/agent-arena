@@ -1,13 +1,13 @@
 import type {
   AgentStateResponse,
-  AgentStateView,
   AgentWaitForTurnResponse,
+  AnyAgentStateView,
+  AnyGameState,
+  AnyMove,
   Commentary,
   CommentaryKind,
   CommentaryMood,
   ErrorCode,
-  GameState,
-  Move,
   RoomPhase,
   StoneColor,
 } from '@arena/shared';
@@ -41,8 +41,8 @@ export interface ArenaApi {
     roomId: string,
     timeoutMs: number,
   ): Promise<AgentWaitForTurnResponse>;
-  placeStone(roomId: string, row: number, col: number): Promise<AgentStateView>;
-  resign(roomId: string): Promise<AgentStateView>;
+  placeStone(roomId: string, row: number, col: number): Promise<AnyAgentStateView>;
+  resign(roomId: string): Promise<AnyAgentStateView>;
   say(
     roomId: string,
     text: string,
@@ -59,7 +59,7 @@ export interface AgentJoinResponse {
   seat: StoneColor | null;
   /** Room lifecycle after this join (lobby / waiting / playing / …). */
   phase: RoomPhase;
-  state: AgentStateView;
+  state: AnyAgentStateView;
   /** Everyone else in the room, so the agent knows who it is playing. */
   participants: Array<{
     id: string;
@@ -76,14 +76,14 @@ export interface AgentJoinResponse {
  */
 export class ArenaApiError extends Error {
   readonly code: ErrorCode;
-  readonly state: GameState | null;
-  readonly history: readonly Move[] | null;
+  readonly state: AnyGameState | null;
+  readonly history: readonly AnyMove[] | null;
 
   constructor(
     code: ErrorCode,
     message: string,
-    state: GameState | null = null,
-    history: readonly Move[] | null = null,
+    state: AnyGameState | null = null,
+    history: readonly AnyMove[] | null = null,
   ) {
     super(message);
     this.name = 'ArenaApiError';
@@ -93,7 +93,7 @@ export class ArenaApiError extends Error {
   }
 }
 
-export function agentColorOf(state: GameState): StoneColor | null {
+export function agentColorOf(state: AnyGameState): StoneColor | null {
   if (state.seats.black.kind === 'agent') {
     return 'black';
   }

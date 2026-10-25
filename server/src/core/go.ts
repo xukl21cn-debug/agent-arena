@@ -1,4 +1,13 @@
-import type { Cell, StoneColor } from '@arena/shared';
+import type {
+  Cell,
+  GoBoard,
+  GoErrorCode,
+  GoGroupSummary,
+  GoGroupsView,
+  GoRules,
+  GoScore,
+  StoneColor,
+} from '@arena/shared';
 
 /**
  * 9-line Go rules engine (P3a / M1).
@@ -8,54 +17,18 @@ import type { Cell, StoneColor } from '@arena/shared';
  * M3, and the moment this file grows a dependency on them, P1c and P3b will
  * be fighting over the same new_game surface this engine deliberately never
  * touches.
+ *
+ * The rule/score/group types this engine produces live in @arena/shared so
+ * GoState and the web can reference them; only implementation details
+ * (GoMoveResult, GoBoardTextOptions) are defined here.
  */
 
 export const GO_BOARD_SIZE = 9;
 export const DEFAULT_KOMI = 7.5;
 
-export interface GoRules {
-  /** v1 is fixed at 9; other sizes are rejected by the game layer, not here. */
-  boardSize: 9;
-  /** Compensation for white playing second, added to WHITE's total. */
-  komi: number;
-  koRule: 'simple';
-}
-
-export type GoBoard = (StoneColor | null)[][];
-
-export type GoErrorCode = 'OUT_OF_BOUNDS' | 'CELL_OCCUPIED' | 'SUICIDE' | 'KO';
-
 export type GoMoveResult =
   | { ok: true; board: GoBoard; captured: Cell[]; koPoint: Cell | null }
   | { ok: false; code: GoErrorCode; message: string };
-
-/** Chinese area scoring result. Captures never enter these numbers. */
-export interface GoScore {
-  blackArea: number;
-  whiteArea: number;
-  komi: number;
-  blackTotal: number;
-  whiteTotal: number;
-  winner: StoneColor | 'draw';
-  margin: number;
-}
-
-export interface GoGroupSummary {
-  color: StoneColor;
-  stones: number;
-  /** Topmost stone, then leftmost — stable across calls for the same board. */
-  representative: Cell;
-  liberties: number;
-  /** Exact liberty coordinates for 1-2 liberty groups; omitted at 3+. */
-  libertyAt?: Cell[];
-}
-
-export interface GoGroupsView {
-  black: GoGroupSummary[];
-  white: GoGroupSummary[];
-  /** Groups beyond the per-color cap — counts, not prose to re-parse. */
-  omitted: { black: number; white: number };
-}
 
 /** A group summary carries more context than a bare stone list; 12 per color. */
 const GROUP_SUMMARY_LIMIT = 12;

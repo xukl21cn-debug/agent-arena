@@ -45,7 +45,8 @@ export function createInitialState(
   const resolved = resolveRules(rules);
 
   return {
-    schemaVersion: 1,
+    game: 'gomoku',
+    schemaVersion: 2,
     roomId,
     gameId: '',
     rules: resolved,
@@ -74,7 +75,8 @@ export function startGame(
   const rules = resolveRules(options.rules ?? prev.rules);
 
   return {
-    schemaVersion: 1,
+    game: 'gomoku',
+    schemaVersion: 2,
     roomId: prev.roomId,
     gameId: options.gameId ?? randomUUID(),
     rules,

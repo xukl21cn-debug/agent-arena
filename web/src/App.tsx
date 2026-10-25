@@ -54,19 +54,26 @@ export default function App() {
 
   useEffect(() => connect(roomId), [connect, roomId]);
 
-  const { human: humanColor, agent: agentColor, spectator } = seatColors(state);
-  const gameId = state?.gameId ?? null;
+  // The web renders gomoku only. A Go state cannot appear before P3b-2 wires
+  // Go rooms; until then the discriminated check is the honest narrowing.
+  const gomokuState = state?.game === 'gomoku' ? state : null;
+
+  const { human: humanColor, agent: agentColor, spectator } =
+    seatColors(gomokuState);
+  const gameId = gomokuState?.gameId ?? null;
 
   const canPlay =
-    state?.status === 'playing' &&
+    gomokuState?.status === 'playing' &&
     humanColor !== null &&
-    state.turn === humanColor &&
+    gomokuState.turn === humanColor &&
     !busy;
 
   // Whose side the commentary panel should track. In a dual-agent room there
   // is no fixed opponent: the live one is whoever is on turn.
   const onTurnSeat =
-    state !== null && state.status === 'playing' ? state.turn : null;
+    gomokuState !== null && gomokuState.status === 'playing'
+      ? gomokuState.turn
+      : null;
   const trackedSeat = spectator ? onTurnSeat : agentColor;
   const opponent =
     participants.find((item) => item.seat === trackedSeat) ?? null;
@@ -76,8 +83,8 @@ export default function App() {
   // "It is the AI's turn" is not the same as "the AI can move": an agent that
   // never connected must not read as thinking, or the player waits for nobody.
   const opponentState = opponentStatus(opponent, {
-    playing: state?.status === 'playing',
-    isOpponentTurn: trackedSeat !== null && state?.status === 'playing',
+    playing: gomokuState?.status === 'playing',
+    isOpponentTurn: trackedSeat !== null && gomokuState?.status === 'playing',
   });
 
   const visible = useMemo(
@@ -118,9 +125,11 @@ export default function App() {
   }, [humanColor, startGame]);
 
   const overlay =
-    state && state.status === 'finished' && !resultDismissed ? (
+    gomokuState &&
+    gomokuState.status === 'finished' &&
+    !resultDismissed ? (
       <ResultOverlay
-        state={state}
+        state={gomokuState}
         humanColor={humanColor}
         spectator={spectator}
         busy={busy}
@@ -165,7 +174,7 @@ export default function App() {
       <main className="arena">
         <div className="board-column">
           <StatusBar
-            state={state}
+            state={gomokuState}
             humanColor={humanColor}
             agentColor={agentColor}
             spectator={spectator}
@@ -175,7 +184,7 @@ export default function App() {
           />
 
           <Board
-            state={state}
+            state={gomokuState}
             humanColor={humanColor}
             busy={busy}
             overlay={overlay}
@@ -183,7 +192,7 @@ export default function App() {
           />
 
           <Controls
-            state={state}
+            state={gomokuState}
             humanColor={humanColor}
             spectator={spectator}
             phase={phase}

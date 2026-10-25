@@ -1,10 +1,12 @@
 import type {
   AgentStateView,
+  AnyAgentStateView,
+  AnyGameState,
+  AnyMove,
   Cell,
   GameState,
   HotPoint,
   HotPointEffect,
-  Move,
   MoveRecord,
   RuleSet,
   StoneColor,
@@ -427,8 +429,18 @@ export function renderBoardText(state: GameState): string {
   return lines.join('\n');
 }
 
-function toMoveRecord(move: Move): MoveRecord {
-  return { row: move.row, col: move.col, color: move.color, index: move.index };
+function toMoveRecord(move: AnyMove): MoveRecord {
+  // A pass is the only AnyMove carrying `kind`; placements are plain Moves.
+  if ('kind' in move) {
+    return { kind: 'pass', color: move.color, index: move.index };
+  }
+  return {
+    kind: 'place',
+    row: move.row,
+    col: move.col,
+    color: move.color,
+    index: move.index,
+  };
 }
 
 export interface AgentViewOptions {
@@ -450,7 +462,7 @@ export interface AgentViewOptions {
  */
 export function toAgentStateView(
   state: GameState,
-  history: readonly Move[] | null,
+  history: readonly AnyMove[] | null,
   options: AgentViewOptions = {},
 ): AgentStateView {
   const recent = options.recentMoves;
@@ -468,4 +480,20 @@ export function toAgentStateView(
     movesOmitted: history === null ? state.moveCount : known.length - moves.length,
     hotPoints: findHotPoints(state.board, state.rules),
   };
+}
+
+/**
+ * Discriminating entry for the state union. Go rendering lands with the Go
+ * room wiring (P3b-2); until then a Go state reaching this line is a bug
+ * upstream, and failing loudly beats rendering a gomoku view of it.
+ */
+export function toAnyAgentStateView(
+  state: AnyGameState,
+  history: readonly AnyMove[] | null,
+  options: AgentViewOptions = {},
+): AnyAgentStateView {
+  if (state.game !== 'gomoku') {
+    throw new Error('Go agent views are not implemented yet (P3b-2).');
+  }
+  return toAgentStateView(state, history, options);
 }

@@ -1,12 +1,17 @@
 import type {
   Actor,
+  AnyGameState,
+  AnyMove,
+  Cell,
   Commentary,
   CommentaryKind,
   CommentaryMood,
   ErrorCode,
+  GoGroupsView,
+  GoScore,
+  GoState,
   GameState,
   HotPoint,
-  Move,
   MoveRecord,
   PlayerSpec,
   RuleSet,
@@ -44,19 +49,19 @@ export interface SayRequest {
 }
 
 export interface StateResponse {
-  state: GameState;
+  state: AnyGameState;
   yourColor: StoneColor | null;
 }
 
 export interface WaitForTurnResponse extends StateResponse {
   reason: WaitReason;
-  history: Move[];
+  history: AnyMove[];
 }
 
 /** Successful mutation responses carry the state plus the full move history. */
 export interface MutationResponse {
-  state: GameState;
-  history: Move[];
+  state: AnyGameState;
+  history: AnyMove[];
 }
 
 /**
@@ -79,7 +84,7 @@ export interface AgentStateView extends Omit<GameState, 'board'> {
 }
 
 export interface AgentStateResponse {
-  state: AgentStateView;
+  state: AgentStateView | GoAgentStateView;
   yourColor: StoneColor | null;
 }
 
@@ -87,14 +92,40 @@ export interface AgentWaitForTurnResponse extends AgentStateResponse {
   reason: WaitReason;
 }
 
+/**
+ * GoState rendered for LLM agents: the 9×9 nested array becomes a monospace
+ * picture, moves compact to records, and block liberties arrive as
+ * pre-digested group summaries. Discriminated from {@link AgentStateView} by
+ * `game`; transports hand out {@link AnyAgentStateView}.
+ */
+export interface GoAgentStateView extends Omit<GoState, 'board'> {
+  /**
+   * Monospace grid: B=black, W=white, .=empty, lowercase = latest placement,
+   * × = points emptied by the most recent capture.
+   */
+  boardText: string;
+  /** Move records; passes carry kind 'pass' and no row/col. */
+  moves: MoveRecord[];
+  /** Earlier moves left out of `moves`; 0 means the list is complete. */
+  movesOmitted: number;
+  /** Prisoner counts plus the points the latest capture emptied. */
+  captures: { black: number; white: number; lastCaptured: Cell[] };
+  /** Block summaries, most endangered first; see {@link GoGroupsView}. */
+  groups: GoGroupsView;
+  /** Chinese-area score under the current dead-stone marks; null while playing. */
+  scorePreview: GoScore | null;
+}
+
+export type AnyAgentStateView = AgentStateView | GoAgentStateView;
+
 export interface ErrorResponse {
   error: {
     code: ErrorCode;
     message: string;
   };
-  state?: GameState;
+  state?: AnyGameState;
   /** Move history alongside `state`, so error views stay self-consistent. */
-  history?: Move[];
+  history?: AnyMove[];
 }
 
 export type ClientMessage = { type: 'ping' };
@@ -103,7 +134,7 @@ export type ServerMessage =
   | {
       type: 'hello';
       roomId: string;
-      state: GameState;
+      state: AnyGameState;
       commentary: Commentary[];
       phase: RoomPhase;
       participants: ParticipantView[];
@@ -111,7 +142,7 @@ export type ServerMessage =
   | {
       type: 'state';
       roomId: string;
-      state: GameState;
+      state: AnyGameState;
     }
   | {
       /** Presence changed (waiting / thinking / idle / disconnected). */

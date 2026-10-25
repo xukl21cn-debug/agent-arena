@@ -118,7 +118,8 @@ describe('createInitialState', () => {
   it('creates an idle, empty board with default rules', () => {
     const state = createInitialState('room-1', undefined, NOW);
 
-    expect(state.schemaVersion).toBe(1);
+    expect(state.game).toBe('gomoku');
+    expect(state.schemaVersion).toBe(2);
     expect(state.roomId).toBe('room-1');
     expect(state.gameId).toBe('');
     expect(state.status).toBe('idle');

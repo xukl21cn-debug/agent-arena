@@ -3,14 +3,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type {
   AgentStateResponse,
-  AgentStateView,
   AgentWaitForTurnResponse,
+  AnyAgentStateView,
+  AnyGameState,
+  AnyMove,
   Commentary,
   CommentaryKind,
   CommentaryMood,
   ErrorCode,
-  GameState,
-  Move,
   MutationResponse,
   RoomView,
   StoneColor,
@@ -19,7 +19,7 @@ import type {
 import { AGENT_RECENT_MOVES } from '@arena/shared';
 import { resolveServerUrl } from '../config.js';
 import {
-  toAgentStateView,
+  toAnyAgentStateView,
   type AgentViewOptions,
 } from '../core/insights.js';
 import {
@@ -66,8 +66,8 @@ export class HttpApi implements ArenaApi {
       name: string;
       seat: StoneColor | null;
       phase: AgentJoinResponse['phase'];
-      state: GameState;
-      history: Move[];
+      state: AnyGameState;
+      history: AnyMove[];
       participants: AgentJoinResponse['participants'];
     }>(
       'POST',
@@ -82,7 +82,7 @@ export class HttpApi implements ArenaApi {
       name: payload.name,
       seat: payload.seat,
       phase: payload.phase,
-      state: toAgentStateView(payload.state, payload.history),
+      state: toAnyAgentStateView(payload.state, payload.history),
       participants: payload.participants,
     };
   }
@@ -110,7 +110,7 @@ export class HttpApi implements ArenaApi {
     );
     const state = payload.state;
     return {
-      state: toAgentStateView(state, payload.history),
+      state: toAnyAgentStateView(state, payload.history),
       yourColor: agentColorOf(state),
     };
   }
@@ -121,7 +121,7 @@ export class HttpApi implements ArenaApi {
       `/api/rooms/${encodeURIComponent(roomId)}`,
     );
     return {
-      state: toAgentStateView(view.state, view.history),
+      state: toAnyAgentStateView(view.state, view.history),
       yourColor: agentColorOf(view.state),
     };
   }
@@ -135,7 +135,7 @@ export class HttpApi implements ArenaApi {
       `/api/rooms/${encodeURIComponent(roomId)}/wait-for-turn?actor=agent&timeoutMs=${encodeURIComponent(String(timeoutMs))}`,
     );
     return {
-      state: toAgentStateView(payload.state, payload.history, RECENT),
+      state: toAnyAgentStateView(payload.state, payload.history, RECENT),
       yourColor: payload.yourColor,
       reason: payload.reason,
     };
@@ -145,22 +145,22 @@ export class HttpApi implements ArenaApi {
     roomId: string,
     row: number,
     col: number,
-  ): Promise<AgentStateView> {
+  ): Promise<AnyAgentStateView> {
     const payload = await this.request<MutationResponse>(
       'POST',
       `/api/rooms/${encodeURIComponent(roomId)}/moves`,
       { row, col, actor: 'agent' },
     );
-    return toAgentStateView(payload.state, payload.history, RECENT);
+    return toAnyAgentStateView(payload.state, payload.history, RECENT);
   }
 
-  async resign(roomId: string): Promise<AgentStateView> {
+  async resign(roomId: string): Promise<AnyAgentStateView> {
     const payload = await this.request<MutationResponse>(
       'POST',
       `/api/rooms/${encodeURIComponent(roomId)}/resign`,
       { actor: 'agent' },
     );
-    return toAgentStateView(payload.state, payload.history, RECENT);
+    return toAnyAgentStateView(payload.state, payload.history, RECENT);
   }
 
   async say(
@@ -233,10 +233,10 @@ export class HttpApi implements ArenaApi {
     if (isRecord(payload) && isRecord(payload.error)) {
       const { code, message } = payload.error;
       const state = isRecord(payload.state)
-        ? (payload.state as unknown as GameState)
+        ? (payload.state as unknown as AnyGameState)
         : null;
       const history = Array.isArray(payload.history)
-        ? (payload.history as unknown as Move[])
+        ? (payload.history as unknown as AnyMove[])
         : null;
       return new ArenaApiError(
         typeof code === 'string' ? (code as ErrorCode) : 'INTERNAL_ERROR',

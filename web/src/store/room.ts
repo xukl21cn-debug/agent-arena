@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   MAX_COMMENTARY_LOG,
+  type AnyGameState,
   type Commentary,
   type GameState,
   type ParticipantView,
@@ -40,7 +41,7 @@ export interface RoomStore {
   /** Connection to this browser's own socket, not to any seat. */
   connection: ConnectionStatus;
   /** Latest game state, from whichever source is newer. */
-  state: GameState | null;
+  state: AnyGameState | null;
   /** Room lifecycle; idle games and room gathering are different facts. */
   phase: RoomPhase;
   /** When the room entered waiting, for the "opponent never came" hint. */
@@ -58,13 +59,13 @@ export interface RoomStore {
   /** Wire the socket for a room; returns the teardown. */
   connect(roomId: string): () => void;
   /** Replace state from a server snapshot (WS frame or REST reply). */
-  applyState(state: GameState): void;
+  applyState(state: AnyGameState): void;
   applyParticipants(participants: ParticipantView[]): void;
   applyCommentary(commentary: Commentary): void;
   applyPhase(phase: RoomPhase): void;
   /** Full replace, used by `hello` after a reconnect. */
   reset(input: {
-    state: GameState;
+    state: AnyGameState;
     participants: ParticipantView[];
     commentary: Commentary[];
     phase: RoomPhase;
@@ -122,9 +123,9 @@ export function visibleCommentary(
 }
 
 function mergeState(
-  previous: GameState | null,
-  incoming: GameState,
-): GameState {
+  previous: AnyGameState | null,
+  incoming: AnyGameState,
+): AnyGameState {
   if (previous && incoming.version < previous.version) {
     return previous;
   }
@@ -349,7 +350,7 @@ function subscribeToRoom(
       switch ((message as { type: string }).type) {
         case 'hello': {
           const hello = message as {
-            state: GameState;
+            state: AnyGameState;
             participants: ParticipantView[];
             commentary: Commentary[];
             phase: RoomPhase;
@@ -366,7 +367,7 @@ function subscribeToRoom(
           store.applyPhase((message as { phase: RoomPhase }).phase);
           break;
         case 'state':
-          store.applyState((message as { state: GameState }).state);
+          store.applyState((message as { state: AnyGameState }).state);
           break;
         case 'participants':
           store.applyParticipants(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Cell, StoneColor } from '@arena/shared';
+import type { Cell, GoBoard, StoneColor } from '@arena/shared';
 import {
   DEFAULT_KOMI,
   GO_BOARD_SIZE,
@@ -10,7 +10,6 @@ import {
   renderGoBoardText,
   scoreBoard,
   summarizeGroups,
-  type GoBoard,
 } from '../src/core/go';
 
 function place(

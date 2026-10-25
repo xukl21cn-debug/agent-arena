@@ -27,7 +27,9 @@ export type WaitReason =
   | 'game_over'
   | 'idle'
   | 'new_game'
-  | 'timeout';
+  | 'timeout'
+  /** Go only: the game paused for dead-stone marking and score confirmation. */
+  | 'scoring';
 
 export type ErrorCode =
   | 'ROOM_NOT_FOUND'
@@ -48,6 +50,18 @@ export type ErrorCode =
   /** Two participants share a kind, so `actor` cannot pick one. */
   | 'AMBIGUOUS_ACTOR'
   | 'SEAT_TAKEN'
+  /** Go: the placement would leave the played block without liberties. */
+  | 'SUICIDE'
+  /** Go: the point is forbidden by the simple-ko rule for this move. */
+  | 'KO'
+  /** The tool only exists for the other game (e.g. pass in a gomoku room). */
+  | 'WRONG_GAME'
+  /** Go: the game is not in its scoring phase. */
+  | 'NOT_SCORING'
+  /** Go: the marked point holds no stone. */
+  | 'INVALID_DEAD_STONE'
+  /** The requested rules variant is not implemented. */
+  | 'UNSUPPORTED_RULE'
   | 'INTERNAL_ERROR';
 
 export interface Cell {
@@ -83,10 +97,28 @@ export interface Move extends Cell {
   at: string;
 }
 
-/** Compact move record for agents: coordinates, color and order only. */
+/**
+ * A Go pass. Placements reuse {@link Move}, so a pass is told apart by the
+ * `kind` field only it carries.
+ */
+export interface GoPassMove {
+  kind: 'pass';
+  color: StoneColor;
+  index: number;
+  at: string;
+}
+
+export type GoMove = Move | GoPassMove;
+export type AnyMove = Move | GoPassMove;
+
+/**
+ * Compact move record for agents: kind, color and order; row/col are present
+ * on a placement and absent on a pass.
+ */
 export interface MoveRecord {
-  row: number;
-  col: number;
+  kind: 'place' | 'pass';
+  row?: number;
+  col?: number;
   color: StoneColor;
   index: number;
 }
@@ -135,8 +167,15 @@ export interface Commentary {
   at: string;
 }
 
+/**
+ * A gomoku game's authoritative state. The name deliberately stays
+ * `GameState` — the gomoku engine and its tests keep their type — while
+ * {@link GoState} sits beside it and {@link AnyGameState} is their union.
+ */
 export interface GameState {
-  schemaVersion: 1;
+  /** Discriminant: this state describes a gomoku game. */
+  game: 'gomoku';
+  schemaVersion: 2;
   roomId: string;
   gameId: string;
   rules: RuleSet;
@@ -153,9 +192,101 @@ export interface GameState {
   updatedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Go
+// ---------------------------------------------------------------------------
+
+export interface GoRules {
+  /** v1 is fixed at 9; other sizes are rejected by the game layer, not here. */
+  boardSize: 9;
+  /** Compensation for white playing second, added to WHITE's total. */
+  komi: number;
+  koRule: 'simple';
+}
+
+export type GoBoard = (StoneColor | null)[][];
+
+/** Rule violations the pure Go engine can return for one placement. */
+export type GoErrorCode = 'OUT_OF_BOUNDS' | 'CELL_OCCUPIED' | 'SUICIDE' | 'KO';
+
+/** Chinese area scoring result. Captures never enter these numbers. */
+export interface GoScore {
+  blackArea: number;
+  whiteArea: number;
+  komi: number;
+  blackTotal: number;
+  whiteTotal: number;
+  winner: StoneColor | 'draw';
+  margin: number;
+}
+
+export interface GoGroupSummary {
+  color: StoneColor;
+  stones: number;
+  /** Topmost stone, then leftmost — stable across calls for the same board. */
+  representative: Cell;
+  liberties: number;
+  /** Exact liberty coordinates for 1-2 liberty groups; omitted at 3+. */
+  libertyAt?: Cell[];
+}
+
+export interface GoGroupsView {
+  black: GoGroupSummary[];
+  white: GoGroupSummary[];
+  /** Groups beyond the per-color cap — counts, not prose to re-parse. */
+  omitted: { black: number; white: number };
+}
+
+/**
+ * A Go game's own status. Kept separate from `GameStatus` on purpose: Go's
+ * extra 'scoring' phase must never leak into the gomoku contract, which 206
+ * existing tests and every MCP client already pin to idle/playing/finished.
+ */
+export type GoStatus = 'idle' | 'playing' | 'scoring' | 'finished';
+
+/**
+ * A Go game's authoritative state, discriminated by `game: 'go'`.
+ */
+export interface GoState {
+  /** Discriminant: this state describes a Go game. */
+  game: 'go';
+  schemaVersion: 2;
+  roomId: string;
+  gameId: string;
+  rules: GoRules;
+  board: GoBoard;
+  /** Still "who would play next" during scoring; confirmation is parallel. */
+  turn: StoneColor;
+  status: GoStatus;
+  seats: Record<StoneColor, PlayerSpec>;
+  winner: StoneColor | 'draw' | null;
+  endReason: 'resign' | 'scored' | 'draw' | null;
+  /** Go has no five-in-a-row line; kept (always null) for a shared result UI. */
+  winLine: null;
+  lastMove: GoMove | null;
+  moveCount: number;
+  version: number;
+  updatedAt: string;
+  /** Prisoners taken by each side — display only, never part of the score. */
+  captures: { black: number; white: number };
+  /** Points emptied by the most recent capture, for board marking. */
+  lastCaptured: Cell[];
+  /** Simple-ko forbidden point, set right after a single-stone capture. */
+  koPoint: Cell | null;
+  /** Two consecutive passes move the game from playing to scoring. */
+  consecutivePasses: number;
+  /** Stones marked dead during scoring, by whole blocks. */
+  deadStones: Cell[];
+  scoreConfirmed: Record<StoneColor, boolean>;
+  /** Final Chinese-area score once both sides confirmed; null until then. */
+  score: GoScore | null;
+}
+
+export type AnyGameState = GameState | GoState;
+
 export interface RoomView {
-  state: GameState;
-  history: Move[];
+  state: AnyGameState;
+  history: AnyMove[];
   commentary: Commentary[];
   /** Room lifecycle, independent of the game's own status. */
   phase: RoomPhase;
@@ -165,7 +296,9 @@ export interface RoomView {
 
 export interface RoomSummary {
   roomId: string;
-  status: GameStatus;
+  /** Which game this room is running. */
+  game: 'gomoku' | 'go';
+  status: GameStatus | GoStatus;
   /** Room lifecycle, independent of the game's own status. */
   phase: RoomPhase;
   gameId: string;
