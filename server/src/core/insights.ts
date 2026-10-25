@@ -14,7 +14,11 @@ import type {
   StoneColor,
 } from '@arena/shared';
 import { opposite } from './engine.js';
-import { renderGoBoardText, summarizeGroups } from './go.js';
+import {
+  renderGoBoardText,
+  scoreBoard,
+  summarizeGroups,
+} from './go.js';
 import { findWinLine } from './rules.js';
 
 const DIRECTIONS = [
@@ -522,9 +526,12 @@ export function toGoAgentStateView(
       lastCaptured: state.lastCaptured,
     },
     groups: summarizeGroups(state.board),
-    // M3 owns the scoring phase; until it lands 'scoring' is unreachable and
-    // there is nothing to preview.
-    scorePreview: null,
+    // A preview of the area count under the current dead-stone marks — the
+    // marks are not applied to the board, and the preview is not the result.
+    scorePreview:
+      state.status === 'scoring'
+        ? scoreBoard(state.board, state.deadStones, state.rules.komi)
+        : null,
   };
 }
 

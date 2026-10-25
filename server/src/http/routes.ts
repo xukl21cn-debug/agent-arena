@@ -586,6 +586,80 @@ export function createApiRouter(
     res.json({ state: result.state, history: [...room.getHistory()] });
   });
 
+  /** Toggle a dead-stone block (Go scoring only). */
+  router.post('/rooms/:roomId/dead-stones', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const body = bodyOf(req);
+    const row = integerOf(body.row, 'row');
+    const col = integerOf(body.col, 'col');
+
+    const ref = actorRefOf(req, body);
+    if ('actor' in ref) {
+      touchActor(manager, room, ref.actor);
+    }
+
+    const result = room.markDeadAs(ref, row, col);
+    if (!result.ok) {
+      const payload: ErrorResponse = {
+        error: { code: result.code, message: result.message },
+        state: result.state,
+        history: [...room.getHistory()],
+      };
+      res.status(statusForCode(result.code)).json(payload);
+      return;
+    }
+
+    res.json({ state: result.state, history: [...room.getHistory()] });
+  });
+
+  /** Confirm the score as the caller's seat (Go scoring only). */
+  router.post('/rooms/:roomId/score/confirm', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const body = bodyOf(req);
+
+    const ref = actorRefOf(req, body);
+    if ('actor' in ref) {
+      touchActor(manager, room, ref.actor);
+    }
+
+    const result = room.confirmScoreAs(ref);
+    if (!result.ok) {
+      const payload: ErrorResponse = {
+        error: { code: result.code, message: result.message },
+        state: result.state,
+        history: [...room.getHistory()],
+      };
+      res.status(statusForCode(result.code)).json(payload);
+      return;
+    }
+
+    res.json({ state: result.state, history: [...room.getHistory()] });
+  });
+
+  /** Leave scoring and keep playing (Go scoring only). */
+  router.post('/rooms/:roomId/score/resume', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const body = bodyOf(req);
+
+    const ref = actorRefOf(req, body);
+    if ('actor' in ref) {
+      touchActor(manager, room, ref.actor);
+    }
+
+    const result = room.resumePlayAs(ref);
+    if (!result.ok) {
+      const payload: ErrorResponse = {
+        error: { code: result.code, message: result.message },
+        state: result.state,
+        history: [...room.getHistory()],
+      };
+      res.status(statusForCode(result.code)).json(payload);
+      return;
+    }
+
+    res.json({ state: result.state, history: [...room.getHistory()] });
+  });
+
   router.post('/rooms/:roomId/commentary', (req, res) => {
     const room = roomOrThrow(manager, req.params.roomId);
     const body = bodyOf(req);

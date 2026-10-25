@@ -173,28 +173,31 @@ export class HttpApi implements ArenaApi {
     return toAnyAgentStateView(payload.state, payload.history, RECENT);
   }
 
-  /**
-   * The three scoring actions answer NOT_SCORING at the bridge until M3 ships
-   * the REST endpoints; the in-process API answers the same way. The code is
-   * still the honest one — the phase cannot be reached yet.
-   */
-  private scoringUnavailable(tool: string): never {
-    throw new ArenaApiError(
-      'NOT_SCORING',
-      `${tool} needs the scoring phase (not implemented yet).`,
+  async markDead(roomId: string, row: number, col: number): Promise<AnyAgentStateView> {
+    const payload = await this.request<MutationResponse>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/dead-stones`,
+      { row, col, actor: 'agent' },
     );
+    return toAnyAgentStateView(payload.state, payload.history, RECENT);
   }
 
-  async markDead(_roomId: string, _row: number, _col: number): Promise<AnyAgentStateView> {
-    this.scoringUnavailable('mark_dead');
+  async confirmScore(roomId: string): Promise<AnyAgentStateView> {
+    const payload = await this.request<MutationResponse>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/score/confirm`,
+      { actor: 'agent' },
+    );
+    return toAnyAgentStateView(payload.state, payload.history, RECENT);
   }
 
-  async confirmScore(_roomId: string): Promise<AnyAgentStateView> {
-    this.scoringUnavailable('confirm_score');
-  }
-
-  async resumePlay(_roomId: string): Promise<AnyAgentStateView> {
-    this.scoringUnavailable('resume_play');
+  async resumePlay(roomId: string): Promise<AnyAgentStateView> {
+    const payload = await this.request<MutationResponse>(
+      'POST',
+      `/api/rooms/${encodeURIComponent(roomId)}/score/resume`,
+      { actor: 'agent' },
+    );
+    return toAnyAgentStateView(payload.state, payload.history, RECENT);
   }
 
   async say(

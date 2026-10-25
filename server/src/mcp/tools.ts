@@ -107,9 +107,8 @@ export const SERVER_INSTRUCTIONS = `你是棋类对弈 Agent。每次行动前�
 2. 不要填自己的真眼；不要在没价值时自紧气；
 3. koPoint 非空时不得立即回提；
 4. 没有有价值的落子时再调用 pass；连续两手 pass 进入数子，不要为了不终局而乱下；
-5. 数子阶段用 mark_dead 标死子、confirm_score 确认；不同意就 resume_play
-   （当前版本数子流程尚未开放，这些调用会返回 NOT_SCORING）；
-6. captures 只是提子展示，不是分数；面积分看 scorePreview（数子阶段的预览，当前版本为 null），且预览不是终局。
+5. 数子阶段用 mark_dead 标死子、confirm_score 确认；不同意就 resume_play；
+6. captures 只是提子展示，不是分数；面积分看 scorePreview（数子阶段的预览），且预览不是终局，终局分数看 state.score。
 
 落子用 place_stone（9×9 坐标），停一手用 pass。五子棋房间调用 pass/mark_dead/confirm_score/resume_play 会返回 WRONG_GAME。
 标准流程与五子棋相同：join_game 占座 → wait_for_turn → say 评价 → place_stone 或 pass → say 评论 → 再次 wait_for_turn；
@@ -313,6 +312,8 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
   ⑦ 再往后才是自己的 double/four/open3。低阶只作参考。
   围棋落子前先看 groups 里双方气=1 的块，koPoint 非空不得立即回提，没价值就 pass。
 - game_over：对局已结束，用 say(kind="result") 收尾；
+- scoring（围棋）：进入数子阶段。数子没有轮次：你尚未确认分数时立即返回本 reason，
+  先用 mark_dead 标死子、再 confirm_score 确认；你已确认后会挂起等待对方，对方确认（或 resume_play 改动标记）后按新状态返回；
 - idle：还没有开局，请人类在网页点「新对局」，或自己调用 new_game（围棋记得传 game:"go"）；
 - new_game：等待期间开了新局，按新状态继续；
 - timeout：不是错误，立即再次调用 wait_for_turn 继续等待。
@@ -353,6 +354,7 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
 - NOT_YOUR_TURN：还没轮到你，先调用 wait_for_turn；
 - CELL_OCCUPIED / OUT_OF_BOUNDS：坐标不合法，换一个空位；
 - SUICIDE / KO：围棋规则禁止（见上）；
+- NOT_SCORING：围棋已进入数子阶段，不能再落子——去 mark_dead / confirm_score；
 - GAME_NOT_PLAYING：当前没有进行中的对局，先 new_game。
 落子后建议调用 say 评论局势，然后再次 wait_for_turn。`,
       inputSchema: z.object({
@@ -375,8 +377,8 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
       title: '停一手',
       description: `围棋专用：放弃本手落子，把行动权交给对方（pass 会计入手数与历史，并清除劫禁点）。
 只在轮到你、且确实没有有价值的一手时调用；为逃避终局而乱 pass 是亏目行为。
-连续两手 pass 会进入数子阶段（当前版本数子流程尚未开放，阶段内工具会返回 NOT_SCORING）。
-仅围棋房间（state.game="go"）可用；五子棋房间调用返回 WRONG_GAME。
+连续两手 pass 进入数子阶段（数子没有轮次，双方各自 mark_dead / confirm_score）。
+已在数子阶段时调用返回 NOT_SCORING；仅围棋房间（state.game="go"）可用，五子棋房间调用返回 WRONG_GAME。
 成功返回 { ok: true, state }。`,
       inputSchema: z.object({ roomId: roomIdSchema }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
@@ -392,9 +394,10 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
     'mark_dead',
     {
       title: '标死子',
-      description: `围棋数子阶段专用：把 (row, col) 所在的整块棋标记为死子（同色连通块一起生效，重复调用同一块取消标记）。
-当前版本数子阶段尚未开放：调用会返回 NOT_SCORING。
-仅围棋房间可用；五子棋房间返回 WRONG_GAME。`,
+      description: `围棋数子阶段专用：把 (row, col) 所在的整块棋标记为死子（同色连通块一起生效，再标一次同一块取消标记）。
+任何标记变化都会把双方的确认重置为未确认——已确认的一方需要重新确认。
+只允许在数子阶段（连续两手 pass 之后）调用，否则返回 NOT_SCORING；仅围棋房间可用，五子棋房间返回 WRONG_GAME。
+标完死子后调用 confirm_score 确认。`,
       inputSchema: z.object({
         roomId: roomIdSchema,
         row: z.number().int().min(0).max(8).describe('行号 0-8，从上到下。'),
@@ -413,10 +416,9 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
     'confirm_score',
     {
       title: '确认数子',
-      description: `围棋数子阶段专用：认可当前的死子标记与数子结果。双方都确认后对局结束并出分。
-不同意对方标的死子时，改用 resume_play 回到对局。
-当前版本数子阶段尚未开放：调用会返回 NOT_SCORING。
-仅围棋房间可用；五子棋房间返回 WRONG_GAME。`,
+      description: `围棋数子阶段专用：认可当前的死子标记与数子结果。双方都确认后对局结束并出分（status=finished，endReason=scored，state.score 给出面积分）。
+重复确认是幂等的，不会报错；对方改了死子标记后你的确认会被重置，需要重新确认。
+只允许在数子阶段调用，否则返回 NOT_SCORING；仅围棋房间可用，五子棋房间返回 WRONG_GAME。`,
       inputSchema: z.object({ roomId: roomIdSchema }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
@@ -431,9 +433,8 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
     'resume_play',
     {
       title: '继续对局',
-      description: `围棋数子阶段专用：不同意死子标记或数子结果时，放弃数子、清空标记并回到对局继续落子。
-当前版本数子阶段尚未开放：调用会返回 NOT_SCORING。
-仅围棋房间可用；五子棋房间返回 WRONG_GAME。`,
+      description: `围棋数子阶段专用：不同意死子标记或数子结果时，放弃数子、清空标记与确认并回到对局继续落子（棋盘不变，pass 计数清零）。
+只允许在数子阶段调用，否则返回 NOT_SCORING；仅围棋房间可用，五子棋房间返回 WRONG_GAME。`,
       inputSchema: z.object({ roomId: roomIdSchema }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },

@@ -35,9 +35,13 @@ import { resolveRules } from '../core/rules.js';
 import {
   applyGoPass,
   applyGoPlacement,
+  confirmGoScore,
+  markGoDead,
   resignGoGame,
   resolveGoRules,
+  resumeGoPlay,
   startGoGame,
+  type GoScoringResult,
 } from '../core/go-game.js';
 import { seatLabel, type PresenceSource } from '../core/presence.js';
 import { ParticipantRoster } from './participant-roster.js';
@@ -53,7 +57,12 @@ export class RoomError extends Error {
   }
 }
 
-export type StateChangeCause = 'new_game' | 'move' | 'resign';
+export type StateChangeCause =
+  | 'new_game'
+  | 'move'
+  | 'resign'
+  /** A scoring-phase change (dead stones, confirmations, resume). */
+  | 'scoring';
 export type StateListener = (state: AnyGameState, cause: StateChangeCause) => void;
 export type CommentaryListener = (commentary: Commentary) => void;
 export type PhaseListener = (roomId: string, phase: RoomPhase) => void;
@@ -585,33 +594,67 @@ export class GameRoom {
     return this.passAt(identity.seat);
   }
 
-  /** Mark dead stones; the scoring flow itself lands in M3. */
+  /**
+   * Toggle the whole block at (row, col) as dead. Scoring only. Any change
+   * resets both confirmations, and every scoring mutation goes through
+   * {@link applyGoScoring} so parked waiters re-derive their reason.
+   */
   markDeadAs(ref: ActorRef, row: number, col: number): StateActionResult {
-    void row;
-    void col;
-    return this.scoringStub('mark_dead');
+    const identity = this.resolve(ref);
+    if (!identity.ok) {
+      return this.failure(identity.code, identity.message);
+    }
+    if (this.state.game !== 'go') {
+      return this.failure('WRONG_GAME', 'mark_dead is only available in Go.');
+    }
+    return this.applyGoScoring(markGoDead(this.state, row, col));
   }
 
-  /** Confirm the score; the scoring flow itself lands in M3. */
+  /** Confirm the current score as this seat. Scoring only. */
   confirmScoreAs(ref: ActorRef): StateActionResult {
-    return this.scoringStub('confirm_score');
+    const identity = this.resolve(ref);
+    if (!identity.ok) {
+      return this.failure(identity.code, identity.message);
+    }
+    if (this.state.game !== 'go') {
+      return this.failure('WRONG_GAME', 'confirm_score is only available in Go.');
+    }
+    return this.applyGoScoring(confirmGoScore(this.state, identity.seat));
   }
 
-  /** Return to playing from scoring; the scoring flow itself lands in M3. */
+  /** Drop the marks and confirmations, and resume playing. Scoring only. */
   resumePlayAs(ref: ActorRef): StateActionResult {
-    return this.scoringStub('resume_play');
+    const identity = this.resolve(ref);
+    if (!identity.ok) {
+      return this.failure(identity.code, identity.message);
+    }
+    if (this.state.game !== 'go') {
+      return this.failure('WRONG_GAME', 'resume_play is only available in Go.');
+    }
+    return this.applyGoScoring(resumeGoPlay(this.state));
   }
 
   /**
-   * Every scoring-phase action lands here until M3: the rooms can only reach
-   * playing/finished for Go, so the honest answer is NOT_SCORING (or
-   * WRONG_GAME in a gomoku room), never a made-up confirmation.
+   * Land a scoring result: the state moves, then every parked waiter is woken
+   * (or left parked) by its own reasonFor — an unconfirmed seat gets
+   * 'scoring', a confirmed one keeps waiting, and both-confirmed wakes
+   * everyone as game_over. This is what makes scoring parallel instead of
+   * turn-based.
    */
-  private scoringStub(tool: 'mark_dead' | 'confirm_score' | 'resume_play'): StateActionResult {
-    if (this.state.game !== 'go') {
-      return this.failure('WRONG_GAME', `${tool} is only available in Go.`);
+  private applyGoScoring(result: GoScoringResult): StateActionResult {
+    if (!result.ok) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+        state: this.state,
+      };
     }
-    return this.failure('NOT_SCORING', `${tool} needs the scoring phase (not implemented yet).`);
+
+    this.state = result.state;
+    this.emitState('scoring');
+    this.save();
+    return result;
   }
 
   private moveAt(seat: StoneColor, row: number, col: number): MoveActionResult {
@@ -858,6 +901,12 @@ export class GameRoom {
     }
     if (this.state.status === 'finished') {
       return 'game_over';
+    }
+    // Scoring has no turn order: an unconfirmed seat must act now, a
+    // confirmed one waits for the other side. This sits BEFORE the turn
+    // check on purpose — turn says nothing about who should act here.
+    if (this.state.game === 'go' && this.state.status === 'scoring') {
+      return this.state.scoreConfirmed[seat] ? null : 'scoring';
     }
     // Prefer the actionable answer: a new game where it is already the
     // agent's turn should wake it as `your_turn`, not just `new_game`.

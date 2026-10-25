@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  Cell,
   ErrorCode,
   GoPassMove,
   GoRules,
@@ -8,7 +9,13 @@ import type {
   PlayerSpec,
   StoneColor,
 } from '@arena/shared';
-import { DEFAULT_KOMI, GO_BOARD_SIZE, playMove } from './go.js';
+import {
+  DEFAULT_KOMI,
+  GO_BOARD_SIZE,
+  blockAt,
+  playMove,
+  scoreBoard,
+} from './go.js';
 import { opposite } from './engine.js';
 
 /**
@@ -147,11 +154,31 @@ export function startGoGame(
   };
 }
 
-/** The checks every Go action shares: a playing game and the mover's turn. */
+/**
+ * The checks most Go actions share: a playing game and the mover's turn.
+ *
+ * `scoring` decides what a scoring-phase game means here:
+ * - 'reject' (place/pass): NOT_SCORING, the actionable hint that the game has
+ *   moved on to dead-stone marking;
+ * - 'allow-no-turn' (resign): allowed, because scoring has no turns — either
+ *   side may still resign.
+ */
 function checkTurn(
   state: GoState,
   color: StoneColor,
+  scoring: 'reject' | 'allow-no-turn' = 'reject',
 ): { ok: false; code: ErrorCode; message: string } | undefined {
+  if (state.status === 'scoring') {
+    if (scoring === 'allow-no-turn') {
+      return undefined;
+    }
+    return {
+      ok: false,
+      code: 'NOT_SCORING',
+      message:
+        'The game is in the scoring phase; use mark_dead / confirm_score / resume_play.',
+    };
+  }
   if (state.status !== 'playing') {
     return {
       ok: false,
@@ -227,8 +254,9 @@ export function applyGoPlacement(
 
 /**
  * Pass a turn. A pass clears the ko point (the position repeats instead of
- * alternating) and empties lastCaptured; two in a row are the signal M3's
- * scoring flow will act on.
+ * alternating) and empties lastCaptured; the second consecutive pass moves
+ * the game to the scoring phase — with `turn` untouched, still pointing at
+ * the side that would have played next.
  */
 export function applyGoPass(
   state: GoState,
@@ -247,13 +275,16 @@ export function applyGoPass(
     at: nowIso(now),
   };
 
+  const consecutivePasses = state.consecutivePasses + 1;
+
   return {
     ok: true,
     move,
     state: {
       ...state,
       turn: opposite(color),
-      consecutivePasses: state.consecutivePasses + 1,
+      consecutivePasses,
+      status: consecutivePasses >= 2 ? 'scoring' : state.status,
       lastMove: move,
       moveCount: state.moveCount + 1,
       version: state.version + 1,
@@ -269,7 +300,8 @@ export function resignGoGame(
   color: StoneColor,
   now?: string,
 ): GoResignResult {
-  const turn = checkTurn(state, color);
+  // Scoring keeps no turns, but resigning stays available to either side.
+  const turn = checkTurn(state, color, 'allow-no-turn');
   if (turn) {
     return turn;
   }
@@ -284,6 +316,156 @@ export function resignGoGame(
       winner,
       endReason: 'resign',
       turn: winner,
+      version: state.version + 1,
+      updatedAt: nowIso(now),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Scoring (M3)
+// ---------------------------------------------------------------------------
+
+export type GoScoringResult =
+  | { ok: true; state: GoState }
+  | { ok: false; code: ErrorCode; message: string };
+
+function keyOf(cell: Cell): string {
+  return `${cell.row},${cell.col}`;
+}
+
+function requireScoring(
+  state: GoState,
+  tool: string,
+): { ok: false; code: ErrorCode; message: string } | undefined {
+  if (state.status !== 'scoring') {
+    return {
+      ok: false,
+      code: 'NOT_SCORING',
+      message: `${tool} needs the scoring phase (two consecutive passes).`,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Toggle the whole block at a point as dead.
+ *
+ * One call acts on the entire connected block — half-marked blocks would
+ * make the area count nonsense. Any change resets BOTH confirmations: a
+ * confirmation made against a different dead-stone set is not a
+ * confirmation of this score, so it must not survive the edit.
+ */
+export function markGoDead(
+  state: GoState,
+  row: number,
+  col: number,
+  now?: string,
+): GoScoringResult {
+  const scoring = requireScoring(state, 'mark_dead');
+  if (scoring) {
+    return scoring;
+  }
+  // Off-board and empty points fail the same way: neither names a block.
+  if (state.board[row]?.[col] === undefined || state.board[row]?.[col] === null) {
+    return {
+      ok: false,
+      code: 'INVALID_DEAD_STONE',
+      message: `Point (${row},${col}) holds no stone to mark.`,
+    };
+  }
+
+  const block = blockAt(state.board, row, col);
+  const dead = new Map(state.deadStones.map((cell) => [keyOf(cell), cell]));
+  const blockAllDead = block.stones.every((stone) => dead.has(keyOf(stone)));
+  if (blockAllDead) {
+    for (const stone of block.stones) {
+      dead.delete(keyOf(stone));
+    }
+  } else {
+    for (const stone of block.stones) {
+      dead.set(keyOf(stone), stone);
+    }
+  }
+
+  return {
+    ok: true,
+    state: {
+      ...state,
+      deadStones: [...dead.values()],
+      scoreConfirmed: { black: false, white: false },
+      version: state.version + 1,
+      updatedAt: nowIso(now),
+    },
+  };
+}
+
+/**
+ * Record one side's agreement with the current dead-stone set. Idempotent:
+ * confirming again without any change in between is a no-op. Once both sides
+ * have confirmed, the engine's area score decides the game — captures never
+ * enter it.
+ */
+export function confirmGoScore(
+  state: GoState,
+  color: StoneColor,
+  now?: string,
+): GoScoringResult {
+  const scoring = requireScoring(state, 'confirm_score');
+  if (scoring) {
+    return scoring;
+  }
+  if (state.scoreConfirmed[color]) {
+    return { ok: true, state };
+  }
+
+  const scoreConfirmed = { ...state.scoreConfirmed, [color]: true };
+  if (!scoreConfirmed.black || !scoreConfirmed.white) {
+    return {
+      ok: true,
+      state: {
+        ...state,
+        scoreConfirmed,
+        version: state.version + 1,
+        updatedAt: nowIso(now),
+      },
+    };
+  }
+
+  const score = scoreBoard(state.board, state.deadStones, state.rules.komi);
+  return {
+    ok: true,
+    state: {
+      ...state,
+      scoreConfirmed,
+      score,
+      status: 'finished',
+      winner: score.winner,
+      endReason: 'scored',
+      version: state.version + 1,
+      updatedAt: nowIso(now),
+    },
+  };
+}
+
+/**
+ * Leave scoring and keep playing from the same position: dead-stone marks
+ * and confirmations are dropped, the pass counter resets, and `turn` is
+ * exactly what it was when scoring began.
+ */
+export function resumeGoPlay(state: GoState, now?: string): GoScoringResult {
+  const scoring = requireScoring(state, 'resume_play');
+  if (scoring) {
+    return scoring;
+  }
+  return {
+    ok: true,
+    state: {
+      ...state,
+      status: 'playing',
+      deadStones: [],
+      scoreConfirmed: { black: false, white: false },
+      consecutivePasses: 0,
       version: state.version + 1,
       updatedAt: nowIso(now),
     },

@@ -218,14 +218,15 @@ describe('N5: pass counts as a move', () => {
       at: expect.any(String),
     });
 
-    // Two consecutive passes accumulate; the scoring transition is M3's.
+    // Two consecutive passes now move the game into scoring (P3b-3); the
+    // scoring-phase behaviour itself lives in go-scoring.test.ts.
     room.passAs({ actor: 'human' });
     const afterSecond = room.getState();
     if (afterSecond.game !== 'go') {
       throw new Error('expected a Go state');
     }
     expect(afterSecond.consecutivePasses).toBe(2);
-    expect(afterSecond.status).toBe('playing');
+    expect(afterSecond.status).toBe('scoring');
   });
 });
 

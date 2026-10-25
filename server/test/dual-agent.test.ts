@@ -259,4 +259,153 @@ describe('two agents in one room', () => {
       await white.close().catch(() => undefined);
     }
   });
+
+  it('runs the Go scoring flow across two real sessions', async () => {
+    // The scoring phase has no turn order: both sessions must be answered by
+    // their OWN confirmation state, not by turn order. Single-session tests
+    // cannot catch a seat mix-up here — this is the P2 lesson applied to M3.
+    const black = await connect('scoring-black');
+    const white = await connect('scoring-white');
+
+    try {
+      await call(black, 'join_game', {
+        roomId: 'go-duo',
+        name: 'b',
+        seat: 'black',
+      });
+      await call(white, 'join_game', {
+        roomId: 'go-duo',
+        name: 'w',
+        seat: 'white',
+      });
+      const started = await call(black, 'new_game', {
+        roomId: 'go-duo',
+        game: 'go',
+        agentColor: 'black',
+      });
+      expect(started.state.game).toBe('go');
+
+      // A stone each, then two passes move the game to scoring.
+      await call(black, 'place_stone', { roomId: 'go-duo', row: 4, col: 4 });
+      await call(white, 'place_stone', { roomId: 'go-duo', row: 2, col: 2 });
+      await call(black, 'pass', { roomId: 'go-duo' });
+      const afterPasses = await call(white, 'pass', { roomId: 'go-duo' });
+      expect(afterPasses.state.status).toBe('scoring');
+
+      // Both seats are asked to act, regardless of turn order (black passed
+      // first, so turn points at black — white must still be asked too).
+      const blackWait = await call(black, 'wait_for_turn', {
+        roomId: 'go-duo',
+        timeoutMs: 1_000,
+      });
+      expect(blackWait.reason).toBe('scoring');
+      expect(blackWait.yourColor).toBe('black');
+
+      const whiteWait = await call(white, 'wait_for_turn', {
+        roomId: 'go-duo',
+        timeoutMs: 1_000,
+      });
+      expect(whiteWait.reason).toBe('scoring');
+      expect(whiteWait.yourColor).toBe('white');
+
+      // Black marks white's stone dead; both confirm. Black first: its own
+      // second wait would park — white confirms and finishes the game.
+      const marked = await call(black, 'mark_dead', {
+        roomId: 'go-duo',
+        row: 2,
+        col: 2,
+      });
+      expect(marked.state.deadStones).toEqual([{ row: 2, col: 2 }]);
+      expect(marked.state.scorePreview).not.toBeNull();
+
+      await call(black, 'confirm_score', { roomId: 'go-duo' });
+      const finished = await call(white, 'confirm_score', {
+        roomId: 'go-duo',
+      });
+      expect(finished.state.status).toBe('finished');
+      expect(finished.state.endReason).toBe('scored');
+      expect(finished.state.score.winner).toBe('black');
+      expect(finished.state.deadStones).toEqual([{ row: 2, col: 2 }]);
+
+      // A parked wait on the finished game answers game_over, per seat.
+      const over = await call(black, 'wait_for_turn', {
+        roomId: 'go-duo',
+        timeoutMs: 1_000,
+      });
+      expect(over.reason).toBe('game_over');
+      expect(over.yourColor).toBe('black');
+    } finally {
+      await black.close().catch(() => undefined);
+      await white.close().catch(() => undefined);
+    }
+  });
+
+  it('exposes the scoring endpoints over REST', async () => {
+    const post = async (
+      path: string,
+      body: Record<string, unknown>,
+    ): Promise<Record<string, any>> => {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json()) as Record<string, any>;
+      if (!response.ok) {
+        throw new Error(`${path} -> ${response.status} ${JSON.stringify(payload)}`);
+      }
+      return payload;
+    };
+
+    await post('/api/rooms', { roomId: 'go-rest' });
+    await post('/api/rooms/go-rest/games', { game: 'go' });
+    await post('/api/rooms/go-rest/moves', { row: 4, col: 4, actor: 'human' });
+    await post('/api/rooms/go-rest/moves', { row: 2, col: 2, actor: 'agent' });
+    const firstPass = await post('/api/rooms/go-rest/pass', { actor: 'human' });
+    expect(firstPass.state.status).toBe('playing');
+    const secondPass = await post('/api/rooms/go-rest/pass', { actor: 'agent' });
+    expect(secondPass.state.status).toBe('scoring');
+
+    const marked = await post('/api/rooms/go-rest/dead-stones', {
+      row: 2,
+      col: 2,
+      actor: 'human',
+    });
+    expect(marked.state.deadStones).toEqual([{ row: 2, col: 2 }]);
+
+    // An empty point is an INVALID_DEAD_STONE while scoring.
+    const invalid = await fetch(`${baseUrl}/api/rooms/go-rest/dead-stones`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ row: 8, col: 8, actor: 'human' }),
+    });
+    expect(invalid.status).toBe(400);
+    const invalidPayload = (await invalid.json()) as {
+      error: { code: string };
+    };
+    expect(invalidPayload.error.code).toBe('INVALID_DEAD_STONE');
+
+    // The confirmations are per seat: one leaves the game scoring, both
+    // finish it.
+    const oneConfirm = await post('/api/rooms/go-rest/score/confirm', {
+      actor: 'human',
+    });
+    expect(oneConfirm.state.status).toBe('scoring');
+
+    const bothConfirm = await post('/api/rooms/go-rest/score/confirm', {
+      actor: 'agent',
+    });
+    expect(bothConfirm.state.status).toBe('finished');
+    expect(bothConfirm.state.endReason).toBe('scored');
+    expect(bothConfirm.state.score.winner).toBe('black');
+
+    // Scoring-only actions answer NOT_SCORING on a finished game, with the
+    // state riding along for the caller's view.
+    const resume = await fetch(`${baseUrl}/api/rooms/go-rest/score/resume`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ actor: 'human' }),
+    });
+    expect(resume.status).toBe(400);
+  });
 });
