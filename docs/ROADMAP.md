@@ -138,17 +138,21 @@ agent 座位，白方 agent 被告知自己执黑，而且它的 MCP 会话被�
 - **P3b**（= M0 + M2 + M3）：接入 `game` 变体、`AgentStateView(go)`、MCP 工具、scoring。⬅ **当前阶段**
 - 对现有 GO 提案的修改见第 5 节。
 
-P3b 拆成三份工作单，**必须按顺序做**（后一份依赖前一份的类型/接口稳定）：
+P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的类型/接口稳定）：
 
 | 顺序 | 工作单 | 内容 | 状态 |
 |---|---|---|---|
-| 1 | [`HANDOFF-P3B-1.md`](HANDOFF-P3B-1.md) | 类型契约（M0） | ⬅ **下一步** |
-| 2 | [`HANDOFF-P3B-2.md`](HANDOFF-P3B-2.md) | 接入 room/REST/MCP（M2） | ⬜ 等 1 合入 |
-| 3 | [`HANDOFF-P3B-3.md`](HANDOFF-P3B-3.md) | scoring 全流程（M3） | ⬜ 等 2 合入 |
+| 1 | [`HANDOFF-P3B-1.md`](HANDOFF-P3B-1.md) | 类型契约（M0） | ✅ **已完成**，[评审](REVIEW-P3B-1.md) |
+| 2 | [`HANDOFF-P3B-2.md`](HANDOFF-P3B-2.md) | 接入 room/REST/MCP（M2） | ✅ **已完成**，[评审](REVIEW-P3B-2.md) |
+| 3 | [`HANDOFF-P3B-3.md`](HANDOFF-P3B-3.md) | scoring 全流程（M3） | ✅ **已完成**，[评审](REVIEW-P3B-3.md) |
+| 4 | [`HANDOFF-P3B-4.md`](HANDOFF-P3B-4.md) | 网页围棋盘 + 端到端（M4） | ⬅ **下一步** |
 
+> **围棋服务端已完整**（P3b-1/2/3 全部合入，249 测试全绿）。
+> P3b-4 是纯前端 + 端到端验收，**服务端不该再改**。
+>
 > ⚠️ **为什么要拆**：类型是地基。第 2 份要给 `new_game` 加 `game` 参数、
 > 第 3 份要给 `wait_for_turn` 加 `scoring` 原因，两者都要动类型。
-> 一次改完类型，后面两份只写逻辑，冲突面最小。
+> 一次改完类型，后面几份只写逻辑，冲突面最小。
 >
 > P1c 已合入，`new_game` 的改动窗口已经空出来，P3b 可以开始了。
 >
@@ -175,10 +179,8 @@ P3b 拆成三份工作单，**必须按顺序做**（后一份依赖前一份的
 
 | 分支 | 内容 | 状态 |
 |---|---|---|
-| `main` | P1a + P1b + P1c + P2 + P3a | ✅ **206 测试全绿** |
-| `feat/go-types`（待建） | P3b-1 类型契约 | ⬅ **下一步** |
-| `feat/go-mode`（待建） | P3b-2 接入 | ⬜ 等 P3b-1 |
-| `feat/go-scoring`（待建） | P3b-3 scoring | ⬜ 等 P3b-2 |
+| `main` | P1a + P1b + P1c + P2 + P3a + P3b-1/2/3 | ✅ **249 测试全绿** |
+| `feat/go-web`（待建） | P3b-4 网页围棋盘 | ⬅ **下一步** |
 
 **关于 worktree**：P1 时用了多个 worktree 并行开发，现在已不需要——串行开发直接在 main 目录建分支即可：
 
