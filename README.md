@@ -55,6 +55,19 @@ pnpm test        # 引擎、房间、HTTP/WS/MCP 集成测试
 pnpm typecheck   # server + web 类型检查
 ```
 
+### 双 AI 自测
+
+不用模型也能验证双 agent 协议：两个 MCP 客户端各占一色，自动下完一盘。
+
+```bash
+pnpm duel                    # 两个机器人对弈，约 31 手
+pnpm duel --strategy hot     # 走服务器的热点雷达，约 9 手结束
+pnpm duel --room duel2 --keep
+```
+
+脚本走的是和真实模型完全相同的路径（`join_game` → `wait_for_turn` → `place_stone`），
+输出每手的坐标、走子理由和双方 presence。**接真实模型前先跑这个**，能区分「环境没配好」和「模型行为有问题」。
+
 ## 接入 MCP 客户端
 
 先启动后端，再任选一种传输：

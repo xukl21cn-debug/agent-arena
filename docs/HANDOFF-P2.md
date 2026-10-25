@@ -49,22 +49,37 @@ P1b 已经证明**协议层**能跑双 AI：`server/test/dual-agent.test.ts` 用
 
 ### 3.1 两个客户端
 
-**DSH**（已配好 GLM 路由，见 `~/.dsh/profiles/web/cordis.patch.yml`）：
+**DSH**（`~/.dsh/profiles/web/cordis.patch.yml`）
 
-在 `cordis.patch.yml` 加一条 MCP 配置：
+⚠️ **新增插件必须包在 `insert:` 里**。直接写顶层条目会被当成「更新一个不存在的条目」，只在 stderr 打一行 `patch: entry "mcp-arena" not found` 然后**静默跳过**：
 
 ```yaml
+# ✅ 正确
+- insert:
+    - id: mcp-arena
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: arena
+        transport: streamable-http
+        url: http://127.0.0.1:3000/mcp
+
+# ❌ 错误：不会加载，只有一行警告
 - id: mcp-arena
   name: '@deepseek-ai/dsh-mcp-client'
-  config:
-    serverName: arena
-    transport: streamable-http
-    url: http://127.0.0.1:3000/mcp
+  config: { ... }
 ```
+
+验证配置是否生效：
+
+```powershell
+node E:\data\node_global\node_modules\@deepseek-ai\dsh\lib\bin.js --profile web --dump-config 2>&1 | Select-String "mcp-arena"
+```
+
+看得到 `- id: mcp-arena` 才算成功；只看到 `not found` 就是没生效。
 
 工具会以 `mcp__arena__join_game` 等形式出现。
 
-**Claude Code**（v2.1.310，支持 HTTP + header）：
+**Claude Code**（v2.1.310，支持 HTTP）：
 
 ```powershell
 claude mcp add --transport http arena http://127.0.0.1:3000/mcp
@@ -85,6 +100,39 @@ pnpm start       # 或 pnpm dev（含 Vite 热更新）
 
 ### 3.3 验证前先确认协议层没问题
 
+**这一步很重要**：先跑脚本确认基础设施就绪，再让模型上，否则分不清是环境问题还是模型问题。
+
+```powershell
+pnpm duel                              # 两个机器人下一盘，约 31 手
+pnpm duel --strategy hot               # 走热点雷达，约 9 手结束
+pnpm duel --room duel2 --keep          # 换个房间，保留房间不清理
+```
+
+脚本（`server/scripts/duel.mjs`）做的事和真实模型完全一样：两个 MCP 客户端各自 `join_game` 占座，轮流 `wait_for_turn` → `get_state` → `place_stone`。
+
+**期望输出**：
+
+```
+arena duel · room=duel strategy=center server=http://127.0.0.1:3000
+joined: black=p_ce119b white=p_c2ce0f
+presence: black:black-bot=idle  white:white-bot=thinking
+# 1 black (7,7) center  presence: black:black-bot=idle  white:white-bot=thinking
+...
+game over: black wins by five after 31 moves
+```
+
+看到 `game over` 就说明协议层完全就绪。**如果这步失败，不要往下做 P2**，先修基础设施。
+
+### 3.4 确认客户端真的挂上了工具
+
+**DSH**：开一个**新会话**，问「你能用哪些 arena 工具」。能看到 `mcp__arena__join_game` 等 8 个就对了。
+
+⚠️ **必须新开会话**：MCP 工具在会话启动时注入，已经开着的会话不会因为服务后来启动而获得工具。实测踩过这个坑——服务晚于会话启动，工具列表是旧快照。
+
+**Claude Code**：`claude mcp list` 看 `arena` 是否 connected。
+
+### 3.5 跑一遍单测
+
 ```powershell
 pnpm test        # 应该 166 个全绿
 ```
@@ -95,21 +143,25 @@ pnpm test        # 应该 166 个全绿
 
 ### 4.1 剧本（给两个模型的开场白）
 
-在 DSH 里说：
+**DSH**（执黑）：
 
 > 你要和一个对手在 arena 房间 `duel` 下一盘五子棋。你执**黑**。
 > 先调用 `join_game`（name 用 `dsh`，seat 用 `black`），然后循环：
 > `wait_for_turn` → 轮到你就 `place_stone` → 再 `wait_for_turn`。
-> 不要替对手落子。对手是 `codex`（另一个 AI）。
+> 不要替对手落子。对手是 `claude`（另一个 AI）。
 
-在 Claude Code 里说：
+**Claude Code**（执白）：
 
 > 你要和一个对手在 arena 房间 `duel` 下一盘五子棋。你执**白**。
 > 先调用 `join_game`（name 用 `claude`，seat 用 `white`），然后循环：
 > `wait_for_turn` → 轮到你就 `place_stone` → 再 `wait_for_turn`。
 > 不要替对手落子。对手是 `dsh`（另一个 AI）。
 
-**注意**：两个都要在 `duel` 房间，不要用 `default`（那是人类局）。
+**注意**：
+
+- 两个都要在 `duel` 房间，不要用 `default`（那是人类局）
+- 先让 DSH 调 `new_game`，或两边都先 `join_game` 再让任一方 `new_game`
+- 网页观战：`http://127.0.0.1:3000/?room=duel`
 
 ### 4.2 谁先开局
 
@@ -246,6 +298,7 @@ docs: ...
 ## 10. 完成标准
 
 ```text
+[ ] pnpm duel 跑通（协议层就绪，这一步先做）
 [ ] DSH 和 Claude 各自 join_game 成功，各占一色
 [ ] 双方能自动轮流落子，不需要人工催
 [ ] 网页观战页正确显示双方状态
@@ -267,6 +320,9 @@ docs: ...
 
 | 坑 | 说明 |
 |---|---|
+| **DSH 新增 MCP 必须用 `insert:`** | 顶层条目会被当成「更新不存在的条目」，只打一行警告就跳过。用 `--dump-config` 验证 |
+| **MCP 工具在会话启动时注入** | 服务晚于会话启动，旧会话拿不到工具。必须**新开会话** |
+| **`wait_for_turn` 的 `moves` 是截断的** | 只带最近 8 手，判断空格要 `get_state`（`duel.mjs` 踩过） |
 | 热重载不迁移内存状态 | 改 presence/room 后重启服务 |
 | MCP SDK `client.close()` 不发 DELETE | 服务端靠 90 秒静默判定掉线 |
 | 网页开局会抢座 | 双 AI 场景让 agent 自己 `new_game` |
