@@ -1,9 +1,11 @@
-# 交接：参与者模型（P1b）剩余工作
+# 交接：参与者模型（P1b）
 
 > 面向：接手继续开发的 AI agent（GLM）
-> 状态：**P1b 已完成**（任务 A、B 及掉线推送修复均已落地、实测通过）。仅剩可选的任务 C
+> 状态：**✅ P1b 已完成并合入 main**（任务 A、B 及掉线推送修复均已落地、实测通过）。仅剩可选的任务 C
 > 最后更新：2026-10-25
-> 分支：`feat/participants-model`（worktree `E:\code\fun\gomoku-mcp-p1b`）
+> 分支：已合入 `main`；worktree `gomoku-mcp-p1b` 已清理
+>
+> **下一步是 P2**，见 [`HANDOFF-P2.md`](HANDOFF-P2.md)。本文件保留作为 P1b 的历史记录和约束参考。
 
 ---
 

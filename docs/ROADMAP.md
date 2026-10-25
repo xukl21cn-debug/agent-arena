@@ -75,32 +75,34 @@ P0 文档与决策
 
 | 子阶段 | 内容 | 验收 | 状态 |
 |---|---|---|---|
-| P1a | presence + `RoomView.participants` + WS 事件（**不改座位**） | 网页能看到「等待中 / 思考中 / 未连接」 | ✅ **已完成**（已合入 main） |
-| P1b | Participant 替换 PlayerSpec；按 id 落子/等待；兼容层 | 旧客户端不返工 + 双 AI 可跑 | 🔄 **进行中，约 70%** |
+| P1a | presence + `RoomView.participants` + WS 事件（**不改座位**） | 网页能看到「等待中 / 思考中 / 未连接」 | ✅ **已完成** |
+| P1b | Participant 替换 PlayerSpec；按 id 落子/等待；兼容层 | 旧客户端不返工 + 双 AI 可跑 | ✅ **已完成** |
 | P1c | lobby/ready/phase + 前端准备态 | 双方 ready 才开局；60s 未齐给提示 | ⬜ 未开始 |
 
-P1a 已合入 main（commit `ad9b870`），139 个测试全绿。
+P1a + P1b 已合入 main，**166 个测试全绿**。
 
-**P1b 进度详情见 [`HANDOFF-P1B.md`](HANDOFF-P1B.md)**，那里有剩余任务（presence 按参与者、Web 观战布局）和硬性约束。
-
-P1b 已完成的部分：
+P1b 交付的能力：
 
 - `ParticipantRoster` 名册（同名重连、占座驱逐）
 - `PlayerSpec.id`（可选，兼容旧快照）
 - `room.resolve/moveAs/resignAs` 按身份路由
-- `join_game` / `leave_room` 工具 + 会话绑定身份
+- `join_game` / `leave_room` 工具 + **会话绑定身份**（模型不需要传 id）
 - REST `/participants` 端点
-- 双 AI 端到端集成测试
+- presence 暴露 `participantId`；双 AI 观战页（只读棋盘、无开局按钮）
+- 掉线推送修复（开着的标签页能收到「已断开」）
+- 双 AI 端到端集成测试（两个真实 MCP 会话打完一盘）
 
-剩余：presence 暴露 participantId、Web 双 AI 观战布局。
+**P1c 可以延后**：它改的是开局流程，和 P2 的真实模型验证不冲突，可以等 P2 结论出来再决定怎么做。
 
-### P2 双 AI 五子棋（0.5–1 天）
+### P2 双真实模型对弈（0.5–1 天）← **当前阶段**
 
-- 两个 agent 各自 `join_game` + `wait_for_turn`，交替落子；
-- 人类进入观战模式（不占座位）；
-- 验收：两个 MCP client 自动下满 10 手，presence 全程正确，网页能看到双方状态。
+- **目标**：验证真实大模型接入后的行为，不是协议
+- 两个客户端：**DSH（deepseek）+ Claude Code**
+- 验证 6 个问题：会不会 join、会不会 wait、会不会替对手下、能否理解 yourColor、重连能否拿回座位、报错能否自我修正
 
-> 协议层已由 `dual-agent.test.ts` 验证通过（两个真实 MCP 会话打完一盘）。P2 剩下的是**真实模型行为**验证：模型会不会自觉 wait、会不会替对手落子。
+**详见 [`HANDOFF-P2.md`](HANDOFF-P2.md)**，含环境配置、剧本、记录表、预期问题。
+
+> 协议层已由 `dual-agent.test.ts` 验证通过。P2 只验证模型行为。
 
 ### P3 围棋（引擎 2–3 天并行，集成 1 天）
 
@@ -125,12 +127,25 @@ P1b 已完成的部分：
 
 ## 4. 并行、分支与合并
 
-| 分支 | worktree | 内容 | 状态 |
-|---|---|---|---|
-| `feat/participants` | `E:\code\fun\gomoku-mcp-participants` | P1a | ✅ 已合入 main |
-| `feat/participants-model` | `E:\code\fun\gomoku-mcp-p1b` | P1b + P1c | 🔄 **当前工作分支** |
-| `feat/agent-chat` | `E:\code\fun\gomoku-mcp-chat` | P4 聊天室 | ⬜ 只有文档 |
-| `feat/go-mode`（待建） | — | P3 围棋 | ⬜ 等 P2 完成 |
+**当前只有一个目录**：`E:\code\fun\gomoku-mcp`（main 分支）。P1 阶段的 worktree 已全部清理合并。
+
+| 分支 | 内容 | 状态 |
+|---|---|---|
+| `main` | P1a + P1b | ✅ 166 测试全绿 |
+| `feat/p2-dual-ai`（待建） | P2 双真实模型验证 | ⬜ **下一步** |
+| `feat/go-mode`（待建） | P3 围棋 | ⬜ 等 P2 完成 |
+
+**关于 worktree**：P1 时用了多个 worktree 并行开发，现在已不需要——串行开发直接在 main 目录建分支即可：
+
+```powershell
+cd E:\code\fun\gomoku-mcp
+git checkout -b feat/p2-dual-ai
+# ... 工作 ...
+git checkout main && git merge --ff-only feat/p2-dual-ai
+git branch -d feat/p2-dual-ai
+```
+
+worktree 只在**需要同时打开多个分支**时才有价值（比如一边跑 P3 一边修 P1 的 bug）。串行开发用普通分支更简单。
 
 - 冲突热点：`app.ts`（挂载）、`index.ts`（启动）、`web/src/App.tsx`（入口）、`shared/src/game.ts`（类型）。
 - 约定：共享类型只增不改；围棋引擎只碰新文件（`go.ts` / `go-insights.ts` / 测试），冲突面接近零。
