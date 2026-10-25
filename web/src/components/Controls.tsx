@@ -4,6 +4,8 @@ import type { GameState, StoneColor } from '@gomoku/shared';
 interface ControlsProps {
   state: GameState | null;
   humanColor: StoneColor | null;
+  /** Both seats are agents: this bar offers nothing to click. */
+  spectator: boolean;
   busy: boolean;
   onStart: (humanColor: StoneColor) => void;
   onResign: () => void;
@@ -14,6 +16,7 @@ const CONFIRM_WINDOW_MS = 4_000;
 export function Controls({
   state,
   humanColor,
+  spectator,
   busy,
   onStart,
   onResign,
@@ -36,6 +39,18 @@ export function Controls({
       timerRef.current = null;
     }
   }, [state?.gameId, state?.status]);
+
+  if (spectator) {
+    // Nobody here can take a seat or resign: the buttons would either lie
+    // ("执黑开局" would unseat an agent) or act on a game that is not ours.
+    return (
+      <div className="controls">
+        <span className="spectator-chip" title="两个 AI 各执一色，人类只看">
+          观战中
+        </span>
+      </div>
+    );
+  }
 
   const resignable =
     state?.status === 'playing' && humanColor !== null && !busy;

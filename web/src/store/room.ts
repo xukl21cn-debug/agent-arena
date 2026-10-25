@@ -74,9 +74,19 @@ export interface RoomStore {
 export function seatColors(state: GameState | null): {
   human: StoneColor | null;
   agent: StoneColor | null;
+  /** True when both seats are agents: this browser holds no seat, only watches. */
+  spectator: boolean;
 } {
   if (!state) {
-    return { human: null, agent: null };
+    return { human: null, agent: null, spectator: false };
+  }
+  if (
+    state.seats.black.kind === 'agent' &&
+    state.seats.white.kind === 'agent'
+  ) {
+    // Neither color is "the agent's" and none is the local player's; picking
+    // one would answer every downstream question wrongly.
+    return { human: null, agent: null, spectator: true };
   }
   const human =
     state.seats.black.kind === 'human'
@@ -90,7 +100,7 @@ export function seatColors(state: GameState | null): {
       : state.seats.white.kind === 'agent'
         ? 'white'
         : null;
-  return { human, agent };
+  return { human, agent, spectator: false };
 }
 
 /** Commentary for the current game, trimmed to the visible log length. */

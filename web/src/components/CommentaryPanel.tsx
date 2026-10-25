@@ -37,10 +37,18 @@ const EMPTY_COPY: Record<OpponentStatus, { title: string; hint: string }> = {
   },
 };
 
+/** The same empty state while spectating: no side here is "yours". */
+const SPECTATOR_EMPTY = {
+  title: '还没有解说',
+  hint: '两个 AI 落子后，可能会在这里点评。',
+};
+
 interface CommentaryPanelProps {
   commentary: Commentary[];
   opponentState: OpponentStatus;
   agentColor: StoneColor | null;
+  /** Both seats are agents: the panel narrates a game nobody here plays. */
+  spectator: boolean;
 }
 
 function formatTime(iso: string): string {
@@ -57,9 +65,10 @@ export function CommentaryPanel({
   commentary,
   opponentState,
   agentColor,
+  spectator,
 }: CommentaryPanelProps) {
   const thinking = opponentState === 'thinking';
-  const empty = EMPTY_COPY[opponentState];
+  const empty = spectator ? SPECTATOR_EMPTY : EMPTY_COPY[opponentState];
   const listRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const countRef = useRef(0);
@@ -116,9 +125,11 @@ export function CommentaryPanel({
     scrollToBottom(true);
   };
 
-  const seatLabel = agentColor
-    ? `AI 执${agentColor === 'black' ? '黑' : '白'}`
-    : 'AI 未入座';
+  const seatLabel = spectator
+    ? '双 AI 对弈'
+    : agentColor
+      ? `AI 执${agentColor === 'black' ? '黑' : '白'}`
+      : 'AI 未入座';
 
   return (
     <section className="panel" aria-label="AI 互动">

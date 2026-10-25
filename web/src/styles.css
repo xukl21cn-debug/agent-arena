@@ -808,6 +808,29 @@ button {
   flex: 1 1 0;
 }
 
+/* The controls bar when the browser holds no seat: two agents are playing. */
+.spectator-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: rgba(20, 23, 15, 0.6);
+}
+
+.spectator-chip::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  animation: blink 1.2s ease-in-out infinite;
+}
+
 .rule-note {
   margin: 0;
   padding-left: 2px;

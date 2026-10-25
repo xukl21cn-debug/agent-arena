@@ -50,7 +50,7 @@ export default function App() {
 
   useEffect(() => connect(roomId), [connect, roomId]);
 
-  const { human: humanColor, agent: agentColor } = seatColors(state);
+  const { human: humanColor, agent: agentColor, spectator } = seatColors(state);
   const gameId = state?.gameId ?? null;
 
   const canPlay =
@@ -59,13 +59,18 @@ export default function App() {
     state.turn === humanColor &&
     !busy;
 
-  const opponent = participants.find((item) => item.seat === agentColor) ?? null;
+  // Whose side the commentary panel should track. In a dual-agent room there
+  // is no fixed opponent: the live one is whoever is on turn.
+  const onTurnSeat =
+    state !== null && state.status === 'playing' ? state.turn : null;
+  const trackedSeat = spectator ? onTurnSeat : agentColor;
+  const opponent =
+    participants.find((item) => item.seat === trackedSeat) ?? null;
   // "It is the AI's turn" is not the same as "the AI can move": an agent that
   // never connected must not read as thinking, or the player waits for nobody.
   const opponentState = opponentStatus(opponent, {
     playing: state?.status === 'playing',
-    isOpponentTurn:
-      state?.status === 'playing' && state.turn === agentColor,
+    isOpponentTurn: trackedSeat !== null && state?.status === 'playing',
   });
 
   const visible = useMemo(
@@ -103,8 +108,9 @@ export default function App() {
       <ResultOverlay
         state={state}
         humanColor={humanColor}
+        spectator={spectator}
         busy={busy}
-        onRematch={rematch}
+        onRematch={spectator ? undefined : rematch}
         onDismiss={dismissResult}
       />
     ) : null;
@@ -115,7 +121,11 @@ export default function App() {
         <div className="brand">
           <p className="eyebrow">Gomoku · MCP</p>
           <h1 className="title">五子棋</h1>
-          <p className="subtitle">你在网页落子，AI 通过 MCP 应招。</p>
+          <p className="subtitle">
+            {spectator
+              ? '两个 AI 在对弈，你在旁边观战。'
+              : '你在网页落子，AI 通过 MCP 应招。'}
+          </p>
         </div>
 
         <div className="topbar-meta">
@@ -144,6 +154,7 @@ export default function App() {
             state={state}
             humanColor={humanColor}
             agentColor={agentColor}
+            spectator={spectator}
             participants={participants}
           />
 
@@ -158,6 +169,7 @@ export default function App() {
           <Controls
             state={state}
             humanColor={humanColor}
+            spectator={spectator}
             busy={busy}
             onStart={handleStart}
             onResign={handleResign}
@@ -170,6 +182,7 @@ export default function App() {
           commentary={visible}
           opponentState={opponentState}
           agentColor={agentColor}
+          spectator={spectator}
         />
       </main>
     </div>
