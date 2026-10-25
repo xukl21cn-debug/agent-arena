@@ -180,6 +180,48 @@ describe('two agents in one room', () => {
     }
   });
 
+  it('reports each agent its own color from get_state and say', async () => {
+    // Regression: get_state / say / new_game answered `yourColor` with
+    // `getAgentSeat()`, which returns the *first* agent seat. With two agents
+    // the white one was told it played black — and its presence got attached
+    // to the black seat, so the black tab showed the white agent's client.
+    const black = await connect('color-black');
+    const white = await connect('color-white');
+
+    try {
+      await call(black, 'join_game', { roomId: 'colors', name: 'b', seat: 'black' });
+      await call(white, 'join_game', { roomId: 'colors', name: 'w', seat: 'white' });
+      await call(black, 'new_game', { roomId: 'colors', agentColor: 'black' });
+
+      const blackState = await call(black, 'get_state', { roomId: 'colors' });
+      expect(blackState.yourColor).toBe('black');
+
+      const whiteState = await call(white, 'get_state', { roomId: 'colors' });
+      expect(whiteState.yourColor).toBe('white');
+
+      // The white agent speaking must not rebrand the black seat's presence.
+      await call(white, 'say', {
+        roomId: 'colors',
+        text: 'hi',
+        kind: 'banter',
+      });
+      const room = await fetch(`${baseUrl}/api/rooms/colors`).then((res) =>
+        res.json(),
+      );
+      const bySeat = Object.fromEntries(
+        (room.participants as Array<Record<string, any>>).map((item) => [
+          item.seat,
+          item,
+        ]),
+      );
+      expect(bySeat.black.client).toBe('color-black');
+      expect(bySeat.white.client).toBe('color-white');
+    } finally {
+      await black.close().catch(() => undefined);
+      await white.close().catch(() => undefined);
+    }
+  });
+
   it('routes wait_for_turn to the caller seat, not "the agent seat"', async () => {
     const black = await connect('waiter-black');
     const white = await connect('waiter-white');

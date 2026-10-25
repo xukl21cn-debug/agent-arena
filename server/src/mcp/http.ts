@@ -166,20 +166,40 @@ export class InProcessApi implements ArenaApi {
     return { ok };
   }
 
+  /**
+   * The seat this caller plays, resolved from the session binding.
+   *
+   * A joined session knows exactly which seat it holds, so two agents in one
+   * room each get their own answer. Only a caller that never joined falls back
+   * to `getAgentSeat()`, the pre-participant path where one agent is assumed.
+   */
+  private callerSeat(room: GameRoom): StoneColor | null {
+    const participantId = this.participantIdOf(room.id);
+    if (participantId === undefined) {
+      return room.getAgentSeat();
+    }
+    const participant = room
+      .getRoster()
+      .find((item) => item.id === participantId);
+    return participant?.seat ?? null;
+  }
+
   async newGame(
     roomId: string,
     agentColor?: StoneColor,
   ): Promise<AgentStateResponse> {
     const room = this.getOrCreateRoom(roomId);
     room.newGame({ agentColor });
-    this.notePresence(roomId, room.getAgentSeat());
-    return { state: agentView(room), yourColor: room.getAgentSeat() };
+    const seat = this.callerSeat(room);
+    this.notePresence(roomId, seat);
+    return { state: agentView(room), yourColor: seat };
   }
 
   async getState(roomId: string): Promise<AgentStateResponse> {
     const room = this.requireRoom(roomId);
-    this.notePresence(roomId, room.getAgentSeat());
-    return { state: agentView(room), yourColor: room.getAgentSeat() };
+    const seat = this.callerSeat(room);
+    this.notePresence(roomId, seat);
+    return { state: agentView(room), yourColor: seat };
   }
 
   async waitForTurn(
@@ -264,7 +284,9 @@ export class InProcessApi implements ArenaApi {
     mood?: CommentaryMood,
   ): Promise<Commentary> {
     const room = this.requireRoom(roomId);
-    this.notePresence(roomId, room.getAgentSeat());
+    // Commentary belongs to whoever spoke, so the presence stamp has to follow
+    // the caller's seat — otherwise the other agent's tab looks alive.
+    this.notePresence(roomId, this.callerSeat(room));
     try {
       return room.say(text, kind, mood);
     } catch (error) {
