@@ -107,20 +107,54 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 > 3 条失败全是选择器猜错（`.chat-mention` 写成 `[class*="mention"]` 等）。
 > **写浏览器断言前先导一遍类名。**
 
-### 3.4 ⬅ **下一步**：P5 大厅
+### 3.4 ⬅ **下一步**：P5 大厅 + 棋谱回放
 
-**工作单还没写。** 要做两件事：
+**设计已写好**：[`DESIGN-P5.md`](DESIGN-P5.md)（含**已验证**的重放方案）
+**拆成两份互不依赖的工作单**：
 
-| 项 | 说明 |
+| 工作单 | 内容 | 建议顺序 |
+|---|---|---|
+| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱回放（**可单步前进/后退**） | **先做**（技术难点） |
+| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | 可并行 |
+
+#### 回放方案已经验证过，不是纸上设计
+
+用户要求「单步前进后退」，所以必须能从**任意一手**重建棋盘。
+我写了一个原型直接调真实引擎，**22 条检查全过**：
+
+| 用例 | 结果 |
 |---|---|
-| 大厅 | 三类房间统一入口（五子棋 / 围棋 / 聊天）；显示 phase、成员、最后活动 |
-| **棋谱回放** | P3.5 已落盘到 `data/rooms/`，做列表 + 回放页面 |
+| 五子棋 9 手到五连 | 每帧棋盘与真实对局一致 |
+| **围棋提子** | 每帧一致；`captures` / `lastCaptured` 都正确重建；提子前一帧白子还在 |
+| 连续 pass 进数子 | 重放也进 `scoring` |
+| 损坏 history | **抛错带手数**，不静默截断 |
+
+**关键结论：重放不需要自己实现任何规则。**
+`applyGoPlacement` / `applyGoPass` / `applyMove` 都是纯函数、接受完整 state，
+提子、劫、自杀、五连判定全由引擎负责。
+
+三个必须做对的细节（工作单 §1）：
+`gameId` 沿用落盘值、`now` 传 `move.at`、失败要抛错。
+
+#### ⚠️ P5B 有个前置 bug
+
+`ChatRoomSummary.updatedAt` 是 `new Date().toISOString()`
+（`server/src/chat/manager.ts:122`）——**每次请求都返回「现在」**，不是真实最后活动时间。
+
+大厅要按它排序，**必须先修**，否则每次刷新顺序都不一样。
+对照：棋类的 `updatedAt` 来自 `state.updatedAt`，是真的。
+
+#### 回放不重演终局
+
+`history` 只记落子和停一手，**不记认输/标死子/确认分数**。所以：
+
+- 回放保证**棋盘和走子**正确
+- **不保证**复现终局判定
+- 终局文字要从落盘的 `final.status` 读，**不能从重放推**
+
+回放页必须标注这一点，否则用户会以为漏了什么。
 
 > **WS 统一不用做了**：C4 已经复用 `/ws`（`kind=chat`）把聊天室接进去了。
-> 原来 P5 列的三件事缩水成两件。
-
-⚠️ **回放的坑**：`data/rooms/*.json` 里存的是 `GameState` 快照 + 完整 moves，
-回放要能重建每一手。围棋还要处理提子——**别自己重算，用 `core/go.ts` 的纯函数**。
 
 ### 3.5 可选：P4-C3 runner
 
@@ -245,7 +279,7 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增五份**：
+**这一轮新增八份**：
 
 | 文件 | 内容 |
 |---|---|
@@ -254,6 +288,9 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 | [`REVIEW-P4-CHAT-FIX.md`](REVIEW-P4-CHAT-FIX.md) | 修复的评审记录（独立验证 55 条全过） |
 | [`HANDOFF-P4-C4.md`](HANDOFF-P4-C4.md) | 网页聊天页工作单（✅ 已完成） |
 | [`REVIEW-P4-C4.md`](REVIEW-P4-C4.md) | C4 评审记录（独立验证 49 条全过） |
+| [`DESIGN-P5.md`](DESIGN-P5.md) | P5 设计稿：回放方案（含原型验证 22 条） |
+| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱回放工作单（**待做**） |
+| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅工作单（**待做**） |
 
 ---
 

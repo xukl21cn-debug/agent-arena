@@ -247,9 +247,9 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | 分支 | `main`，干净 |
 | 测试 | **302 全绿** |
 | 已完成 | P1 · P2 · P3 · P3.5 · **P4 聊天室全部**（C1/C2 · C2.5 · C4）· chat policy 修复 · 真实模型聊天观察 |
-| 进行中 | **P5 大厅 + 棋谱回放**（工作单待写） |
+| 进行中 | **P5 大厅 + 棋谱回放**（工作单已写好，见 [`DESIGN-P5.md`](docs/DESIGN-P5.md)） |
 
-**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.4**——写 P5 工作单：大厅 + 棋谱回放。
+**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.4**——按 [`HANDOFF-P5A.md`](docs/HANDOFF-P5A.md)（回放）和 [`HANDOFF-P5B.md`](docs/HANDOFF-P5B.md)（大厅）开工。
 
 ---
 
@@ -262,6 +262,7 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | `docs/SESSION-HANDOFF.md` | **最新交接**（读它知道从哪继续） |
 | `docs/DEV-WORKFLOW.md` | 双端口开发流程 |
 | `docs/DESIGN.md` | 原始设计文档 |
+| `docs/DESIGN-*.md` | 阶段性设计稿（如 P5 回放方案，含原型验证结论） |
 | `docs/HANDOFF-*.md` | 各阶段工作单 |
 | `docs/REVIEW-*.md` | 各阶段评审记录 |
 | `docs/OBSERVE-*.md` | 实测观察记录（真实模型行为、缺陷证据） |
