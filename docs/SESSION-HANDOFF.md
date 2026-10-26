@@ -9,14 +9,14 @@
 
 ## 一、当前状态（一句话）
 
-**`main` 分支干净，302 个测试全绿。P4 聊天室全部完成（服务端 + 网页），下一步是 P5 大厅。**
+**`main` 分支干净，327 个测试全绿。P4 聊天室 + P5A 棋谱归档回放已完成，下一步是 P5B 大厅。**
 
 | 项 | 值 |
 |---|---|
 | 项目路径 | `E:\code\fun\agent-arena` |
 | 分支 | `main`（干净） |
-| 最新提交 | `59d6fc6 feat(chat): web chat room rides the existing /ws channel` |
-| 测试 | **302 全绿** |
+| 最新提交 | `2ee13b9 feat(replay): archive finished games and replay them frame by frame` |
+| 测试 | **327 全绿** |
 | 服务 | 3000 端口（`pnpm dev`） |
 | 数据 | 对局落盘在 `data/`（P3.5 完成）；**聊天室落盘在 `server/data/chat/`** |
 
@@ -47,6 +47,7 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 | **P4 §3.1** | 真实模型聊天观察 | claude + DSH 聊 13 条；**挖出 2 个服务端缺陷** |
 | **P4-C2.5** | 修那两个缺陷 | `memberRef()` + `unreadAfter()`；292 测试全绿，[评审](REVIEW-P4-CHAT-FIX.md) |
 | **P4-C4** | 网页聊天页 | 复用 `/ws`（`kind=chat`）；302 测试全绿，[评审](REVIEW-P4-C4.md) |
+| **P5A** | 棋谱归档 + 回放 | 每房间保留 N 局；逐手重放真实引擎；327 测试全绿，[评审](REVIEW-P5A.md) |
 
 **P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
@@ -107,36 +108,29 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 > 3 条失败全是选择器猜错（`.chat-mention` 写成 `[class*="mention"]` 等）。
 > **写浏览器断言前先导一遍类名。**
 
-### 3.4 ⬅ **下一步**：P5 大厅 + 棋谱回放
+### 3.4 ⬅ **下一步**：P5B 大厅
 
-**设计已写好**：[`DESIGN-P5.md`](DESIGN-P5.md)（含**已验证**的重放方案）
-**拆成两份互不依赖的工作单**：
+**P5A（归档 + 回放）已完成并合入**：[`REVIEW-P5A.md`](REVIEW-P5A.md)（`2ee13b9`）。
 
-| 工作单 | 内容 | 建议顺序 |
+| 工作单 | 内容 | 状态 |
 |---|---|---|
-| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱回放（**可单步前进/后退**） | **先做**（技术难点） |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | 可并行 |
+| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放（可单步前进/后退） | ✅ **已完成** |
+| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | ⬅ **下一步** |
 
-#### 回放方案已经验证过，不是纸上设计
+#### P5A 交付了什么（P5B 可以直接用）
 
-用户要求「单步前进后退」，所以必须能从**任意一手**重建棋盘。
-我写了一个原型直接调真实引擎，**22 条检查全过**：
+```http
+GET /api/archive                      → 历史对局列表（已按 playedAt 降序）
+GET /api/rooms/:id/replay             → 当前局回放
+GET /api/archive/:archiveId/replay    → 归档局回放
+```
 
-| 用例 | 结果 |
-|---|---|
-| 五子棋 9 手到五连 | 每帧棋盘与真实对局一致 |
-| **围棋提子** | 每帧一致；`captures` / `lastCaptured` 都正确重建；提子前一帧白子还在 |
-| 连续 pass 进数子 | 重放也进 `scoring` |
-| 损坏 history | **抛错带手数**，不静默截断 |
+归档在 `<dataDir>/archive/<roomId>__<gameId>.json`，
+每房间保留最近 `ARENA_ARCHIVE_LIMIT`（默认 20）局。
 
-**关键结论：重放不需要自己实现任何规则。**
-`applyGoPlacement` / `applyGoPass` / `applyMove` 都是纯函数、接受完整 state，
-提子、劫、自杀、五连判定全由引擎负责。
+**回放页入口**：`/?room=<id>&view=replay`、`/?archive=<archiveId>`。
 
-三个必须做对的细节（工作单 §1）：
-`gameId` 沿用落盘值、`now` 传 `move.at`、失败要抛错。
-
-#### ⚠️ P5B 有个前置 bug
+#### ⚠️ P5B 有个前置 bug（还没修）
 
 `ChatRoomSummary.updatedAt` 是 `new Date().toISOString()`
 （`server/src/chat/manager.ts:122`）——**每次请求都返回「现在」**，不是真实最后活动时间。
@@ -144,15 +138,15 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 大厅要按它排序，**必须先修**，否则每次刷新顺序都不一样。
 对照：棋类的 `updatedAt` 来自 `state.updatedAt`，是真的。
 
-#### 回放不重演终局
+#### 回放不重演终局（已知限制，不是 bug）
 
 `history` 只记落子和停一手，**不记认输/标死子/确认分数**。所以：
 
 - 回放保证**棋盘和走子**正确
 - **不保证**复现终局判定
-- 终局文字要从落盘的 `final.status` 读，**不能从重放推**
+- 终局文字从落盘的 `final.status` 读，**不能从重放推**
 
-回放页必须标注这一点，否则用户会以为漏了什么。
+回放页已标注这一点。
 
 > **WS 统一不用做了**：C4 已经复用 `/ws`（`kind=chat`）把聊天室接进去了。
 
@@ -244,6 +238,40 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 **但也正因为真模型会长时间挂着等**，`wait_for_messages` 丢消息的 bug 才显得严重——
 挂得越久，一次返回里积压的消息越多，越容易超过 12 条被截断。
 
+### 4.8 评审方在 P5A 一轮里犯了**四次**同类错
+
+`AGENTS.md` §6.2 那四条，这一轮全犯了一遍的变体：
+
+| # | 我的错 | 真因 |
+|---|---|---|
+| 1 | 用 REST `/moves` 连发 3 手 | **REST 落子校验轮次**，人类座位不能替白方走。必须用两个 MCP agent |
+| 2 | 断言 `/api/rooms/:id` 键集合漏了 `participants` | 凭记忆写的，没 dump |
+| 3 | 用 `circle` 数棋子 | 棋子是 `span.stone`；`circle` 是**星位**，恒为 5 个 |
+| 4 | 断言「后退一帧后 7 颗子」 | 算术错：第 7 手加一子同时提一子，总数不变 |
+
+**第 3 个最典型**：`circle` 恒为 5，导致「开局 0 子」也报 5，我却先怀疑代码。
+**dump 一次 DOM 就全清楚了。**
+
+**规则（写进 §6.2 的精神里）**：
+- 写断言前**先 dump 真实响应 / 真实 DOM**
+- 数 UI 元素前，确认那个选择器**真的只匹配目标**
+- 涉及棋子的算术，先手算一遍再写期望值
+
+### 4.9 归档时机：`newGame()` 里必须用 `prev`
+
+`GameRoom.newGame()` 的执行顺序：
+
+```text
+L508  const prev = this.state;        ← 旧局在这
+L518  this.state = startGoGame(...)   ← 已换成新局
+L539  this.history = [];              ← 历史才清空
+```
+
+**在 L539 附近归档会得到「空棋谱 + 新局 state」**——
+文件看起来正常，回放出来什么都没有。
+
+实测：`newGame()` 之后 `this.history` 是**空的**。必须用 `prev`。
+
 ---
 
 ## 五、关键文件索引
@@ -256,11 +284,14 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 | `server/src/core/engine.ts` | 五子棋引擎 |
 | `server/src/core/go.ts` | 围棋引擎（纯函数，独立审计通过） |
 | `server/src/core/go-game.ts` | 围棋状态搬运（对应 engine.ts） |
+| `server/src/core/replay.ts` | **回放：逐手重放真实引擎，产出 frames** |
+| `server/src/rooms/repository.ts` | 落盘 + **归档（`data/archive/`）** |
 | `server/src/core/presence.ts` | 在线状态（**按座位索引**） |
 | `server/src/mcp/tools.ts` | 棋类 MCP 工具（12 个） |
 | `server/src/chat/` | 聊天室（独立领域，5 个文件） |
 | `shared/src/game.ts` | 核心类型（`GameState` / `GoState` / `RoomView`） |
 | `web/src/components/GoBoard.tsx` | 网页围棋盘 |
+| `web/src/components/replay/ReplayPage.tsx` | **回放页（单步前进/后退）** |
 
 ### 脚本
 
@@ -279,7 +310,7 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增八份**：
+**这一轮新增九份**：
 
 | 文件 | 内容 |
 |---|---|
@@ -289,7 +320,8 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 | [`HANDOFF-P4-C4.md`](HANDOFF-P4-C4.md) | 网页聊天页工作单（✅ 已完成） |
 | [`REVIEW-P4-C4.md`](REVIEW-P4-C4.md) | C4 评审记录（独立验证 49 条全过） |
 | [`DESIGN-P5.md`](DESIGN-P5.md) | P5 设计稿：回放方案（含原型验证 22 条） |
-| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱回放工作单（**待做**） |
+| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放工作单（✅ 已完成） |
+| [`REVIEW-P5A.md`](REVIEW-P5A.md) | P5A 评审记录（独立验证 76 条，含 4 次评审方自己的错） |
 | [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅工作单（**待做**） |
 
 ---

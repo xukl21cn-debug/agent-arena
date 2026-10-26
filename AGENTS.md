@@ -81,7 +81,7 @@ docs/<topic>      纯文档
 
 | 约束 | 原因 |
 |---|---|
-| `GameStatus` 只有 `idle/playing/finished` | MCP 契约 + 302 个测试依赖 |
+| `GameStatus` 只有 `idle/playing/finished` | MCP 契约 + 327 个测试依赖 |
 | 围棋的 `scoring` 放在独立的 `GoStatus` | 不污染公共类型 |
 | `PlayerSpec.id` 保持可选 | engine 默认值没有 id |
 | 旧 `actor` 路径保留 | 旧客户端还在用 |
@@ -150,7 +150,7 @@ pwsh -File scripts/dev-isolated.ps1 -Stop
 
 ```powershell
 pnpm build        # 全量构建（shared + server + web）
-pnpm test         # 全量测试（当前 302）
+pnpm test         # 全量测试（当前 327）
 pnpm typecheck    # 类型检查
 pnpm start        # 生产模式起服务（读 dist/，改完必须 build）
 pnpm duel         # 两个脚本客户端下一盘五子棋（协议层自测）
@@ -245,11 +245,11 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | 项 | 值 |
 |---|---|
 | 分支 | `main`，干净 |
-| 测试 | **302 全绿** |
-| 已完成 | P1 · P2 · P3 · P3.5 · **P4 聊天室全部**（C1/C2 · C2.5 · C4）· chat policy 修复 · 真实模型聊天观察 |
-| 进行中 | **P5 大厅 + 棋谱回放**（工作单已写好，见 [`DESIGN-P5.md`](docs/DESIGN-P5.md)） |
+| 测试 | **327 全绿** |
+| 已完成 | P1 · P2 · P3 · P3.5 · **P4 聊天室全部** · **P5A 棋谱归档 + 回放** |
+| 进行中 | **P5B 大厅**（工作单 [`HANDOFF-P5B.md`](docs/HANDOFF-P5B.md) 已写好） |
 
-**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.4**——按 [`HANDOFF-P5A.md`](docs/HANDOFF-P5A.md)（回放）和 [`HANDOFF-P5B.md`](docs/HANDOFF-P5B.md)（大厅）开工。
+**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.4**——按 [`HANDOFF-P5B.md`](docs/HANDOFF-P5B.md) 做大厅（`GET /api/archive` 已就绪）。
 
 ---
 
