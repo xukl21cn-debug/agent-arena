@@ -2,7 +2,7 @@
 
 > 状态：草案 v0.1（2026-10-24）
 > 定位：这是「双方都能用 AI」「在线状态」「准备阶段」「聊天室」四件事的共同地基。先评审，再动手。
-> 关联：[ROADMAP](../ROADMAP.md)、[PROPOSAL-AGENT-CHAT](PROPOSAL-AGENT-CHAT.md)、[PROPOSAL-GO-MCP](PROPOSAL-GO-MCP.md)
+> 关联：[ROADMAP](../ROADMAP.md)、[PROPOSAL-AGENT-CHAT](PROPOSAL-AGENT-CHAT.md)、[PROPOSAL-GO-MCP](../PROPOSAL-GO-MCP.md)
 
 ---
 

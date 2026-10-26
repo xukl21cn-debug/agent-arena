@@ -247,9 +247,9 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | 分支 | `main`，干净 |
 | 测试 | **292 全绿** |
 | 已完成 | P1 · P2 · P3 · P3.5 · P4-C1/C2 · chat policy 修复 · 真实模型聊天观察 · **聊天室两缺陷修复** |
-| 进行中 | P4（聊天室）：服务端已完成且已验证，**C4 网页未开始** |
+| 进行中 | P4（聊天室）：服务端已完成且已验证，**C4 网页待开工（工作单已写好）** |
 
-**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.3**——写 `HANDOFF-P4-C4.md`，做网页聊天页。
+**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.3**——按 [`HANDOFF-P4-C4.md`](docs/HANDOFF-P4-C4.md) 做网页聊天页。
 
 ---
 

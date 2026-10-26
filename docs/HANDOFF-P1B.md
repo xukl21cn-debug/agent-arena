@@ -14,8 +14,8 @@
 按这个顺序，不要跳：
 
 1. **本文件**（你在哪、要做什么）
-2. [`docs/ROADMAP.md`](../ROADMAP.md) — 整体顺序和依赖，知道为什么先做参与者模型
-3. [`docs/proposals/PROPOSAL-PARTICIPANTS.md`](../proposals/PROPOSAL-PARTICIPANTS.md) — 设计意图，尤其是 presence 语义那一节
+2. [`docs/ROADMAP.md`](ROADMAP.md) — 整体顺序和依赖，知道为什么先做参与者模型
+3. [`docs/proposals/PROPOSAL-PARTICIPANTS.md`](proposals/PROPOSAL-PARTICIPANTS.md) — 设计意图，尤其是 presence 语义那一节
 4. 代码：`shared/src/participant.ts` → `server/src/rooms/participant-roster.ts` → `server/src/rooms/room.ts` → `server/src/core/presence.ts`
 
 ---
