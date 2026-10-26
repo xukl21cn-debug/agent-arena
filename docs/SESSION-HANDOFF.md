@@ -9,16 +9,25 @@
 
 ## 一、当前状态（一句话）
 
-**`main` 分支干净，292 个测试全绿。聊天室两个缺陷已修复合入，C4 网页可以开工了。**
+**`main` 分支干净，302 个测试全绿。P4 聊天室全部完成（服务端 + 网页），下一步是 P5 大厅。**
 
 | 项 | 值 |
 |---|---|
 | 项目路径 | `E:\code\fun\agent-arena` |
 | 分支 | `main`（干净） |
-| 最新提交 | `785b172 fix(chat): make the per-member limit bite and the wait cursor tell the truth` |
-| 测试 | **292 全绿** |
+| 最新提交 | `59d6fc6 feat(chat): web chat room rides the existing /ws channel` |
+| 测试 | **302 全绿** |
 | 服务 | 3000 端口（`pnpm dev`） |
 | 数据 | 对局落盘在 `data/`（P3.5 完成）；**聊天室落盘在 `server/data/chat/`** |
+
+**网页入口**：
+
+```text
+http://localhost:5173/?room=<id>              → 棋类（五子棋/围棋）
+http://localhost:5173/?room=<id>&kind=chat    → 聊天室
+```
+
+⚠️ **`kind` 缺省仍是棋类**，这是硬约束（旧书签和旧客户端都靠它）。
 
 ---
 
@@ -37,6 +46,7 @@
 | 修复 | chat policy 参数 | REST 建房时 policy 被静默丢弃 |
 | **P4 §3.1** | 真实模型聊天观察 | claude + DSH 聊 13 条；**挖出 2 个服务端缺陷** |
 | **P4-C2.5** | 修那两个缺陷 | `memberRef()` + `unreadAfter()`；292 测试全绿，[评审](REVIEW-P4-CHAT-FIX.md) |
+| **P4-C4** | 网页聊天页 | 复用 `/ws`（`kind=chat`）；302 测试全绿，[评审](REVIEW-P4-C4.md) |
 
 **P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
@@ -75,41 +85,47 @@
 > ⚠️ 一个坑记下来：`wait` 有**四个**唤醒条件（有新消息 / 轮到你 / phase 变了 / 超时），
 > 断言 `timedOut=true` 前必须先保证前三个都不成立。我第一次就写错了这个断言。
 
-### 3.3 ⬅ **下一步**：P4-C4 网页聊天页
+### 3.3 ✅ 已完成：P4-C4 网页聊天页
 
-**工作单已写好**：[`HANDOFF-P4-C4.md`](HANDOFF-P4-C4.md)，交 GLM。
+工作单：[`HANDOFF-P4-C4.md`](HANDOFF-P4-C4.md)
+评审：[`REVIEW-P4-C4.md`](REVIEW-P4-C4.md)（`59d6fc6`，已合入 main）
 
-已拍板的两个决定（写在工作单里，别推翻）：
+| 项 | 落地方式 |
+|---|---|
+| 传输 | 复用 `/ws` + `kind=chat`，**没有引入 SSE** |
+| `@` 补全 | relay 下的「点名交棒」UI，**没实现 `mentions` 模式** |
+| 落盘 | `onChange` 单槽改成订阅者集合，`create()` 和 `loadFile()` 两个点都改了 |
+| 前端 | `?room=<id>&kind=chat` 分流；作者色按名字哈希；上滚不抢位置 |
 
-| 决定 | 内容 | 理由 |
-|---|---|---|
-| **传输** | 复用现有 `/ws`，**不引入 SSE** | 棋类页面已经在用 WS（`web/src/store/room.ts:355`），再加一套 SSE 是净负债 |
-| **`@` 补全** | 只做 relay 下的「点名交棒」UI，**不实现 `mentions` 模式** | v1 只实现了 relay（`model.ts:20`），真做 mentions 要改 `ChatRoom` 轮次语义 |
+**评审方独立验证**：隔离服务（3300）+ Node 内置 `WebSocket` + headless Chromium/CDP，
+`34 + 15 = 49` 条检查全过。
 
-⚠️ **工作单里标了最大的坑**：`ChatRoom.onChange` 是**单槽**，已被落盘占用
-（`manager.ts:88` 和 `:173` 两个赋值点）。ws 订阅直接赋值会**静默覆盖落盘**——
-消息不再持久化，且现有测试不会报错。工作单 §2.1 给了做法和必写的测试。
+> ⚠️ **`kind` 缺省仍是棋类**——这是硬约束，改了就全坏。
+> 我测了「不带 kind」和「kind 拼错」两种误用，都正确回落到棋类路径。
 
-⚠️ **`/ws` 的 `kind` 缺省必须仍是棋类**，否则现有棋类页面全坏。
+> ⚠️ **评审方这轮又犯了一次 §6.2 的错**：写前端断言前没 dump 真实 DOM，
+> 3 条失败全是选择器猜错（`.chat-mention` 写成 `[class*="mention"]` 等）。
+> **写浏览器断言前先导一遍类名。**
 
-### 3.4 之后：P5 大厅
+### 3.4 ⬅ **下一步**：P5 大厅
 
-包含三件事（用户已确认）：
+**工作单还没写。** 要做两件事：
 
 | 项 | 说明 |
 |---|---|
-| 大厅 | 三类房间统一入口（五子棋 / 围棋 / 聊天） |
-| **棋谱回放** | P3.5 已落盘，做列表 + 回放页面 |
-| ~~WS 统一~~ | **部分提前到 C4 做掉**：聊天室的 WS 广播在 C4 落地。P5 只剩「大厅 + 回放」 |
+| 大厅 | 三类房间统一入口（五子棋 / 围棋 / 聊天）；显示 phase、成员、最后活动 |
+| **棋谱回放** | P3.5 已落盘到 `data/rooms/`，做列表 + 回放页面 |
 
-> **WS 统一为什么缩水了**：C4 决定复用现有 `/ws`（加 `kind=chat`），
-> 所以「聊天室没有 WS」这个缺口在 C4 就补上了，不用等 P5。
-> P5 不需要再把 `RoomManager` 改成装两类房间——`ws.ts` 按 kind 分发即可。
+> **WS 统一不用做了**：C4 已经复用 `/ws`（`kind=chat`）把聊天室接进去了。
+> 原来 P5 列的三件事缩水成两件。
+
+⚠️ **回放的坑**：`data/rooms/*.json` 里存的是 `GameState` 快照 + 完整 moves，
+回放要能重建每一手。围棋还要处理提子——**别自己重算，用 `core/go.ts` 的纯函数**。
 
 ### 3.5 可选：P4-C3 runner
 
 把 CLI 包成常驻成员（`codex exec` / `claude -p`），不依赖模型耐心循环调用。
-优先级低于 C4——交互式客户端已经能用。
+优先级低于 P5 大厅——交互式客户端已经能用。
 
 > **但 `pass`/`yield` 可以独立于 runner 先做**：
 > agent 收工后轮次会卡在它身上，只能等 120s 超时跳过。
@@ -229,13 +245,15 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增三份**：
+**这一轮新增五份**：
 
 | 文件 | 内容 |
 |---|---|
 | [`OBSERVE-CHAT-REAL-MODELS.md`](OBSERVE-CHAT-REAL-MODELS.md) | 真实模型聊天观察：模型表现 + 两个缺陷的实测证据 |
 | [`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md) | 修那两个缺陷的工作单（✅ 已完成） |
 | [`REVIEW-P4-CHAT-FIX.md`](REVIEW-P4-CHAT-FIX.md) | 修复的评审记录（独立验证 55 条全过） |
+| [`HANDOFF-P4-C4.md`](HANDOFF-P4-C4.md) | 网页聊天页工作单（✅ 已完成） |
+| [`REVIEW-P4-C4.md`](REVIEW-P4-C4.md) | C4 评审记录（独立验证 49 条全过） |
 
 ---
 
