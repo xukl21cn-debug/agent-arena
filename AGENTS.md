@@ -81,7 +81,7 @@ docs/<topic>      纯文档
 
 | 约束 | 原因 |
 |---|---|
-| `GameStatus` 只有 `idle/playing/finished` | MCP 契约 + 282 个测试依赖 |
+| `GameStatus` 只有 `idle/playing/finished` | MCP 契约 + 292 个测试依赖 |
 | 围棋的 `scoring` 放在独立的 `GoStatus` | 不污染公共类型 |
 | `PlayerSpec.id` 保持可选 | engine 默认值没有 id |
 | 旧 `actor` 路径保留 | 旧客户端还在用 |
@@ -150,7 +150,7 @@ pwsh -File scripts/dev-isolated.ps1 -Stop
 
 ```powershell
 pnpm build        # 全量构建（shared + server + web）
-pnpm test         # 全量测试（当前 282）
+pnpm test         # 全量测试（当前 292）
 pnpm typecheck    # 类型检查
 pnpm start        # 生产模式起服务（读 dist/，改完必须 build）
 pnpm duel         # 两个脚本客户端下一盘五子棋（协议层自测）
@@ -245,12 +245,11 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | 项 | 值 |
 |---|---|
 | 分支 | `main`，干净 |
-| 测试 | **282 全绿** |
-| 已完成 | P1 · P2 · P3 · P3.5 · P4-C1/C2 · chat policy 修复 · 真实模型聊天观察 |
-| 进行中 | P4（聊天室）：C1/C2 已完成，**真实模型已聊过一轮，挖出两个服务端缺陷待修** |
+| 测试 | **292 全绿** |
+| 已完成 | P1 · P2 · P3 · P3.5 · P4-C1/C2 · chat policy 修复 · 真实模型聊天观察 · **聊天室两缺陷修复** |
+| 进行中 | P4（聊天室）：服务端已完成且已验证，**C4 网页未开始** |
 
-**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.2**——
-先修 [`HANDOFF-P4-CHAT-FIX.md`](docs/HANDOFF-P4-CHAT-FIX.md) 里的两个缺陷，再上 C4 网页。
+**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.3**——写 `HANDOFF-P4-C4.md`，做网页聊天页。
 
 ---
 

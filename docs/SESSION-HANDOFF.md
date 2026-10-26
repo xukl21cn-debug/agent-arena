@@ -9,15 +9,15 @@
 
 ## 一、当前状态（一句话）
 
-**`main` 分支干净，282 个测试全绿。真实模型已聊过一轮，发现两个服务端缺陷，工作单已写好待 GLM 修。**
+**`main` 分支干净，292 个测试全绿。聊天室两个缺陷已修复合入，C4 网页可以开工了。**
 
 | 项 | 值 |
 |---|---|
 | 项目路径 | `E:\code\fun\agent-arena` |
 | 分支 | `main`（干净） |
-| 最新提交 | `11f100b docs: pnpm dev is the normal workflow; the two-port setup is the exception` |
-| 测试 | **282 全绿** |
-| 服务 | 3000 端口运行中（`pnpm dev`） |
+| 最新提交 | `785b172 fix(chat): make the per-member limit bite and the wait cursor tell the truth` |
+| 测试 | **292 全绿** |
+| 服务 | 3000 端口（`pnpm dev`） |
 | 数据 | 对局落盘在 `data/`（P3.5 完成）；**聊天室落盘在 `server/data/chat/`** |
 
 ---
@@ -36,6 +36,7 @@
 | **P4-C1/C2** | 聊天室服务端 | `/chat/mcp` + 4 个工具 + 长轮询 |
 | 修复 | chat policy 参数 | REST 建房时 policy 被静默丢弃 |
 | **P4 §3.1** | 真实模型聊天观察 | claude + DSH 聊 13 条；**挖出 2 个服务端缺陷** |
+| **P4-C2.5** | 修那两个缺陷 | `memberRef()` + `unreadAfter()`；292 测试全绿，[评审](REVIEW-P4-CHAT-FIX.md) |
 
 **P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
@@ -58,24 +59,28 @@
 
 **但发现两个服务端缺陷**（详见 §3.2）。
 
-### 3.2 ⬅ **下一步**：修两个缺陷
+### 3.2 ✅ 已完成：两个缺陷已修复合入
 
-工作单：[`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md)，交 GLM。
+工作单：[`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md)
+评审：[`REVIEW-P4-CHAT-FIX.md`](REVIEW-P4-CHAT-FIX.md)（`785b172`，已合入 main）
 
-| 缺陷 | 严重度 | 一句话 |
-|---|---|---|
-| `maxMessagesPerMember` 失效 | 严重 | `memberOf()` 从 `snapshot()` 深拷贝取成员，计数器加在副本上，上限永不触发 |
-| `wait_for_messages` 静默丢消息 | 严重 | 只返回最近 12 条，前面的直接丢掉，且不给 `omitted`/`hasMore`/`nextCursor` |
+| 缺陷 | 修法 |
+|---|---|
+| `maxMessagesPerMember` 失效 | 加 `ChatRoom.memberRef()` 返回本体，`memberOf()` 改用它；`snapshot()` 拷贝语义不动 |
+| `wait_for_messages` 静默丢消息 | 响应加 `nextCursor`/`hasMore`/`omitted`；`messagesAfter` 换成 `unreadAfter`（头部截断） |
 
-两个都有实测复现（工作单 §5）。**C4 网页要等这个修完**——
-成员栏要显示发言数（现在是坏的），网页长轮询会踩同一个丢消息的坑。
+**评审方独立验证**：自己起隔离服务（3200）、手写 MCP 客户端，
+`38 + 17 = 55` 条检查全过，未复用 GLM 的测试。
 
-### 3.3 然后：P4-C4 网页聊天页
+> ⚠️ 一个坑记下来：`wait` 有**四个**唤醒条件（有新消息 / 轮到你 / phase 变了 / 超时），
+> 断言 `timedOut=true` 前必须先保证前三个都不成立。我第一次就写错了这个断言。
 
-工作单**还没写**，等 §3.2 修完再写。内容参考：
+### 3.3 ⬅ **下一步**：P4-C4 网页聊天页
+
+工作单**还没写**，现在可以写了。内容参考：
 
 - 时间线（作者颜色、气泡）
-- 成员栏（在线状态 + 发言数）← **依赖 §3.2 的 Bug A 修完**
+- 成员栏（在线状态 + 发言数）← **现在计数可信了**
 - hop 预算条
 - 人类输入框（`@` 补全）
 - 暂停 / 关闭 / 导出
@@ -83,8 +88,11 @@
 ⚠️ **聊天室没有 WS**（C1/C2 刻意跳过了），网页要用轮询或长轮询。
 统一 WS 留给 P5。
 
-> **真实模型聊出来的共识**：MCP 链路维持长轮询，先修游标；
+> **真实模型聊出来的共识**：MCP 链路维持长轮询，先修游标（**已修**）；
 > WS 只进网页那一层，P5 再统一。网页端 SSE 优先于 WS（单向就够）。
+
+> **网页长轮询现在安全了**：`wait` 不会再静默丢消息，
+> `hasMore` 为真时 hint 会给出续读指令，网页照 hint 做就能拿全。
 
 ### 3.4 之后：P5 大厅
 
@@ -219,12 +227,13 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增两份**：
+**这一轮新增三份**：
 
 | 文件 | 内容 |
 |---|---|
 | [`OBSERVE-CHAT-REAL-MODELS.md`](OBSERVE-CHAT-REAL-MODELS.md) | 真实模型聊天观察：模型表现 + 两个缺陷的实测证据 |
-| [`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md) | 修那两个缺陷的工作单（**当前待做**） |
+| [`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md) | 修那两个缺陷的工作单（✅ 已完成） |
+| [`REVIEW-P4-CHAT-FIX.md`](REVIEW-P4-CHAT-FIX.md) | 修复的评审记录（独立验证 55 条全过） |
 
 ---
 
