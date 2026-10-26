@@ -1,14 +1,33 @@
 import type {
   AnyGameState,
+  ArchiveSummary,
   ChatMemberFrame,
   ChatMessageFrame,
   ChatRoomFrame,
   Commentary,
   ErrorCode,
   ReplayResponse,
+  RoomSummary,
   RoomView,
   StoneColor,
 } from '@arena/shared';
+
+/**
+ * The chat list's own contract, mirrored client-side: it is the chat
+ * domain's summary (served by its own router), deliberately not a shared
+ * type — the two domains do not merge their endpoints.
+ */
+export interface ChatRoomSummaryDto {
+  id: string;
+  title: string;
+  phase: 'open' | 'paused' | 'closed';
+  memberCount: number;
+  agentCount: number;
+  messageCount: number;
+  hop: number;
+  maxHops: number;
+  updatedAt: string;
+}
 
 interface ErrorPayload {
   error?: {
@@ -243,6 +262,34 @@ export const api = {
     return request<ReplayResponse>(
       `/api/archive/${encodeURIComponent(archiveId)}/replay`,
     );
+  },
+
+  /** Game rooms, for the lobby. */
+  listRooms(): Promise<RoomSummary[]> {
+    return request<RoomSummary[]>('/api/rooms');
+  },
+
+  /** Chat rooms, for the lobby; a separate domain with its own summary. */
+  listChatRooms(): Promise<ChatRoomSummaryDto[]> {
+    return request<ChatRoomSummaryDto[]>('/api/chat/rooms');
+  },
+
+  /**
+   * Archived games, newest played first — the server already ordered them,
+   * so the caller must not re-sort. Null when the surface is absent or
+   * failing: the lobby degrades to "no history" instead of breaking, which
+   * keeps it working before the archive stage is deployed.
+   */
+  async listArchives(): Promise<ArchiveSummary[] | null> {
+    try {
+      const response = await fetch('/api/archive');
+      if (!response.ok) {
+        return null;
+      }
+      return (await response.json()) as ArchiveSummary[];
+    } catch {
+      return null;
+    }
   },
 };
 

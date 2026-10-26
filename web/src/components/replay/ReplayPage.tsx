@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AnyGameState, ReplayResponse } from '@arena/shared';
 import { api, errorMessage } from '../../api';
+import { endLabel } from '../../labels';
 import { Board } from '../Board';
 import { GoBoard } from '../GoBoard';
 
@@ -11,25 +12,14 @@ function clockOf(at: string): string {
 /**
  * The endgame label reads the persisted final state, never the replayed
  * frames: resign and scoring happen off-board and leave no trace in the
- * history, so the frames cannot express them.
+ * history, so the frames cannot express them. Wording lives in labels.ts,
+ * which the lobby's history cards share.
  */
 function endLabelOf(final: AnyGameState): string | null {
   if (final.status !== 'finished') {
     return null;
   }
-  if (final.winner === 'draw') {
-    return '平局';
-  }
-  const side = final.winner === 'black' ? '黑胜' : '白胜';
-  const reason =
-    final.game === 'go'
-      ? final.endReason === 'resign'
-        ? '认输'
-        : '数子'
-      : final.endReason === 'resign'
-        ? '认输'
-        : '五连';
-  return `${side} · ${reason}`;
+  return endLabel(final.game, final.winner, final.endReason);
 }
 
 function moveLabelOf(move: ReplayResponse['frames'][number]['move']): string {

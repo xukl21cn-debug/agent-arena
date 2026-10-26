@@ -517,6 +517,21 @@ export class ChatRoom {
 
   // -- views ----------------------------------------------------------------
 
+  /**
+   * The room's own clock for listings: the newest message's time, falling
+   * back to creation. Deliberately not member `lastSeenAt` — that says who
+   * peeked, not that the room changed, and a lobby sorts by room activity.
+   */
+  lastActivityAt(): string {
+    const last = this.messages[this.messages.length - 1];
+    if (!last) {
+      return this.createdAt;
+    }
+    // The larger of the two, so a restored file with odd data cannot make
+    // a room look older than it is.
+    return last.at > this.createdAt ? last.at : this.createdAt;
+  }
+
   snapshot(): ChatRoomSnapshot {
     return {
       id: this.id,

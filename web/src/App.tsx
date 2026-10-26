@@ -11,6 +11,7 @@ import { ChatRoomPage } from './components/chat/ChatRoomPage';
 import { CommentaryPanel } from './components/CommentaryPanel';
 import { Controls } from './components/Controls';
 import { GoBoard } from './components/GoBoard';
+import { LobbyPage } from './components/lobby/LobbyPage';
 import { ReplayPage } from './components/replay/ReplayPage';
 import { ResultOverlay } from './components/ResultOverlay';
 import { ScoringPanel } from './components/ScoringPanel';
@@ -37,10 +38,11 @@ function roomIdFromLocation(): string {
 }
 
 /**
- * `?archive=<id>` and `?view=replay` pick the replay page; `?kind=chat` the
- * chat page; anything else — including no params at all — stays on the
- * games, so existing links keep their behaviour. Replay deliberately does
- * NOT reuse `kind` (that word belongs to the chat WS dispatch).
+ * Routing, most specific first: `?archive=` replays an archived game,
+ * `?view=replay` the current one, `?kind=chat` opens the chat page — all
+ * with the old default-room fallback. Bare `/` is the lobby; a URL that
+ * carries `room` (valid or not — invalid still falls back to the default
+ * room, as before) goes to the games, so every existing link keeps working.
  */
 export default function App() {
   const params = useMemo(
@@ -60,6 +62,9 @@ export default function App() {
   }
   if (chatMode) {
     return <ChatRoomPage roomId={roomId} />;
+  }
+  if (!params.has('room')) {
+    return <LobbyPage />;
   }
   return <GamePage roomId={roomId} />;
 }

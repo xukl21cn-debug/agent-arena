@@ -1919,3 +1919,164 @@ button {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ------------------------------------------------------------------
+   Lobby — a directory of rooms, grouped by kind
+------------------------------------------------------------------ */
+.lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.lobby-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.group-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+.group-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+}
+
+.lobby-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.lobby-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 16px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    180deg,
+    rgba(23, 26, 19, 0.9),
+    rgba(15, 17, 12, 0.9)
+  );
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.lobby-card:hover {
+  border-color: rgba(217, 166, 75, 0.5);
+  transform: translateY(-1px);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.card-type {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.card-phase {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.card-phase--active {
+  color: var(--ok);
+}
+
+.card-phase--warn {
+  color: var(--gold);
+}
+
+.card-phase--done {
+  color: var(--text-faint);
+}
+
+.card-result {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+}
+
+.card-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.card-meta time {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.lobby-empty {
+  margin: 0;
+  padding: 18px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.lobby-more {
+  align-self: flex-start;
+}
+
+@media (max-width: 640px) {
+  .group-head {
+    flex-direction: column;
+    gap: 4px;
+  }
+}

@@ -119,7 +119,9 @@ export class ChatManager {
           messageCount: snapshot.messageCount,
           hop: snapshot.hop,
           maxHops: snapshot.policy.maxHops,
-          updatedAt: new Date().toISOString(),
+          // The room's own clock, not "now": a lobby sorts by this, and a
+          // timestamp that moves with every request would reshuffle itself.
+          updatedAt: room.lastActivityAt(),
         };
       })
       .sort((a, b) => a.id.localeCompare(b.id));
