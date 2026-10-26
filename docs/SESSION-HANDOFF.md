@@ -9,14 +9,14 @@
 
 ## 一、当前状态（一句话）
 
-**`main` 分支干净，327 个测试全绿。P4 聊天室 + P5A 棋谱归档回放已完成，下一步是 P5B 大厅。**
+**`main` 分支干净，336 个测试全绿。P1 → P5 主线全部完成。剩下的都是可选项。**
 
 | 项 | 值 |
 |---|---|
 | 项目路径 | `E:\code\fun\agent-arena` |
 | 分支 | `main`（干净） |
-| 最新提交 | `2ee13b9 feat(replay): archive finished games and replay them frame by frame` |
-| 测试 | **327 全绿** |
+| 最新提交 | `c244287 feat(lobby): the lobby is the home page, over a real activity clock` |
+| 测试 | **336 全绿** |
 | 服务 | 3000 端口（`pnpm dev`） |
 | 数据 | 对局落盘在 `data/`（P3.5 完成）；**聊天室落盘在 `server/data/chat/`** |
 
@@ -47,7 +47,8 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 | **P4 §3.1** | 真实模型聊天观察 | claude + DSH 聊 13 条；**挖出 2 个服务端缺陷** |
 | **P4-C2.5** | 修那两个缺陷 | `memberRef()` + `unreadAfter()`；292 测试全绿，[评审](REVIEW-P4-CHAT-FIX.md) |
 | **P4-C4** | 网页聊天页 | 复用 `/ws`（`kind=chat`）；302 测试全绿，[评审](REVIEW-P4-C4.md) |
-| **P5A** | 棋谱归档 + 回放 | 每房间保留 N 局；逐手重放真实引擎；327 测试全绿，[评审](REVIEW-P5A.md) |
+| **P5A** | 棋谱归档 + 回放 | 每房间保留 N 局；逐手重放真实引擎；[评审](REVIEW-P5A.md) |
+| **P5B** | 大厅 | 四组卡片 + 历史对局；336 测试全绿，[评审](REVIEW-P5B.md) |
 
 **P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
@@ -108,16 +109,14 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 > 3 条失败全是选择器猜错（`.chat-mention` 写成 `[class*="mention"]` 等）。
 > **写浏览器断言前先导一遍类名。**
 
-### 3.4 ⬅ **下一步**：P5B 大厅
+### 3.4 ✅ 已完成：P5 大厅 + 棋谱回放
 
-**P5A（归档 + 回放）已完成并合入**：[`REVIEW-P5A.md`](REVIEW-P5A.md)（`2ee13b9`）。
-
-| 工作单 | 内容 | 状态 |
+| 工作单 | 内容 | 评审 |
 |---|---|---|
-| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放（可单步前进/后退） | ✅ **已完成** |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | ⬅ **下一步** |
+| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放（可单步前进/后退） | ✅ [`REVIEW-P5A.md`](REVIEW-P5A.md)（`2ee13b9`） |
+| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | ✅ [`REVIEW-P5B.md`](REVIEW-P5B.md)（`c244287`） |
 
-#### P5A 交付了什么（P5B 可以直接用）
+#### 现在有什么
 
 ```http
 GET /api/archive                      → 历史对局列表（已按 playedAt 降序）
@@ -128,15 +127,18 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 归档在 `<dataDir>/archive/<roomId>__<gameId>.json`，
 每房间保留最近 `ARENA_ARCHIVE_LIMIT`（默认 20）局。
 
-**回放页入口**：`/?room=<id>&view=replay`、`/?archive=<archiveId>`。
+**网页入口**：
 
-#### ⚠️ P5B 有个前置 bug（还没修）
+```text
+/                                    → 大厅（四组：五子棋 / 围棋 / 聊天 / 历史对局）
+/?room=<id>                          → 棋类
+/?room=<id>&kind=chat                → 聊天室
+/?room=<id>&view=replay              → 当前局回放
+/?archive=<archiveId>                → 归档局回放
+```
 
-`ChatRoomSummary.updatedAt` 是 `new Date().toISOString()`
-（`server/src/chat/manager.ts:122`）——**每次请求都返回「现在」**，不是真实最后活动时间。
-
-大厅要按它排序，**必须先修**，否则每次刷新顺序都不一样。
-对照：棋类的 `updatedAt` 来自 `state.updatedAt`，是真的。
+⚠️ **`?room=` 存在就走棋类分支，哪怕 roomId 非法**（回落 `DEFAULT_ROOM_ID`）。
+只有**完全没有 `room` 参数**才进大厅。这条改了就破坏旧书签。
 
 #### 回放不重演终局（已知限制，不是 bug）
 
@@ -150,10 +152,29 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 
 > **WS 统一不用做了**：C4 已经复用 `/ws`（`kind=chat`）把聊天室接进去了。
 
-### 3.5 可选：P4-C3 runner
+### 3.5 ⬅ **下一步**：可选项（无主线任务）
+
+**P1 → P5 主线全部完成。** 下面三项都是可选的，由用户决定优先级：
+
+| 项 | 价值 | 工作量 |
+|---|---|---|
+| **`pass`/`yield`** | agent 收工后轮次会卡到 120s 超时才能跳过 | 小（1–2 小时） |
+| **P4-C3 runner** | 把 CLI 包成常驻成员，不依赖模型耐心循环 | 中（半天） |
+| **`mentions` 模式** | 目前只实现了 relay | 大（要改 `ChatRoom` 轮次语义） |
+
+我的建议顺序：**`pass`/`yield` 先做**（最小、解决真实痛点），
+runner 其次，`mentions` 最后（需求最不明确）。
+
+#### `pass`/`yield` 的背景
+
+真实模型观察里 claude 自己提出的修法：给 `send_message` 加显式 pass，
+或者 runner 在 agent 本轮结束时主动交还轮次，超时降到 10s 只做兜底。
+见 [`OBSERVE-CHAT-REAL-MODELS.md`](OBSERVE-CHAT-REAL-MODELS.md) §4.4。
+
+### 3.6 参考：runner 的原始设想
 
 把 CLI 包成常驻成员（`codex exec` / `claude -p`），不依赖模型耐心循环调用。
-优先级低于 P5 大厅——交互式客户端已经能用。
+交互式客户端已经能用，所以优先级低于上面两项。
 
 > **但 `pass`/`yield` 可以独立于 runner 先做**：
 > agent 收工后轮次会卡在它身上，只能等 120s 超时跳过。
@@ -310,7 +331,7 @@ L539  this.history = [];              ← 历史才清空
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增九份**：
+**这一轮新增十一份**：
 
 | 文件 | 内容 |
 |---|---|
@@ -322,7 +343,8 @@ L539  this.history = [];              ← 历史才清空
 | [`DESIGN-P5.md`](DESIGN-P5.md) | P5 设计稿：回放方案（含原型验证 22 条） |
 | [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放工作单（✅ 已完成） |
 | [`REVIEW-P5A.md`](REVIEW-P5A.md) | P5A 评审记录（独立验证 76 条，含 4 次评审方自己的错） |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅工作单（**待做**） |
+| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅工作单（✅ 已完成） |
+| [`REVIEW-P5B.md`](REVIEW-P5B.md) | P5B 评审记录（独立验证 60 条，一次通过） |
 
 ---
 

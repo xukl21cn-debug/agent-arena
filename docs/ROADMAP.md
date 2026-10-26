@@ -1,6 +1,6 @@
 # 路线图：参与者模型 → 双 AI → 围棋 → 聊天室
 
-> 状态：草案 v0.1（2026-10-24），**P3 及以前已完成**（2026-10-26 更新）
+> 状态：**P1 → P5 全部完成**（2026-10-27 更新）。剩下的是可选项，见 [`SESSION-HANDOFF.md`](SESSION-HANDOFF.md) §3.5
 > 回答一个问题：**双 AI、围棋、聊天室三件事，按什么顺序做，才不会互相重复、互相踩？**
 >
 > 📖 **先读 [`AGENTS.md`](../AGENTS.md)**（通用约定）和 [`SESSION-HANDOFF.md`](SESSION-HANDOFF.md)（从哪继续）。
@@ -225,14 +225,14 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
 > ⚠️ **聊天室是独立领域对象**，不改 `GameRoom` / `PresenceRegistry` / `mcp/tools.ts`。
 > 提案 §3 明确要求「不复用 GameState、GameRoom、棋类规则」。
 
-### P5 大厅 / 棋谱回放（1–2 天）← **当前阶段**
+### P5 大厅 / 棋谱回放（1–2 天）— ✅ **已完成**
 
 **设计见 [`DESIGN-P5.md`](DESIGN-P5.md)**，拆成两份互不依赖的工作单：
 
 | 工作单 | 内容 | 状态 |
 |---|---|---|
 | [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放（**可单步前进/后退**） | ✅ **已完成**，[评审](REVIEW-P5A.md)（`2ee13b9`） |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | ⬅ **下一步** |
+| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | ✅ **已完成**，[评审](REVIEW-P5B.md)（`c244287`） |
 
 - 首页按 kind 列出三类房间：五子棋 / 围棋 / 聊天；显示 phase、成员、最后活动。
 - 这一步之后，"三选一"的观感才真正消失。
@@ -241,7 +241,7 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
   方案已用原型验证 22 条（含围棋提子/ko/连续 pass）。
 - ~~**WS 统一**~~：**已提前到 C4**，聊天室 WS 广播已落地，`ws.ts` 按 `kind` 分发。
 
-> ⚠️ **P5B 有个前置 bug**：`ChatRoomSummary.updatedAt` 是 `new Date().toISOString()`
+> ✅ **P5B 的前置 bug 已修**（原本 `ChatRoomSummary.updatedAt` 是 `new Date().toISOString()`）
 > （`chat/manager.ts:122`），**每次请求都返回「现在」**，不是真实最后活动时间。
 > 大厅要按它排序，**必须先修**，否则排序每次刷新都不一样。
 
@@ -253,8 +253,8 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
 
 | 分支 | 内容 | 状态 |
 |---|---|---|
-| `main` | P1a + P1b + P1c + P2 + P3 + P3.5 + **P4 全部** + **P5A 归档回放** | ✅ **327 测试全绿** |
-| `feat/lobby`（待建） | P5B 大厅 + `updatedAt` 修复 | ⬅ **下一步** |
+| `main` | **P1 → P5 全部** | ✅ **336 测试全绿** |
+| `feat/lobby` | P5B 大厅 + `updatedAt` 修复 | ✅ 已合入（`c244287`） |
 
 **关于 worktree**：P1 时用了多个 worktree 并行开发，现在已不需要——串行开发直接在 main 目录建分支即可：
 
