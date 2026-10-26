@@ -246,10 +246,11 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 |---|---|
 | 分支 | `main`，干净 |
 | 测试 | **282 全绿** |
-| 已完成 | P1 · P2 · P3 · P3.5 · P4-C1/C2 · chat policy 修复 |
-| 进行中 | P4（聊天室）：C1/C2 已完成，C3/C4 未开始 |
+| 已完成 | P1 · P2 · P3 · P3.5 · P4-C1/C2 · chat policy 修复 · 真实模型聊天观察 |
+| 进行中 | P4（聊天室）：C1/C2 已完成，**真实模型已聊过一轮，挖出两个服务端缺陷待修** |
 
-**下一步见 [`docs/ROADMAP.md`](docs/ROADMAP.md)。**
+**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.2**——
+先修 [`HANDOFF-P4-CHAT-FIX.md`](docs/HANDOFF-P4-CHAT-FIX.md) 里的两个缺陷，再上 C4 网页。
 
 ---
 
@@ -264,6 +265,7 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | `docs/DESIGN.md` | 原始设计文档 |
 | `docs/HANDOFF-*.md` | 各阶段工作单 |
 | `docs/REVIEW-*.md` | 各阶段评审记录 |
+| `docs/OBSERVE-*.md` | 实测观察记录（真实模型行为、缺陷证据） |
 | `docs/PROPOSAL-*.md` | 提案（围棋、聊天室、参与者模型） |
 
 ### 文档惯例

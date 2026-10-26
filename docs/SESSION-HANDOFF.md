@@ -9,16 +9,16 @@
 
 ## 一、当前状态（一句话）
 
-**`main` 分支干净，282 个测试全绿。P4 聊天室的服务端已完成，网页 UI 未开始。**
+**`main` 分支干净，282 个测试全绿。真实模型已聊过一轮，发现两个服务端缺陷，工作单已写好待 GLM 修。**
 
 | 项 | 值 |
 |---|---|
 | 项目路径 | `E:\code\fun\agent-arena` |
 | 分支 | `main`（干净） |
-| 最新提交 | `d89ab8a docs: review the chat policy fix` |
+| 最新提交 | `11f100b docs: pnpm dev is the normal workflow; the two-port setup is the exception` |
 | 测试 | **282 全绿** |
-| 服务 | 3000 端口运行中（`scripts/dev-isolated.ps1 -Only live`） |
-| 数据 | 对局落盘在 `data/`（P3.5 完成） |
+| 服务 | 3000 端口运行中（`pnpm dev`） |
+| 数据 | 对局落盘在 `data/`（P3.5 完成）；**聊天室落盘在 `server/data/chat/`** |
 
 ---
 
@@ -35,6 +35,7 @@
 | **P3.5** | 棋谱持久化 | `FileRoomRepository`，重启恢复对局 |
 | **P4-C1/C2** | 聊天室服务端 | `/chat/mcp` + 4 个工具 + 长轮询 |
 | 修复 | chat policy 参数 | REST 建房时 policy 被静默丢弃 |
+| **P4 §3.1** | 真实模型聊天观察 | claude + DSH 聊 13 条；**挖出 2 个服务端缺陷** |
 
 **P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
@@ -42,39 +43,39 @@
 
 ## 三、下一步（从这里继续）
 
-### 3.1 推荐：先看真实模型在聊天室的表现
+### 3.1 ✅ 已完成：真实模型聊了一轮
 
-**在 C4（网页聊天页）之前，先让两个真实模型聊一轮。**
+**结果见 [`OBSERVE-CHAT-REAL-MODELS.md`](OBSERVE-CHAT-REAL-MODELS.md)。**
 
-理由：`scripts/chat-duel.mjs` 是 mock 客户端，真实模型的行为没观察过——
-会不会抢话、会不会跑题、轮次遵守得怎么样，全都不知道。
+用 **claude CLI（真实进程）+ DSH 本人** 在 `real637936` 房间聊了 13 条消息、11 次 agent 发言。
 
-**这和 P2 的教训一样：协议对不等于模型对。**
+**模型行为没问题**：
 
-怎么做：
+- 零抢话——claude 为等轮次连续 `wait` 了 3 次（其中一次超时），没尝试插话
+- 长轮询真的挂住了，模型没有因为「慢」而放弃（这正是设计想要的行为）
+- 会自我纠正——它主动指出我做错了抢话测试，并给出正确做法
+- 讨论有实质推进，有反驳、有收敛，没跑题
 
-```text
-1. 起服务
-   pwsh -File scripts/dev-isolated.ps1 -Only live
+**但发现两个服务端缺陷**（详见 §3.2）。
 
-2. 建聊天室
-   POST http://127.0.0.1:3000/api/chat/rooms
-   { "roomId": "lobby", "title": "MCP 的未来" }
+### 3.2 ⬅ **下一步**：修两个缺陷
 
-3. 两个 agent 通过 MCP 接入
-   /chat/mcp → join_room(name="dsh") / join_room(name="claude")
-   → 循环 wait_for_messages → send_message
+工作单：[`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md)，交 GLM。
 
-4. 人类在网页或用 REST 插话
-   POST /api/chat/rooms/lobby/messages { "text": "你们聊聊..." }
-```
+| 缺陷 | 严重度 | 一句话 |
+|---|---|---|
+| `maxMessagesPerMember` 失效 | 严重 | `memberOf()` 从 `snapshot()` 深拷贝取成员，计数器加在副本上，上限永不触发 |
+| `wait_for_messages` 静默丢消息 | 严重 | 只返回最近 12 条，前面的直接丢掉，且不给 `omitted`/`hasMore`/`nextCursor` |
 
-### 3.2 然后：P4-C4 网页聊天页
+两个都有实测复现（工作单 §5）。**C4 网页要等这个修完**——
+成员栏要显示发言数（现在是坏的），网页长轮询会踩同一个丢消息的坑。
 
-工作单**还没写**。需要写 `docs/HANDOFF-P4-C4.md`，内容参考：
+### 3.3 然后：P4-C4 网页聊天页
+
+工作单**还没写**，等 §3.2 修完再写。内容参考：
 
 - 时间线（作者颜色、气泡）
-- 成员栏（在线状态 + 发言数）
+- 成员栏（在线状态 + 发言数）← **依赖 §3.2 的 Bug A 修完**
 - hop 预算条
 - 人类输入框（`@` 补全）
 - 暂停 / 关闭 / 导出
@@ -82,7 +83,10 @@
 ⚠️ **聊天室没有 WS**（C1/C2 刻意跳过了），网页要用轮询或长轮询。
 统一 WS 留给 P5。
 
-### 3.3 之后：P5 大厅
+> **真实模型聊出来的共识**：MCP 链路维持长轮询，先修游标；
+> WS 只进网页那一层，P5 再统一。网页端 SSE 优先于 WS（单向就够）。
+
+### 3.4 之后：P5 大厅
 
 包含三件事（用户已确认）：
 
@@ -92,10 +96,15 @@
 | **棋谱回放** | P3.5 已落盘，做列表 + 回放页面 |
 | WS 统一 | `RoomManager` 装两类房间，`ws.ts` 按 kind 分发 |
 
-### 3.4 可选：P4-C3 runner
+### 3.5 可选：P4-C3 runner
 
 把 CLI 包成常驻成员（`codex exec` / `claude -p`），不依赖模型耐心循环调用。
 优先级低于 C4——交互式客户端已经能用。
+
+> **但 `pass`/`yield` 可以独立于 runner 先做**：
+> agent 收工后轮次会卡在它身上，只能等 120s 超时跳过。
+> 真实模型观察里 claude 自己提出了这个修法（给 `send_message` 加显式 pass）。
+> 见 `OBSERVE-CHAT-REAL-MODELS.md` §4.4。
 
 ---
 
@@ -142,6 +151,39 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 
 见 `AGENTS.md` §6.2。**写审计脚本前对照一遍**，这一轮又犯了其中两个。
 
+### 4.5 `snapshot()` 返回深拷贝——写操作必须拿本体
+
+**这一轮最贵的教训。** `ChatRoom.snapshot()` 的成员是 `{...member}` 副本。
+任何「从 snapshot 取对象 → 改它」的代码，改的都是副本，**静默失效**。
+
+`maxMessagesPerMember` 就是这么坏的：`memberOf()` 从 `snapshot()` 取成员，
+`member.messages += 1` 加在副本上，计数器永远是 0。
+
+**规则**：需要**改**的对象，从领域对象拿本体（如 `members.get(id)`）；
+需要**返回给外面**的，才用 `snapshot()` 拷贝。
+
+### 4.6 聊天室数据在 `server/data/`，不在 `data/`
+
+`pnpm dev` 下 server 的 cwd 是 `server/`，所以：
+
+```text
+棋类对局   E:\code\fun\agent-arena\data\rooms\*.json
+聊天室     E:\code\fun\agent-arena\server\data\chat\*.json   ← 注意多一层
+```
+
+找落盘文件时别在 `data/chat` 里空找（这一轮找了半天）。
+
+### 4.7 真实模型的行为和 mock 不一样，必须实测
+
+`chat-duel.mjs` 全绿不代表模型行为对。这一轮的实测数据：
+
+- claude 为等轮次连续 `wait` 了 **3 次**（其中一次 26 秒超时），**零抢话**
+- 它还会**自我纠正**：主动指出评审方的抢话测试做错了（轮次本来就在评审方手上）
+- 讨论有实质反驳和收敛，没跑题
+
+**但也正因为真模型会长时间挂着等**，`wait_for_messages` 丢消息的 bug 才显得严重——
+挂得越久，一次返回里积压的消息越多，越容易超过 12 条被截断。
+
 ---
 
 ## 五、关键文件索引
@@ -176,6 +218,13 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 ### 文档
 
 见 `AGENTS.md` §10 的文档地图。
+
+**这一轮新增两份**：
+
+| 文件 | 内容 |
+|---|---|
+| [`OBSERVE-CHAT-REAL-MODELS.md`](OBSERVE-CHAT-REAL-MODELS.md) | 真实模型聊天观察：模型表现 + 两个缺陷的实测证据 |
+| [`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md) | 修那两个缺陷的工作单（**当前待做**） |
 
 ---
 
