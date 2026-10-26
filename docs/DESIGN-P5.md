@@ -15,10 +15,122 @@ P5 原列三件事，C4 已把「WS 统一」做掉，剩两件：
 
 | 项 | 内容 | 工作单 |
 |---|---|---|
-| **大厅** | 三类房间统一入口：五子棋 / 围棋 / 聊天 | P5A |
-| **棋谱回放** | 对局列表 + **可单步前进/后退**的回放页 | P5B |
+| **棋谱归档 + 回放** | 保留最近 N 局 + **可单步前进/后退**的回放页 | P5A |
+| **大厅** | 三类房间统一入口 + 历史对局入口 | P5B |
 
-用户明确要求：**回放要能单步前进后退**，不是只读播放。
+用户明确要求：
+1. **回放要能单步前进后退**，不是只读播放
+2. **保留最近 N 局**历史棋谱
+
+---
+
+## 一之二、归档（回放的前提）
+
+### 为什么必须归档
+
+**不归档的话，回放只能看当前这一局。** `GameRoom.newGame()` 里：
+
+```ts
+// room.ts:539
+this.history = [];        // ← 开新局就清空
+this.commentaryLog = [];
+this.save();              // ← 立刻覆盖落盘文件
+```
+
+实测证据：`data/rooms/default.json` 现在是 `history: 0`、`gameId: ""`——
+之前下过的对局已经被覆盖，**永久丢失**。
+
+所以「对局列表」这个需求，在没有归档时是不成立的：每个房间只有一条记录。
+
+### 归档什么
+
+`PersistedRoom`（`repository.ts:14`）正好是完整单位：
+
+```ts
+interface PersistedRoom {
+  id: string;              // roomId
+  state: AnyGameState;     // 终局状态
+  history: AnyMove[];      // 全部走子
+  commentary: Commentary[];
+}
+```
+
+### 归档到哪
+
+```text
+<dataDir>/archive/<roomId>__<gameId>.json
+```
+
+⚠️ **文件名用 `__` 分隔，不要用 `-`**——`roomId` 本身允许 `-`
+（`ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{1,32}$/`），用 `-` 分隔会解析歧义。
+
+⚠️ **`gameId` 可能为空**（`idle` 房间的 `gameId === ''`）。
+空 `gameId` 表示「还没开过局」，**不要归档**。
+
+### 什么时候归档
+
+**在 `newGame()` 里、替换 `this.state` 之前。**
+
+⚠️ **这是最容易写错的地方**：`newGame()` 的执行顺序是
+
+```text
+L508  const prev = this.state;        ← 旧 state 还在这里
+L518  this.state = startGoGame(...)   ← 已经换成新局了
+L533  this.state = startGame(...)
+L539  this.history = [];              ← 历史在这里才清空
+```
+
+**归档必须在 L508 之后、L518 之前**（或者用 `prev` 变量）。
+在 L539 附近归档已经太晚——`this.state` 是新局了，`prev` 还留着旧局但 `history` 还在。
+
+**正确做法**：在 `L508` 拿到 `prev` 后立刻判断：
+
+```ts
+const prev = this.state;
+// Archive the game we are leaving, before any of it is overwritten.
+// A room that never started (gameId === '') has nothing to archive.
+if (prev.gameId !== '' && this.history.length > 0) {
+  this.repository.archive({
+    id: this.id,
+    state: prev,
+    history: [...this.history],
+    commentary: [...this.commentaryLog],
+  });
+}
+```
+
+> **已用原型验证**（15 条检查全过）。关键证据：`newGame()` 之后
+> 取 `this.history` 是**空的**——在 L539 附近归档会得到空棋谱 + 新局 state。
+> 必须用 `prev`。
+
+⚠️ **`history.length > 0` 也要判**：只开过局没落子的空对局不值得占一个归档位。
+
+### 保留最近 N 局
+
+**按房间分别保留**，不是全局。
+
+| 项 | 值 |
+|---|---|
+| 默认 N | `20` |
+| 配置 | `ARENA_ARCHIVE_LIMIT` 环境变量 |
+| 范围 | 1–500（超范围钳制，照 `config.ts` 的 `readInteger` 模式） |
+| 清理时机 | 每次归档后，扫该房间的归档文件，按 `gameId` 或文件 mtime 排序，删最旧的 |
+
+⚠️ **按房间算，不按全局算**：全局 N 会让一个活跃房间挤掉所有其他房间的历史。
+
+⚠️ **清理失败不能让对局失败**：归档是旁路，删旧文件失败只记日志
+（AGENTS §7.3「失败要可诊断」，但不要因为清理失败就拒绝开新局）。
+
+### 归档的加载
+
+`restoreAll()` **不恢复归档到内存**——归档是只读的历史记录，
+按需读取（回放时）。理由：
+
+- 内存里只有「当前房间」这个概念，塞进归档会让 `RoomManager` 的语义变模糊
+- 归档数量随 N 增长，全量加载没必要
+
+**归档文件损坏时**：跳过、记日志、**文件留在磁盘**（AGENTS §7.3，和现有
+`loadFile` 的处理一致）。
 
 ---
 
@@ -100,15 +212,38 @@ P5 原列三件事，C4 已把「WS 统一」做掉，剩两件：
 
 ### 2.5 API 形状
 
+**两个来源，一个回放结构**：当前局（`data/rooms/`）和归档局（`data/archive/`）。
+
 ```http
-GET /api/rooms/:roomId/replay
+GET /api/rooms/:roomId/replay              → 当前局
+GET /api/archive                            → 归档列表
+GET /api/archive/:archiveId/replay          → 某一局归档
 ```
 
-返回：
+**`/api/archive` 返回**（列表）：
+
+```json
+[
+  {
+    "archiveId": "default__4d3f7280",
+    "roomId": "default",
+    "game": "go",
+    "gameId": "4d3f7280-...",
+    "moveCount": 42,
+    "winner": "white",
+    "endReason": "scored",
+    "playedAt": "2026-10-26T07:50:08.458Z",
+    "seats": { "black": {...}, "white": {...} }
+  }
+]
+```
+
+**两个 replay 端点返回同一个结构**：
 
 ```json
 {
   "roomId": "default",
+  "archiveId": "default__4d3f7280",   // 当前局为 null
   "game": "go",
   "gameId": "uuid",
   "rules": { "boardSize": 9, "komi": 7.5 },
@@ -125,6 +260,9 @@ GET /api/rooms/:roomId/replay
 
 ⚠️ **`frames` 只增字段，不改现有 `/api/rooms/:id` 的返回**。
 回放是**新增端点**，不碰旧契约（AGENTS §7.4）。
+
+⚠️ **`archiveId` 要做校验**：只允许 `^[a-zA-Z0-9_-]{1,80}$`，
+防止 `../` 之类的路径穿越。**文件名是从 id 拼出来的，这是唯一的攻击面。**
 
 ### 2.6 原型验证结果（写工作单之前就验过）
 
@@ -179,16 +317,32 @@ REPLAY DESIGN VERIFIED
 ### 3.3 路由
 
 ```text
-/                        → 大厅（新首页）
-/?room=<id>              → 棋类（不变）
-/?room=<id>&kind=chat    → 聊天（不变）
+/                          → 大厅（新首页）
+/?room=<id>                → 棋类（不变）
+/?room=<id>&kind=chat      → 聊天（不变）
+/?room=<id>&view=replay    → 当前局回放（P5A）
+/?archive=<archiveId>      → 归档局回放（P5A）
 ```
 
-⚠️ **这是本次唯一的破坏性变更**：`/` 从「默认棋类房间」变成「大厅」。
+⚠️ **`/` 从「默认棋类房间」变成「大厅」是唯一的破坏性变更**。
 但 `?room=` 路径完全不变，**旧书签照常工作**。
 
 替代方案是 `/lobby` 新路径、`/` 保持默认房间。**不选**，因为大厅就是首页才合理，
 而 `?room=` 已经覆盖了「直达某个房间」的需求。
+
+⚠️ **回放用 `view=replay`，不要用 `kind=replay`**——`kind` 已被聊天占用，
+复用会让 `ws.ts` 的分派逻辑变模糊。归档回放用独立的 `archive=` 参数。
+
+### 3.4 大厅里的历史对局
+
+大厅除了三类房间，还要有**历史对局**入口（数据来自 `GET /api/archive`）：
+
+- 按 `playedAt` 降序
+- 每张卡片：房间、棋种、手数、胜负、时间
+- 点击 → `/?archive=<archiveId>`
+
+⚠️ **历史对局可能很多**（每房间 N 局 × 房间数）。
+默认只显示最近 20 条，多了给「查看更多」。**不要一次全渲染。**
 
 ---
 
@@ -196,11 +350,16 @@ REPLAY DESIGN VERIFIED
 
 | 工作单 | 内容 | 依赖 |
 |---|---|---|
-| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 回放 API + 回放页（含单步控制） | 无 |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅页 + 路由改动 | 无 |
+| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | **归档 + 回放 API + 回放页**（含单步控制） | 无 |
+| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅页 + 历史对局列表 + 路由改动 | **读 P5A 的 `/api/archive`** |
 
-**A 和 B 互不依赖**，可以并行，也可以串行。建议**先 A**——回放是技术难点，
-大厅是纯展示。A 做完如果发现重放有坑，B 不受影响。
+⚠️ **依赖关系变了**：原来说「A 和 B 互不依赖」，加了归档之后，
+B 的「历史对局」要用 A 的 `GET /api/archive`。
+
+**但可以解耦**：B 先做大厅（三类房间），历史对局那一块等 A 合入后再接。
+所以**仍然可以并行**，只要 B 不在 A 之前做历史对局部分。
+
+建议顺序：**先 A（技术难点 + 它是 B 的数据源）**，A 合入后 B 接历史对局。
 
 ---
 
@@ -214,3 +373,6 @@ REPLAY DESIGN VERIFIED
 | ❌ 回放支持编辑/分叉 | 那是棋谱编辑器 |
 | ❌ 合并两个列表端点 | 领域对象不同 |
 | ❌ 聊天室回放 | 聊天是消息流，不是棋谱 |
+| ❌ 归档全量加载进内存 | 按需读取，内存只放「当前房间」 |
+| ❌ 全局 N 局上限 | 一个活跃房间会挤掉所有其他房间的历史 |
+| ❌ 归档失败阻塞开新局 | 归档是旁路，失败只记日志 |
