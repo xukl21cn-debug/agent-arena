@@ -145,6 +145,15 @@ export class ChatRoom {
     }
   }
 
+  /**
+   * The live member record, not a detached copy — callers that go on to
+   * mutate the member (sendMessage's counters) must hold this one. A
+   * snapshot member is a clone, and writes to it are silently lost.
+   */
+  memberRef(participantId: string): ChatMember | undefined {
+    return this.members.get(participantId);
+  }
+
   // -- messaging ------------------------------------------------------------
 
   /**
@@ -508,11 +517,23 @@ export class ChatRoom {
     return this.messages.slice(-limit).map(cloneMessage);
   }
 
-  messagesAfter(afterSeq: number, limit: number): ChatMessage[] {
-    return this.messages
-      .filter((message) => message.seq > afterSeq)
-      .slice(-limit)
-      .map(cloneMessage);
+  /**
+   * The incremental read for wait_for_messages: unread messages oldest
+   * first, capped at `limit`, plus how many unread stay behind the cap.
+   * The cap keeps the head of the unread range — a catching-up client
+   * advances its cursor forward, so dropping the oldest messages (the tail
+   * slice a transcript wants) would lose exactly the ones it never saw.
+   */
+  unreadAfter(
+    afterSeq: number,
+    limit: number,
+  ): { messages: ChatMessage[]; omitted: number } {
+    const pool = this.messages.filter((message) => message.seq > afterSeq);
+    const kept = pool.slice(0, limit);
+    return {
+      messages: kept.map(cloneMessage),
+      omitted: pool.length - kept.length,
+    };
   }
 
   /**

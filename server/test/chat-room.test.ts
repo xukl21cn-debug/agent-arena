@@ -6,6 +6,7 @@ import { ChatRoom, HUMAN_MEMBER_ID } from '../src/chat/chat-room';
 import { ChatManager } from '../src/chat/manager';
 import {
   CHAT_WAIT_MAX_MS,
+  ChatError,
   DEFAULT_CHAT_POLICY,
   type ChatMessage,
 } from '../src/chat/model';
@@ -293,5 +294,39 @@ describe('ChatRoom basics', () => {
     expect(second.get('c13broken')).toBeUndefined();
     expect(readdirSync(chatDir).some((n) => n === 'c13broken.json')).toBe(true);
     expect(existsSync(path.join(chatDir, 'c13.json.tmp'))).toBe(false);
+  });
+
+  it('A1: the send past maxMessagesPerMember is refused with MEMBER_LIMIT_REACHED', () => {
+    const room = manager().create('limit-domain', {
+      policy: { maxMessagesPerMember: 2, maxHops: 50 },
+    });
+    const a1 = joined(room, 'a1');
+    const a2 = joined(room, 'a2');
+    room.sendMessage(room.humanMember(), '开始', { to: 'a1' }, T0);
+    room.sendMessage(a1, 'a1-1', {}, T0 + 1);
+    room.sendMessage(a2, 'a2-1', {}, T0 + 2);
+    room.sendMessage(a1, 'a1-2', {}, T0 + 3);
+    room.sendMessage(a2, 'a2-2', {}, T0 + 4);
+    expect(a1.messages).toBe(2);
+
+    let caught: unknown;
+    try {
+      room.sendMessage(a1, 'a1-3', {}, T0 + 5);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ChatError);
+    expect((caught as ChatError).code).toBe('MEMBER_LIMIT_REACHED');
+  });
+
+  it('A2: memberRef returns the live record — writes through it reach the snapshot', () => {
+    const room = manager().create('ref-domain');
+    const a1 = joined(room, 'a1');
+    const ref = room.memberRef(a1.id);
+    // join hands out the live record; memberRef must be that same object,
+    // not another copy — a copy is exactly what made the counter stick at 0.
+    expect(ref).toBe(a1);
+    ref!.messages = 4;
+    expect(room.snapshot().members.find((m) => m.id === a1.id)?.messages).toBe(4);
   });
 });

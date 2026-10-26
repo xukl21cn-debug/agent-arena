@@ -258,7 +258,9 @@ function registerChatTools(
         'You have not joined this chat room; call join_room first.',
       );
     }
-    const member = room.snapshot().members.find((item) => item.id === participantId);
+    // The live record, not a snapshot copy: sendMessage mutates the member's
+    // counter, and a copy would throw the increment away.
+    const member = room.memberRef(participantId);
     if (!member) {
       throw new ChatError(
         'MEMBER_NOT_FOUND',
@@ -365,8 +367,9 @@ to 参数指定下一位发言者（用成员 name）。发言会消耗 hop 预�
     {
       title: '等待新消息',
       description: `长轮询等待新消息或轮到自己。没有新消息时调用会挂起（默认 20 秒，上限 30 秒），这是正常的等待。
-返回 messages（afterSeq 之后的新消息）、timedOut、yourTurn、房间快照和一句可操作的 hint——按 hint 行动：
+返回 messages（afterSeq 之后的新消息，最多 ${CHAT_RECENT_LIMIT} 条）、nextCursor、hasMore、omitted、timedOut、yourTurn、房间快照和一句可操作的 hint——按 hint 行动：
 「轮到你了」就 send_message；「等 X 发言」就再次调用本工具；「已暂停/已关闭」就停止。
+hasMore=true 表示还有未读消息被截断（omitted 是条数），用 afterSeq=nextCursor 连续调用直到拿完——hint 会给出同样指令。
 afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
       inputSchema: z.object({
         roomId: z.string().min(1).describe('房间 id。'),
@@ -388,22 +391,28 @@ afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
       );
 
       const snapshot = room.snapshot();
-      const fresh = room.messagesAfter(cursor, CHAT_RECENT_LIMIT);
+      const { messages: fresh, omitted } = room.unreadAfter(cursor, CHAT_RECENT_LIMIT);
+      const hasMore = omitted > 0;
+      const last = fresh[fresh.length - 1];
+      const nextCursor = last ? last.seq : cursor;
       const yourTurn = snapshot.phase === 'open' && snapshot.turn?.participantId === member.id;
       return {
-
-              timedOut: outcome.timedOut,
-              messages: fresh.map((message: ChatMessage) => ({
-                seq: message.seq,
-                from: message.fromName,
-                kind: message.kind,
-                text: message.text,
-                at: message.at,
-              })),
-              yourTurn,
-              room: snapshot,
-              hint: chatHint(snapshot, yourTurn),
-            
+        timedOut: outcome.timedOut,
+        messages: fresh.map((message: ChatMessage) => ({
+          seq: message.seq,
+          from: message.fromName,
+          kind: message.kind,
+          text: message.text,
+          at: message.at,
+        })),
+        nextCursor,
+        hasMore,
+        omitted,
+        yourTurn,
+        room: snapshot,
+        hint: hasMore
+          ? `还有 ${omitted} 条未读消息；用 afterSeq=${nextCursor} 再次调用 wait_for_messages，直到 hasMore=false 再按 hint 行动`
+          : chatHint(snapshot, yourTurn),
       };
       }),
   );
