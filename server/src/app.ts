@@ -3,6 +3,10 @@ import path from 'node:path';
 import express, { type Express } from 'express';
 import type { ErrorResponse } from '@arena/shared';
 import type { ServerConfig } from './config.js';
+import { SessionBindings } from './core/session-context.js';
+import { chatErrorHandler, createChatRouter } from './chat/http.js';
+import { mountChatMcp } from './chat/mcp.js';
+import { ChatManager } from './chat/manager.js';
 import { apiErrorHandler, createApiRouter } from './http/routes.js';
 import { mountMcpHttp } from './mcp/http.js';
 import type { RoomManager } from './rooms/room-manager.js';
@@ -10,6 +14,8 @@ import type { RoomManager } from './rooms/room-manager.js';
 export interface AppOptions {
   /** Directory holding the built web UI. Omit to run API/MCP only. */
   webDist?: string | null;
+  /** The chat domain's rooms; created here when the caller does not pass one. */
+  chat?: ChatManager;
 }
 
 function sendNotFound(res: express.Response): void {
@@ -35,6 +41,12 @@ export function createApp(
   app.use('/api', createApiRouter(manager, config));
   mountMcpHttp(app, manager, config);
 
+  // The chat domain rides the same process but is its own router, its own
+  // MCP endpoint and its own error mapping — the games' modules are untouched.
+  const chat = options.chat ?? new ChatManager(config.dataDir);
+  app.use('/api/chat', createChatRouter(chat));
+  mountChatMcp(app, chat, new SessionBindings());
+
   const webDist = options.webDist ?? null;
   const webIndex = webDist ? path.join(webDist, 'index.html') : null;
 
@@ -58,6 +70,7 @@ export function createApp(
     });
   }
 
+  app.use(chatErrorHandler());
   app.use(apiErrorHandler());
   app.use((_req, res) => {
     sendNotFound(res);

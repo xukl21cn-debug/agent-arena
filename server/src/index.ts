@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
+import { ChatManager } from './chat/manager.js';
 import { loadConfig } from './config.js';
 import { PresenceRegistry } from './core/presence.js';
 import { attachWebSocket } from './http/ws.js';
@@ -32,7 +33,12 @@ function main(): void {
   const restoredCount = manager.list().length;
   const defaultRoom = manager.initializeDefaultRoom();
 
-  const app = createApp(manager, config, { webDist });
+  // Same recovery for the chat domain: transcripts survive a restart.
+  const chat = new ChatManager(config.dataDir);
+  chat.restoreAll();
+  const restoredChats = chat.list().length;
+
+  const app = createApp(manager, config, { webDist, chat });
   const server = createServer(app);
   const wss = attachWebSocket(server, manager, { presence });
 
@@ -54,6 +60,9 @@ function main(): void {
     );
     console.log(
       `[arena] rooms  ${restoredCount} restored from ${repository.roomsDirectory}`,
+    );
+    console.log(
+      `[arena] chats  ${restoredChats} restored from ${chat.chatDirectory}`,
     );
     if (serveWeb) {
       console.log(`[arena] web   ${base}/`);
