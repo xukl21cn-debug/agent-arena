@@ -247,9 +247,9 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | 分支 | `main`，干净 |
 | 测试 | **336 全绿** |
 | 已完成 | **P1 → P5 全部完成**：参与者地基 · 双 AI · 围棋 · 持久化 · 聊天室（C1/C2 · C2.5 · C4）· 大厅 + 棋谱归档回放 |
-| 进行中 | 无主线任务。可选项：runner（P4-C3）· `pass`/`yield` · `mentions` 模式 |
+| 进行中 | **`pass`/`yield`**（工作单 [`HANDOFF-CHAT-PASS.md`](docs/HANDOFF-CHAT-PASS.md) 已写好，方案已验证） |
 
-**主线完成，下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.5**——剩下的都是可选项，由用户决定优先级。
+**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.5**——按 [`HANDOFF-CHAT-PASS.md`](docs/HANDOFF-CHAT-PASS.md) 做 `pass_turn`。
 
 ---
 

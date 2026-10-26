@@ -152,34 +152,41 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 
 > **WS 统一不用做了**：C4 已经复用 `/ws`（`kind=chat`）把聊天室接进去了。
 
-### 3.5 ⬅ **下一步**：可选项（无主线任务）
+### 3.5 ⬅ **下一步**：`pass`/`yield`（已选定，工作单已写好）
 
-**P1 → P5 主线全部完成。** 下面三项都是可选的，由用户决定优先级：
+**工作单：[`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md)**，交 GLM。
+
+用户已确认三个决策：
+
+| 决策 | 选择 | 理由 |
+|---|---|---|
+| 形态 | **新增独立 `pass_turn` 工具** | 语义最清晰，agent 一看名字就知道 |
+| 超时 | **保持 120s 不动** | 10s 对真实模型思考太短，会误判 |
+| hop | **不算 hop，但记系统消息** | pass 不是发言，但要让复盘能追溯 |
+
+**设计方案已用原型验证 19 条**（含「pass 清超时计数」的对照实验）。
+工作单 §1.3 记了一个时序陷阱：`consecutiveTimeouts` 是每人独立的，
+验 P5 必须让**那个人自己 pass**，否则测不出来。
+
+### 3.6 之后的可选项（无主线任务）
+
+**P1 → P5 主线全部完成，`pass`/`yield` 是当前选定的下一步。**
+做完它之后还剩两项可选：
 
 | 项 | 价值 | 工作量 |
 |---|---|---|
-| **`pass`/`yield`** | agent 收工后轮次会卡到 120s 超时才能跳过 | 小（1–2 小时） |
 | **P4-C3 runner** | 把 CLI 包成常驻成员，不依赖模型耐心循环 | 中（半天） |
-| **`mentions` 模式** | 目前只实现了 relay | 大（要改 `ChatRoom` 轮次语义） |
+| **`mentions` 模式** | 目前只实现了 relay（`model.ts:20`） | 大（要改 `ChatRoom` 轮次语义） |
 
-我的建议顺序：**`pass`/`yield` 先做**（最小、解决真实痛点），
-runner 其次，`mentions` 最后（需求最不明确）。
+建议顺序：runner 其次，`mentions` 最后（需求最不明确）。
 
-#### `pass`/`yield` 的背景
+#### runner 的原始设想
 
-真实模型观察里 claude 自己提出的修法：给 `send_message` 加显式 pass，
-或者 runner 在 agent 本轮结束时主动交还轮次，超时降到 10s 只做兜底。
-见 [`OBSERVE-CHAT-REAL-MODELS.md`](OBSERVE-CHAT-REAL-MODELS.md) §4.4。
+把 CLI 包成常驻成员（`codex exec` / `claude -p`），循环「等 → 跑 CLI → 发消息」，
+不依赖模型耐心。交互式客户端已经能用，所以优先级低。
 
-### 3.6 参考：runner 的原始设想
-
-把 CLI 包成常驻成员（`codex exec` / `claude -p`），不依赖模型耐心循环调用。
-交互式客户端已经能用，所以优先级低于上面两项。
-
-> **但 `pass`/`yield` 可以独立于 runner 先做**：
-> agent 收工后轮次会卡在它身上，只能等 120s 超时跳过。
-> 真实模型观察里 claude 自己提出了这个修法（给 `send_message` 加显式 pass）。
-> 见 `OBSERVE-CHAT-REAL-MODELS.md` §4.4。
+> **`pass`/`yield` 先做的理由**：它解决的是**领域层**的问题
+> （轮次卡死），runner 解决的是**进程编排**问题。前者不做，runner 也得处理同一个坑。
 
 ---
 
@@ -331,7 +338,7 @@ L539  this.history = [];              ← 历史才清空
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增十一份**：
+**这一轮新增十二份**：
 
 | 文件 | 内容 |
 |---|---|
@@ -345,6 +352,7 @@ L539  this.history = [];              ← 历史才清空
 | [`REVIEW-P5A.md`](REVIEW-P5A.md) | P5A 评审记录（独立验证 76 条，含 4 次评审方自己的错） |
 | [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅工作单（✅ 已完成） |
 | [`REVIEW-P5B.md`](REVIEW-P5B.md) | P5B 评审记录（独立验证 60 条，一次通过） |
+| [`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md) | `pass`/`yield` 工作单（**待做**，方案已验证 19 条） |
 
 ---
 

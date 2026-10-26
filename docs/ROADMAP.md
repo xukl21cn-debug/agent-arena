@@ -1,6 +1,6 @@
 # 路线图：参与者模型 → 双 AI → 围棋 → 聊天室
 
-> 状态：**P1 → P5 全部完成**（2026-10-27 更新）。剩下的是可选项，见 [`SESSION-HANDOFF.md`](SESSION-HANDOFF.md) §3.5
+> 状态：**P1 → P5 全部完成**（2026-10-27 更新）。下一步是 `pass`/`yield`（[`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md)），之后剩可选项。
 > 回答一个问题：**双 AI、围棋、聊天室三件事，按什么顺序做，才不会互相重复、互相踩？**
 >
 > 📖 **先读 [`AGENTS.md`](../AGENTS.md)**（通用约定）和 [`SESSION-HANDOFF.md`](SESSION-HANDOFF.md)（从哪继续）。
