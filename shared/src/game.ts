@@ -62,6 +62,14 @@ export type ErrorCode =
   | 'INVALID_DEAD_STONE'
   /** The requested rules variant is not implemented. */
   | 'UNSUPPORTED_RULE'
+  /** Replay: the requested archived game does not exist. */
+  | 'ARCHIVE_NOT_FOUND'
+  /** Replay: the room has never played a game. */
+  | 'NO_MOVES'
+  /** Replay: the history exceeds the replay cap; refused, not truncated. */
+  | 'REPLAY_TOO_LONG'
+  /** Replay: the history diverged from the rules; the move number is in the message. */
+  | 'REPLAY_FAILED'
   | 'INTERNAL_ERROR';
 
 export interface Cell {

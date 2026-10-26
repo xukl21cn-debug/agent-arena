@@ -20,7 +20,9 @@ function main(): void {
   const config = loadConfig();
 
   const presence = new PresenceRegistry();
-  const repository = new FileRoomRepository(config.dataDir);
+  const repository = new FileRoomRepository(config.dataDir, {
+    archiveLimit: config.archiveLimit,
+  });
   const manager = new RoomManager({
     repository,
     defaultRoomId: config.defaultRoomId,

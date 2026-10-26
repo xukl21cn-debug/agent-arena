@@ -8,6 +8,7 @@ import type {
   CommentaryMood,
   ErrorCode,
   GoGroupsView,
+  GoRules,
   GoScore,
   GoState,
   GameState,
@@ -141,6 +142,54 @@ export interface ErrorResponse {
 }
 
 export type ClientMessage = { type: 'ping' };
+
+/* ------------------------------------------------------------------
+   Replay & archive wire frames
+   The replay endpoints are transport contracts shared with the web, so
+   their shapes live here like the WS frames. The archive summary is what
+   P5B's lobby will render; its fields come straight from the archived
+   state, never inferred.
+------------------------------------------------------------------ */
+
+/** One entry of `GET /api/archive`, sorted by `playedAt` descending. */
+export interface ArchiveSummary {
+  /** `<roomId>__<gameId>` — the file name under <dataDir>/archive. */
+  archiveId: string;
+  roomId: string;
+  game: 'gomoku' | 'go';
+  gameId: string;
+  moveCount: number;
+  /** From the archived state, not inferred: resign/scored games end off-board. */
+  winner: StoneColor | 'draw' | null;
+  endReason: 'five' | 'draw' | 'resign' | 'scored' | null;
+  /** When the last move was played; the room's ordering key. */
+  playedAt: string;
+  seats: Record<StoneColor, PlayerSpec>;
+}
+
+/** One replay step: the state after `move`, or the opening for index 0. */
+export interface ReplayFrame {
+  index: number;
+  state: AnyGameState;
+  /** The move that produced this frame; null on the opening frame. */
+  move: AnyMove | null;
+}
+
+/** What both replay endpoints (`/rooms/:id/replay`, `/archive/:id/replay`) return. */
+export interface ReplayResponse {
+  roomId: string;
+  /** The archive this came from; null for a live room's current game. */
+  archiveId: string | null;
+  game: 'gomoku' | 'go';
+  gameId: string;
+  rules: RuleSet | GoRules;
+  seats: Record<StoneColor, PlayerSpec>;
+  /** frames[0] is the opening; frame N is after move N. All of it, in one payload. */
+  frames: ReplayFrame[];
+  /** The persisted final state — the source of endgame labels, which history cannot express. */
+  final: AnyGameState;
+  commentary: Commentary[];
+}
 
 /* ------------------------------------------------------------------
    Chat wire frames

@@ -10,6 +10,8 @@ interface GoBoardProps {
   onPlay: (row: number, col: number) => void;
   /** Toggle the whole block at a stone as dead; only during scoring. */
   onToggleDead: (row: number, col: number) => void;
+  /** Replay view: render the position, accept no input — not even dead-marking. */
+  readOnly?: boolean;
 }
 
 /** The five hoshi points of a 9×9 board, fixed by the proposal. */
@@ -57,6 +59,7 @@ export function GoBoard({
   overlay,
   onPlay,
   onToggleDead,
+  readOnly = false,
 }: GoBoardProps) {
   const size = state?.rules.boardSize ?? 9;
   const indexes = Array.from({ length: size }, (_, index) => index);
@@ -65,11 +68,12 @@ export function GoBoard({
   // playable. Playing keeps the gomoku placement gate.
   const scoring = state?.status === 'scoring';
   const canPlay =
+    !readOnly &&
     state?.status === 'playing' &&
     humanColor !== null &&
     state.turn === humanColor &&
     !busy;
-  const canMark = scoring && !busy;
+  const canMark = !readOnly && scoring && !busy;
 
   const dead = new Set(
     (scoring ? (state?.deadStones ?? []) : []).map(

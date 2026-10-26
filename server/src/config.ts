@@ -19,6 +19,8 @@ export interface ServerConfig {
   serverUrl: string;
   /** Root for persisted rooms; one JSON file per room under <dataDir>/rooms. */
   dataDir: string;
+  /** Archived games kept per room, newest first, under <dataDir>/archive. */
+  archiveLimit: number;
 }
 
 function readInteger(
@@ -65,6 +67,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     defaultRoomId: env.DEFAULT_ROOM_ID?.trim() || DEFAULT_ROOM_ID,
     serverUrl: env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL,
     dataDir: env.ARENA_DATA_DIR?.trim() || path.join(process.cwd(), 'data'),
+    archiveLimit: readInteger(env, 'ARENA_ARCHIVE_LIMIT', 20, 1, 500),
   };
 }
 

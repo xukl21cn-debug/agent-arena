@@ -12,6 +12,8 @@ interface BoardProps {
   busy: boolean;
   overlay?: ReactNode;
   onPlay: (row: number, col: number) => void;
+  /** Replay view: render the position, accept no input. */
+  readOnly?: boolean;
 }
 
 function starPoints(size: number): ReadonlyArray<{ row: number; col: number }> {
@@ -52,6 +54,7 @@ export function Board({
   busy,
   overlay,
   onPlay,
+  readOnly = false,
 }: BoardProps) {
   const size = state?.rules.boardSize ?? DEFAULT_BOARD_SIZE;
   const indexes = Array.from({ length: size }, (_, index) => index);
@@ -61,6 +64,7 @@ export function Board({
   );
   const lastMove = state?.lastMove ?? null;
   const canPlay =
+    !readOnly &&
     state?.status === 'playing' &&
     humanColor !== null &&
     state.turn === humanColor &&

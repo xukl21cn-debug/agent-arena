@@ -5,6 +5,7 @@ import type {
   ChatRoomFrame,
   Commentary,
   ErrorCode,
+  ReplayResponse,
   RoomView,
   StoneColor,
 } from '@arena/shared';
@@ -230,6 +231,18 @@ export const api = {
       chatPath(roomId, `/${action}`),
       { method: 'POST' },
     ).then(({ room }) => chatRoomFrameOf(room));
+  },
+
+  /** Every frame of the room's current game, computed once server-side. */
+  getRoomReplay(roomId: string): Promise<ReplayResponse> {
+    return request<ReplayResponse>(roomPath(roomId, '/replay'));
+  },
+
+  /** The same payload for an archived game. */
+  getArchiveReplay(archiveId: string): Promise<ReplayResponse> {
+    return request<ReplayResponse>(
+      `/api/archive/${encodeURIComponent(archiveId)}/replay`,
+    );
   },
 };
 

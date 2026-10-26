@@ -506,6 +506,29 @@ export class GameRoom {
     };
 
     const prev = this.state;
+
+    // Archive the game we are leaving before anything overwrites it: from
+    // here on `this.state` is the new game and `this.history` is about to be
+    // cleared, so `prev` plus the still-live history is the only complete
+    // copy. A side channel, never a gate: an archive failure is logged and
+    // the new game proceeds. Rooms that never started (gameId '') or never
+    // moved are not worth an archive slot.
+    if (prev.gameId !== '' && this.history.length > 0) {
+      try {
+        this.repository?.archive({
+          id: this.id,
+          state: prev,
+          history: [...this.history],
+          commentary: [...this.commentaryLog],
+        });
+      } catch (error) {
+        console.error(
+          `[room] failed to archive game "${prev.gameId}" of room "${this.id}":`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
     if (game === 'go') {
       const resolved = resolveGoRules({
         ...(options.boardSize === undefined ? {} : { boardSize: options.boardSize }),

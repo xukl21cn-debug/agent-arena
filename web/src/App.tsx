@@ -11,6 +11,7 @@ import { ChatRoomPage } from './components/chat/ChatRoomPage';
 import { CommentaryPanel } from './components/CommentaryPanel';
 import { Controls } from './components/Controls';
 import { GoBoard } from './components/GoBoard';
+import { ReplayPage } from './components/replay/ReplayPage';
 import { ResultOverlay } from './components/ResultOverlay';
 import { ScoringPanel } from './components/ScoringPanel';
 import { StatusBar } from './components/StatusBar';
@@ -36,17 +37,27 @@ function roomIdFromLocation(): string {
 }
 
 /**
- * `?kind=chat` rides the chat page; anything else — including no kind at
- * all — stays on the games, so existing links keep their behaviour. Same
- * rule as the /ws endpoint.
+ * `?archive=<id>` and `?view=replay` pick the replay page; `?kind=chat` the
+ * chat page; anything else — including no params at all — stays on the
+ * games, so existing links keep their behaviour. Replay deliberately does
+ * NOT reuse `kind` (that word belongs to the chat WS dispatch).
  */
 export default function App() {
-  const roomId = useMemo(roomIdFromLocation, []);
-  const chatMode = useMemo(
-    () => new URLSearchParams(window.location.search).get('kind') === 'chat',
+  const params = useMemo(
+    () => new URLSearchParams(window.location.search),
     [],
   );
+  const roomId = useMemo(roomIdFromLocation, []);
+  const archiveId = params.get('archive');
+  const chatMode = params.get('kind') === 'chat';
+  const replayMode = params.get('view') === 'replay';
 
+  if (archiveId !== null) {
+    return <ReplayPage key={archiveId} archiveId={archiveId} />;
+  }
+  if (replayMode) {
+    return <ReplayPage key={`room-${roomId}`} roomId={roomId} />;
+  }
   if (chatMode) {
     return <ChatRoomPage roomId={roomId} />;
   }

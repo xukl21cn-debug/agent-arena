@@ -6,17 +6,24 @@ import {
 } from 'express';
 import {
   type Actor,
+  type ArchiveSummary,
   type CommentaryKind,
   type CommentaryMood,
   type ErrorCode,
   type ErrorResponse,
   type Participant,
   type PlayerSpec,
+  type ReplayResponse,
   type RuleSet,
   type StoneColor,
 } from '@arena/shared';
 import { clampWaitMs, type ServerConfig } from '../config.js';
+import { buildReplay, ReplayError } from '../core/replay.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
+import {
+  ARCHIVE_ID_PATTERN,
+  type PersistedRoom,
+} from '../rooms/repository.js';
 import { RoomError, type ActorRef, type GameRoom } from '../rooms/room.js';
 
 const COMMENTARY_KINDS: readonly CommentaryKind[] = [
@@ -42,6 +49,7 @@ export function statusForCode(code: ErrorCode): number {
   switch (code) {
     case 'ROOM_NOT_FOUND':
     case 'PARTICIPANT_NOT_FOUND':
+    case 'ARCHIVE_NOT_FOUND':
       return 404;
     case 'ROOM_EXISTS':
     case 'GAME_NOT_PLAYING':
@@ -52,6 +60,9 @@ export function statusForCode(code: ErrorCode): number {
     case 'AMBIGUOUS_ACTOR':
       return 409;
     case 'INTERNAL_ERROR':
+    // The data on disk diverged from the rules; the recording is broken,
+    // which is the server's problem to report, not the client's to fix.
+    case 'REPLAY_FAILED':
       return 500;
     case 'BACKEND_UNAVAILABLE':
       return 503;
@@ -322,6 +333,47 @@ function createRoomOrThrow(
   }
 }
 
+/** Guard so a corrupt file cannot ask the server to rebuild 100k frames. */
+const REPLAY_MAX_MOVES = 1000;
+
+/**
+ * Turn a persisted game (live room or archive) into the replay payload.
+ * The length cap refuses rather than truncates, and a diverging history
+ * surfaces as REPLAY_FAILED with the move number in the message.
+ */
+function replayResponse(
+  persisted: PersistedRoom,
+  archiveId: string | null,
+): ReplayResponse {
+  const { state, history } = persisted;
+  if (history.length > REPLAY_MAX_MOVES) {
+    throw new RoomError(
+      'REPLAY_TOO_LONG',
+      `History holds ${history.length} moves; the replay cap is ${REPLAY_MAX_MOVES}.`,
+    );
+  }
+  let frames;
+  try {
+    frames = buildReplay(state, history);
+  } catch (error) {
+    if (error instanceof ReplayError) {
+      throw new RoomError('REPLAY_FAILED', error.message);
+    }
+    throw error;
+  }
+  return {
+    roomId: persisted.id,
+    archiveId,
+    game: state.game,
+    gameId: state.gameId,
+    rules: state.rules,
+    seats: state.seats,
+    frames,
+    final: state,
+    commentary: persisted.commentary,
+  };
+}
+
 /**
  * REST API used by the browser and, through the stdio bridge, by MCP clients.
  * Every mutation is delegated to the owning GameRoom.
@@ -354,6 +406,55 @@ export function createApiRouter(
 
   router.get('/rooms/:roomId', (req, res) => {
     res.json(roomOrThrow(manager, req.params.roomId).getView());
+  });
+
+  /**
+   * Replay the room's current game: every intermediate state, computed once
+   * server-side so the client's stepping is pure memory. A room that never
+   * played (idle, no moves) has nothing to show and says so with NO_MOVES —
+   * a data answer, not a server failure.
+   */
+  router.get('/rooms/:roomId/replay', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const history = [...room.getHistory()];
+    const state = room.getState();
+    if (history.length === 0 && state.status === 'idle') {
+      throw new RoomError(
+        'NO_MOVES',
+        `Room "${room.id}" has not played a game yet.`,
+      );
+    }
+    res.json(
+      replayResponse(
+        { id: room.id, state, history, commentary: room.getView().commentary },
+        null,
+      ),
+    );
+  });
+
+  // ---- archives -----------------------------------------------------------
+
+  /** Archived games, newest played first; the lobby (P5B) renders this. */
+  router.get('/archive', (_req, res) => {
+    res.json(manager.repository.listArchives());
+  });
+
+  router.get('/archive/:archiveId/replay', (req, res) => {
+    const archiveId = req.params.archiveId;
+    if (typeof archiveId !== 'string' || !ARCHIVE_ID_PATTERN.test(archiveId)) {
+      throw new RoomError(
+        'INVALID_REQUEST',
+        `Invalid archiveId "${String(archiveId)}": expected 1-80 characters of [a-zA-Z0-9_-].`,
+      );
+    }
+    const persisted = manager.repository.loadArchive(archiveId);
+    if (!persisted) {
+      throw new RoomError(
+        'ARCHIVE_NOT_FOUND',
+        `Archive "${archiveId}" not found.`,
+      );
+    }
+    res.json(replayResponse(persisted, archiveId));
   });
 
   // ---- participants -------------------------------------------------------
