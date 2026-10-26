@@ -1,124 +1,198 @@
-# 会话交接 · 2026-10-25
+# 会话交接 · 2026-10-26
 
-> 给下一个会话用。上个会话从「智谱免费额度」聊起，最终做完了 agent-arena 的 P1a + P1b，并改名。
+> **先读 [`AGENTS.md`](../AGENTS.md)**——通用约定（分工、硬约束、验证方法、设计原则）都在那里，
+> 本文只写「从哪继续」和「这一轮学到的新东西」。
+>
+> 上一份交接（P1b 时代）已被本文取代，历史内容见 git 记录。
 
 ---
 
 ## 一、当前状态（一句话）
 
-**`E:\code\fun\agent-arena` 在 `feat/p2-dual-ai` 分支，166 个测试全绿，P2 待开始。**
+**`main` 分支干净，282 个测试全绿。P4 聊天室的服务端已完成，网页 UI 未开始。**
 
 | 项 | 值 |
 |---|---|
 | 项目路径 | `E:\code\fun\agent-arena` |
-| 当前分支 | `feat/p2-dual-ai`（干净，无未提交改动） |
-| 最新提交 | `b5e5d3a feat(scripts): duel — two MCP clients play a full game` |
-| 测试 | 166 个全绿 |
-| arena 服务 | 正在跑，端口 3000（pid 34100） |
-| DSH MCP 配置 | 已配好（`insert:` 写法），服务名 `arena` |
+| 分支 | `main`（干净） |
+| 最新提交 | `d89ab8a docs: review the chat policy fix` |
+| 测试 | **282 全绿** |
+| 服务 | 3000 端口运行中（`scripts/dev-isolated.ps1 -Only live`） |
+| 数据 | 对局落盘在 `data/`（P3.5 完成） |
 
 ---
 
-## 二、这个项目是什么
+## 二、这一轮做了什么（P2 → P4-C2）
 
-原本是「人类 vs 一个 AI」的五子棋（`gomoku-mcp`），现在扩展成**给 AI Agent 玩的本地竞技场**：
+| 阶段 | 内容 | 关键产出 |
+|---|---|---|
+| **P2** | 双真实模型对弈验证 | 一盘完整对局（claude 胜，64 手，1h41m）；发现并修复 `yourColor` 座位 bug |
+| **P3a** | 围棋规则引擎 | `core/go.ts`，纯函数，独立审计通过 |
+| **P3b-1** | 围棋类型契约 | `GoState` / `AnyGameState` / `AnyMove` |
+| **P3b-2** | 围棋接入 | `/mcp` 加 4 个工具（pass / mark_dead / confirm_score / resume_play） |
+| **P3b-3** | 围棋数子 | scoring 全流程，**并行确认无轮次** |
+| **P3b-4** | 网页围棋盘 | `GoBoard.tsx`，用户已实战下完一盘 |
+| **P3.5** | 棋谱持久化 | `FileRoomRepository`，重启恢复对局 |
+| **P4-C1/C2** | 聊天室服务端 | `/chat/mcp` + 4 个工具 + 长轮询 |
+| 修复 | chat policy 参数 | REST 建房时 policy 被静默丢弃 |
 
-- 房间里可以有**两个 AI 互相对弈**，人类观战
-- 每个参与者有**稳定身份**（id、名字、座位），同名重连能拿回座位
-- **在线状态可见**：等待中 / 思考中 / 在线 / 已断开
-- 通过 MCP 暴露给任意标准客户端（DSH、Claude Code、ZCode 等）
-- 未来规划：围棋（P3）、聊天室（P4）、大厅（P5）
+**P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
 ---
 
-## 三、这次会话做了什么
+## 三、下一步（从这里继续）
 
-### 3.1 智谱 GLM 接入（早期，已完成）
+### 3.1 推荐：先看真实模型在聊天室的表现
 
-把 ZCode 的 coding plan key 解密出来，接到 DSH 的 pi-ai 适配器：
+**在 C4（网页聊天页）之前，先让两个真实模型聊一轮。**
 
-- 配置在 `~/.dsh/profiles/web/cordis.patch.yml` 的 `llm-pi-ai`（**后来用户改成了 magpie 路由，这段已被覆盖**）
-- 结论：赠送额度无法从外部 API 使用，只能用订阅额度
+理由：`scripts/chat-duel.mjs` 是 mock 客户端，真实模型的行为没观察过——
+会不会抢话、会不会跑题、轮次遵守得怎么样，全都不知道。
 
-### 3.2 P1a：在线状态（已合入 main）
+**这和 P2 的教训一样：协议对不等于模型对。**
 
-**问题**：点「执黑开局」后只能干等，不知道 AI 是没连上还是在长考。
+怎么做：
 
-**做法**：presence 由**传输层信号**决定，不靠「多久没动静」猜：
+```text
+1. 起服务
+   pwsh -File scripts/dev-isolated.ps1 -Only live
 
-| 信号 | 含义 |
-|---|---|
-| 浏览器 WS 连接 | 人类座位在线 |
-| MCP 会话 | agent 座位在线 |
-| 挂起的长轮询 | 最强证据 → `waiting` |
-| 回合状态 | → `thinking` |
-| 传输层断开 | → `disconnected` |
+2. 建聊天室
+   POST http://127.0.0.1:3000/api/chat/rooms
+   { "roomId": "lobby", "title": "MCP 的未来" }
 
-**踩过的三个 bug**（都已修）：
-1. 观众绑到「连接时的座位」，执白开局后错位
-2. `watchedAt` 在断开时也刷新，关标签页后仍显示在线
-3. 座位换人时旧的活动记录残留，AI 座位误判在线
+3. 两个 agent 通过 MCP 接入
+   /chat/mcp → join_room(name="dsh") / join_room(name="claude")
+   → 循环 wait_for_messages → send_message
 
-### 3.3 P1b：参与者模型（已合入 main）
-
-**核心**：座位有了身份，两个 agent 才能共存。
-
-```ts
-// 旧：只能按 kind 找，两个 agent 歧义
-moveBy('agent', 7, 7)
-
-// 新：按 id 找
-moveAs({ participantId: black.id }, 7, 7)
+4. 人类在网页或用 REST 插话
+   POST /api/chat/rooms/lobby/messages { "text": "你们聊聊..." }
 ```
 
-关键设计：
-- `PlayerSpec.id` **可选**（旧快照没有，设必填编译不过）
-- **同名 join = 重连**，拿回原 id 和座位
-- **占座会驱逐**原占座者（"添加 AI 对手"需要）
-- 旧 `actor` 路径保留，两个 agent 时明确报 `AMBIGUOUS_ACTOR`
-- **`join_game` 绑定会话身份**，模型不用传 id，也无法冒充
+### 3.2 然后：P4-C4 网页聊天页
 
-**GLM 完成的部分**（我审过，质量很好）：
-- `f2d7942` ParticipantView 暴露 `participantId`
-- `6a2f741` Web 双 AI 观战布局
-- `d65b152` **修复：开着的标签页收不到掉线推送**（sweep 跳过有 viewer 的房间，`watchedAt` 删除后这个 skip 只剩副作用）
-- `6663ba6` 文档收尾
+工作单**还没写**。需要写 `docs/HANDOFF-P4-C4.md`，内容参考：
 
-### 3.4 改名 gomoku-mcp → agent-arena（已完成）
+- 时间线（作者颜色、气泡）
+- 成员栏（在线状态 + 发言数）
+- hop 预算条
+- 人类输入框（`@` 补全）
+- 暂停 / 关闭 / 导出
 
-**为什么现在改**：MCP 服务名会进工具名（`mcp__<name>__tool`），客户端配好后再改要重新配。
+⚠️ **聊天室没有 WS**（C1/C2 刻意跳过了），网页要用轮询或长轮询。
+统一 WS 留给 P5。
 
-| 层次 | 改动 |
+### 3.3 之后：P5 大厅
+
+包含三件事（用户已确认）：
+
+| 项 | 说明 |
 |---|---|
-| 包作用域 | `@gomoku/*` → `@arena/*` |
-| MCP 服务名 | `gomoku` → `arena` |
-| 环境变量 | `GOMOKU_SERVER_URL` → `ARENA_SERVER_URL` |
-| 身份头 | `X-Gomoku-Participant` → `X-Arena-Participant` |
-| 接口 | `GomokuApi` → `ArenaApi` |
+| 大厅 | 三类房间统一入口（五子棋 / 围棋 / 聊天） |
+| **棋谱回放** | P3.5 已落盘，做列表 + 回放页面 |
+| WS 统一 | `RoomManager` 装两类房间，`ws.ts` 按 kind 分发 |
 
-**保留**：`game: 'gomoku'` 和 `RoomKind: 'gomoku'` 是游戏类型不是项目名；棋盘标题仍是「五子棋」。
+### 3.4 可选：P4-C3 runner
 
-### 3.5 duel 脚本（刚完成）
-
-`server/scripts/duel.mjs`，两个 MCP 客户端自动对弈，不需要模型：
-
-```bash
-pnpm duel                    # 31 手，黑胜
-pnpm duel --strategy hot     # 9 手，走热点雷达
-```
-
-**实测通过**，能验证：各自占座、按身份路由、presence 切换、终局判定。
+把 CLI 包成常驻成员（`codex exec` / `claude -p`），不依赖模型耐心循环调用。
+优先级低于 C4——交互式客户端已经能用。
 
 ---
 
-## 四、DSH 的 MCP 配置（重点，踩过坑）
+## 四、这一轮踩的新坑
 
-**DSH 没有 MCP 配置 GUI**，只能改 `C:\Users\59916\.dsh\profiles\web\cordis.patch.yml`。
+### 4.1 MCP 会话无法持久化（已查证，别再试）
 
-**新增插件必须用 `insert:`**：
+```text
+SDK 源码："State is maintained in-memory (connections, message history)"
+```
+
+- 会话是活连接，没法序列化
+- 客户端拿到 404 只会重试旧 id，**不会重新 initialize**（实测）
+- `transport.onclose` 在服务端死掉时**不触发**，所以重连逻辑不启动
+
+**结论**：改了工具清单就必须重开客户端会话。详见 `AGENTS.md` §8。
+
+### 4.2 `tsx watch` 是重启进程，不是热替换
+
+实测：`pid` 从 26884 变 7324，内存计数器归零。
+
+所以 `pnpm dev` 下改一行代码，对局就没了。**用双端口脚本。**
+
+### 4.3 聊天室的 scoring 类操作没有轮次
+
+围棋数子阶段**双方并行确认**，不是轮流。`wait_for_turn` 的 `scoring` 判断
+必须在 `turn` 判断之前。
+
+聊天室同理：`wait_for_messages` 按成员分派，不按轮次。
+
+### 4.4 评审方自己反复犯的四个错
+
+见 `AGENTS.md` §6.2。**写审计脚本前对照一遍**，这一轮又犯了其中两个。
+
+---
+
+## 五、关键文件索引
+
+### 代码
+
+| 文件 | 内容 |
+|---|---|
+| `server/src/rooms/room.ts` | 棋类房间（五子棋 + 围棋分派） |
+| `server/src/core/engine.ts` | 五子棋引擎 |
+| `server/src/core/go.ts` | 围棋引擎（纯函数，独立审计通过） |
+| `server/src/core/go-game.ts` | 围棋状态搬运（对应 engine.ts） |
+| `server/src/core/presence.ts` | 在线状态（**按座位索引**） |
+| `server/src/mcp/tools.ts` | 棋类 MCP 工具（12 个） |
+| `server/src/chat/` | 聊天室（独立领域，5 个文件） |
+| `shared/src/game.ts` | 核心类型（`GameState` / `GoState` / `RoomView`） |
+| `web/src/components/GoBoard.tsx` | 网页围棋盘 |
+
+### 脚本
+
+| 文件 | 内容 |
+|---|---|
+| `scripts/dev-isolated.ps1` | 双端口启停（**日常用这个**） |
+| `scripts/e2e-go-web.mjs` | 围棋端到端（REST 人类 + MCP agent） |
+| `scripts/chat-duel.mjs` | 两个 MCP 客户端聊天 |
+| `scripts/smoke-go-white.mjs` | 围棋白方冒烟 |
+| `server/scripts/duel.mjs` | 两个 MCP 客户端下五子棋（`pnpm duel`） |
+
+> `scripts/` 下还有几个历史调试脚本（`demo-agent-view.mjs` / `measure-payload.mjs` /
+> `replay-game2.mjs`），不是日常流程的一部分。
+
+### 文档
+
+见 `AGENTS.md` §10 的文档地图。
+
+---
+
+## 六、服务怎么起
+
+```powershell
+cd E:\code\fun\agent-arena
+
+# 对局服务（3000）
+pwsh -File scripts/dev-isolated.ps1 -Only live
+
+# 开发服务（3100，改代码时用）
+pnpm build
+pwsh -File scripts/dev-isolated.ps1 -Only dev
+
+# 都停
+pwsh -File scripts/dev-isolated.ps1 -Stop
+```
+
+⚠️ **改完 server 代码必须 `pnpm build`**——`pnpm start` 读 `dist/`。
+
+---
+
+## 七、DSH 的 MCP 配置
+
+配置在 `C:\Users\59916\.dsh\profiles\web\cordis.patch.yml`，服务名 `arena`。
 
 ```yaml
-# ✅ 正确
+# 新增插件必须用 insert:
 - insert:
     - id: mcp-arena
       name: "@deepseek-ai/dsh-mcp-client"
@@ -126,103 +200,29 @@ pnpm duel --strategy hot     # 9 手，走热点雷达
         serverName: arena
         transport: streamable-http
         url: http://127.0.0.1:3000/mcp
-
-# ❌ 错误：静默跳过，只有一行 stderr 警告
-- id: mcp-arena
-  name: "@deepseek-ai/dsh-mcp-client"
-  config: { ... }
 ```
 
-验证：
-```powershell
-node E:\data\node_global\node_modules\@deepseek-ai\dsh\lib\bin.js --profile web --dump-config 2>&1 | Select-String "mcp-arena"
+**聊天室需要另一个条目**（如果要用 DSH 聊）：
+
+```yaml
+    - id: mcp-arena-chat
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: chat
+        transport: streamable-http
+        url: http://127.0.0.1:3000/chat/mcp
 ```
 
-**第二个坑**：MCP 工具在**会话启动时**注入。服务晚于会话启动，旧会话拿不到工具，**必须新开会话**。
+⚠️ **改完配置必须新开会话**（MCP 工具在会话启动时注入）。
 
 ---
 
-## 五、下一步：P2
+## 八、用户的偏好（观察所得）
 
-**P2 验证的是模型行为，不是协议**（协议已由 `duel.mjs` 和 `dual-agent.test.ts` 证明）。
-
-要验证 6 个问题：
-
-| # | 问题 |
-|---|---|
-| Q1 | 模型会不会主动 `join_game`，还是直接落子 |
-| Q2 | 会不会自觉 `wait_for_turn`，还是抢着下 |
-| Q3 | 会不会替对手落子 |
-| Q4 | 能否理解 `yourColor` 和 `participants` |
-| Q5 | 重连能否靠同名拿回座位 |
-| Q6 | 报错能否自我修正 |
-
-**两个客户端**：DSH（执黑，name `dsh`）+ Claude Code（执白，name `claude`），房间 `duel`。
-
-**完整剧本、记录表、坑都在 `docs/HANDOFF-P2.md`**。
-
----
-
-## 六、给下个会话的建议
-
-### 如果用户说「继续 P2」
-
-1. 先确认 `pnpm duel` 能跑通（协议层就绪）
-2. 确认用户在**新会话**里能看到 `mcp__arena__*` 工具
-3. 按 `docs/HANDOFF-P2.md` 第 4 节发剧本
-4. 记录 Q1–Q6 结果，写 `docs/P2-RESULT.md`
-
-### 如果用户问「能修 XX 吗」
-
-先看 `docs/ROADMAP.md` 确认这属于哪个阶段，别跳步。
-
-### 硬性约束（踩了就返工）
-
-| 约束 | 原因 |
-|---|---|
-| `PlayerSpec.id` 保持可选 | engine 默认值没 id |
-| `GameStatus` 不加新值 | 166 个测试和 MCP 契约连锁 |
-| 旧 `actor` 路径保留 | 旧客户端还在用 |
-| presence 信号键按座位 | 改 participantId 会牵动 rebindSeats |
-| `RoomView`/`RoomSummary` 只增字段 | 网页和旧客户端依赖 |
-
-### 已知的坑
-
-| 坑 | 说明 |
-|---|---|
-| 热重载不迁移内存状态 | 改 presence/room 后重启服务 |
-| **服务重启 = 所有 MCP 会话失效** | 会话表在内存里，重启后旧 `Mcp-Session-Id` 一律 404 `Session not found`；客户端不会自动重连（它只在传输层 onclose 时重连，而 404 只是普通错误）。**重启服务后必须新开客户端会话**，否则工具全部报错 |
-| MCP SDK `client.close()` 不发 DELETE | 服务端靠 90 秒静默判定掉线 |
-| `wait_for_turn` 的 `moves` 是截断的 | 只带最近 8 手，判断空格要 `get_state` |
-| 网页开局会抢座 | 双 AI 场景让 agent 自己 `new_game` |
-| 端口 3000 可能被占 | 上一轮的 node 进程可能没退干净 |
-| 改完代码别急着重启 3000 | 有对局在跑时重启会杀掉它；要验证修复就在别的端口起独立实例（`$env:PORT=3100`） |
-
----
-
-## 七、用户的工作方式偏好（观察所得）
-
-- **喜欢串行推进**，不喜欢并行开太多分支（worktree 已清理，只用普通分支）
-- **让 GLM 写代码**，我（DSH）负责设计、评审、文档
-- **重视文档**，每个阶段都要交接文档
+- **串行推进**，不喜欢并行开太多分支
+- **GLM 写代码，DSH 评审 + 文档**（分工见 `AGENTS.md` §2）
+- **重视文档**，每阶段都要工作单 + 评审
 - **要求实测验证**，不接受「测试过了就行」
-- 中文交流，界面文案也是中文短句风格
-- 会自己动手验证（重启服务、点按钮），发现问题会详细描述现象
-
----
-
-## 八、关键文件索引
-
-| 文件 | 内容 |
-|---|---|
-| `docs/ROADMAP.md` | 整体路线、各阶段状态、围棋何时开始 |
-| `docs/HANDOFF-P2.md` | **P2 工作单**（当前要做的） |
-| `docs/HANDOFF-P1B.md` | P1b 历史记录和约束参考 |
-| `docs/PROPOSAL-GO-MCP.md` | 围棋提案（P3 用） |
-| `docs/proposals/PROPOSAL-PARTICIPANTS.md` | 参与者模型设计 |
-| `docs/proposals/PROPOSAL-AGENT-CHAT.md` | 聊天室设计（P4） |
-| `server/scripts/duel.mjs` | 双 AI 自测脚本 |
-| `server/src/rooms/participant-roster.ts` | 参与者名册 |
-| `server/src/core/presence.ts` | 在线状态注册表 |
-| `server/src/core/session-context.ts` | 会话绑定身份 |
-| `web/src/store/room.ts` | zustand 房间状态 |
+- 中文交流，界面文案用中文短句
+- 会自己动手验证，发现问题描述得很详细
+- **喜欢看实测数据**（「实测通过」「独立验证」这类结论）
