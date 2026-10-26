@@ -99,4 +99,25 @@ export class RoomManager {
       this.create(this.defaultRoomIdValue, this.defaultRoomConfig)
     );
   }
+
+  /**
+   * Recreate every persisted room so a restart resumes where it stopped.
+   *
+   * GameRoom's constructor already restores its snapshot from the
+   * repository, so `create` is the whole recovery path. Corrupt files never
+   * reach here: the repository's list skips them, and the rooms they
+   * described stay absent instead of rising as empty impostors.
+   *
+   * The roster is deliberately not persisted — connections are gone after a
+   * restart, so seats refill when real clients rejoin (agents reclaim theirs
+   * by joining under the same name).
+   */
+  restoreAll(): void {
+    for (const summary of this.repository.list()) {
+      if (this.rooms.has(summary.roomId)) {
+        continue;
+      }
+      this.create(summary.roomId);
+    }
+  }
 }

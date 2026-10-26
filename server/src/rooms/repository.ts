@@ -1,12 +1,14 @@
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
+import path from 'node:path';
+import { ROOM_ID_PATTERN, type RoomSummary } from '@arena/shared';
 import type {
   AnyGameState,
   AnyMove,
   Commentary,
   GameState,
   Move,
-  RoomSummary,
 } from '@arena/shared';
-import type { GameRoom } from './room.js';
+import { RoomError, type GameRoom } from './room.js';
 
 /** Serializable snapshot of a room, the unit the repository persists. */
 export interface PersistedRoom {
@@ -105,5 +107,106 @@ export class MemoryRoomRepository implements RoomRepository {
 
   delete(roomId: string): void {
     this.rooms.delete(roomId);
+  }
+}
+
+/**
+ * One JSON file per room under `<dataDir>/rooms/<roomId>.json`.
+ *
+ * A corrupt file takes down one room, never the server: load/list skip it
+ * with a logged error and the file stays on disk for manual inspection.
+ * Writes go through a temp file and rename — a half-written snapshot would
+ * otherwise break the room on every future boot.
+ */
+export class FileRoomRepository implements RoomRepository {
+  private readonly roomsDir: string;
+
+  constructor(dataDir: string) {
+    this.roomsDir = path.join(dataDir, 'rooms');
+    mkdirSync(this.roomsDir, { recursive: true });
+  }
+
+  /** Where room files live, for boot logs and diagnostics. */
+  get roomsDirectory(): string {
+    return this.roomsDir;
+  }
+
+  /**
+   * Room ids are validated at every API boundary, but this module also
+   * builds paths from them, so re-check here: the pattern forbids `/`,
+   * `\` and `..`, which is the whole traversal surface.
+   */
+  private fileFor(roomId: string): string {
+    if (!ROOM_ID_PATTERN.test(roomId)) {
+      throw new RoomError(
+        'INVALID_ROOM_ID',
+        `Invalid roomId "${String(roomId)}": expected 1-32 characters of [a-zA-Z0-9_-].`,
+      );
+    }
+    return path.join(this.roomsDir, `${roomId}.json`);
+  }
+
+  load(roomId: string): PersistedRoom | null {
+    const file = this.fileFor(roomId);
+    let raw: string;
+    try {
+      raw = readFileSync(file, 'utf8');
+    } catch {
+      // Absent file is the normal "no such room" answer, not an error.
+      return null;
+    }
+    try {
+      return migrateSnapshot(JSON.parse(raw) as PersistedRoom);
+    } catch (error) {
+      console.error(
+        `[repository] skipping corrupt room file ${file}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return null;
+    }
+  }
+
+  save(room: GameRoom): void {
+    const file = this.fileFor(room.id);
+    const tmp = `${file}.tmp`;
+    const json = JSON.stringify(room.toSnapshot());
+    // Synchronous on purpose: a move must be durable before the response
+    // goes out, and at 9x9 the write is a few milliseconds. Revisit if
+    // boards grow or writes become high-frequency.
+    const fd = openSync(tmp, 'w');
+    try {
+      writeSync(fd, json);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    // rename replaces the destination atomically within one filesystem —
+    // a reader never sees a partial file.
+    renameSync(tmp, file);
+  }
+
+  list(): RoomSummary[] {
+    const summaries: RoomSummary[] = [];
+    if (!existsSync(this.roomsDir)) {
+      return summaries;
+    }
+    for (const entry of readdirSync(this.roomsDir)) {
+      if (!entry.endsWith('.json') || entry.endsWith('.json.tmp')) {
+        continue;
+      }
+      const roomId = entry.slice(0, -'.json'.length);
+      const persisted = this.load(roomId);
+      if (persisted) {
+        summaries.push(summarize(persisted));
+      }
+    }
+    return summaries.sort((a, b) => a.roomId.localeCompare(b.roomId));
+  }
+
+  delete(roomId: string): void {
+    const file = this.fileFor(roomId);
+    if (existsSync(file)) {
+      unlinkSync(file);
+    }
   }
 }

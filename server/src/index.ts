@@ -6,7 +6,7 @@ import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { PresenceRegistry } from './core/presence.js';
 import { attachWebSocket } from './http/ws.js';
-import { MemoryRoomRepository } from './rooms/repository.js';
+import { FileRoomRepository } from './rooms/repository.js';
 import { RoomManager } from './rooms/room-manager.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -19,11 +19,17 @@ function main(): void {
   const config = loadConfig();
 
   const presence = new PresenceRegistry();
+  const repository = new FileRoomRepository(config.dataDir);
   const manager = new RoomManager({
-    repository: new MemoryRoomRepository(),
+    repository,
     defaultRoomId: config.defaultRoomId,
     presence,
   });
+  // Recover the previous session's rooms before the default room is ensured:
+  // a persisted `default` is restored (not recreated), and the boot log can
+  // report the count while it is still exact.
+  manager.restoreAll();
+  const restoredCount = manager.list().length;
   const defaultRoom = manager.initializeDefaultRoom();
 
   const app = createApp(manager, config, { webDist });
@@ -45,6 +51,9 @@ function main(): void {
     console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
     console.log(
       `[arena] room  "${defaultRoom.id}" (${defaultRoom.getState().status})`,
+    );
+    console.log(
+      `[arena] rooms  ${restoredCount} restored from ${repository.roomsDirectory}`,
     );
     if (serveWeb) {
       console.log(`[arena] web   ${base}/`);

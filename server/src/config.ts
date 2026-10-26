@@ -1,3 +1,4 @@
+import path from 'node:path';
 import {
   DEFAULT_ROOM_ID,
   DEFAULT_WAIT_MS,
@@ -16,6 +17,8 @@ export interface ServerConfig {
   waitMaxMs: number;
   defaultRoomId: string;
   serverUrl: string;
+  /** Root for persisted rooms; one JSON file per room under <dataDir>/rooms. */
+  dataDir: string;
 }
 
 function readInteger(
@@ -61,6 +64,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     waitMaxMs: Math.max(waitDefaultMs, waitMaxMs),
     defaultRoomId: env.DEFAULT_ROOM_ID?.trim() || DEFAULT_ROOM_ID,
     serverUrl: env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL,
+    dataDir: env.ARENA_DATA_DIR?.trim() || path.join(process.cwd(), 'data'),
   };
 }
 
