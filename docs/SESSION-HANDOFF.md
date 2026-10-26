@@ -113,11 +113,23 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 
 **结论**：改了工具清单就必须重开客户端会话。详见 `AGENTS.md` §8。
 
-### 4.2 `tsx watch` 是重启进程，不是热替换
+### 4.2 `tsx watch` 重启进程，但**对局会恢复**
 
-实测：`pid` 从 26884 变 7324，内存计数器归零。
+实测：改一行 `server/` 代码，`pid` 变了、进程重启。
 
-所以 `pnpm dev` 下改一行代码，对局就没了。**用双端口脚本。**
+**但 P3.5 的持久化让对局自动恢复**：
+
+```text
+1. 开围棋局，落一子（moves=1）
+2. 改 server/src/config.ts
+3. tsx 重启进程
+4. 查对局 → moves=1，黑子还在   ✅
+```
+
+**所以 `pnpm dev` 下改后端，丢的只是 MCP 会话，不是对局。**
+
+日常用 `pnpm dev` 就行（5173 前端 + 3000 后端）。
+只有「改后端同时要用 DSH 对局」才需要双端口脚本。
 
 ### 4.3 聊天室的 scoring 类操作没有轮次
 
@@ -152,7 +164,7 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 
 | 文件 | 内容 |
 |---|---|
-| `scripts/dev-isolated.ps1` | 双端口启停（**日常用这个**） |
+| `scripts/dev-isolated.ps1` | 双端口启停（**备选**，日常用 `pnpm dev`） |
 | `scripts/e2e-go-web.mjs` | 围棋端到端（REST 人类 + MCP agent） |
 | `scripts/chat-duel.mjs` | 两个 MCP 客户端聊天 |
 | `scripts/smoke-go-white.mjs` | 围棋白方冒烟 |
@@ -172,18 +184,28 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 ```powershell
 cd E:\code\fun\agent-arena
 
-# 对局服务（3000）
-pwsh -File scripts/dev-isolated.ps1 -Only live
+# 日常开发（推荐）
+pnpm dev
+# → 后端 3000，前端 5173（网页开 5173，不是 3000）
 
-# 开发服务（3100，改代码时用）
+# 长期跑给 DSH 用
 pnpm build
-pwsh -File scripts/dev-isolated.ps1 -Only dev
+pnpm start
+# → 3000 同时服务 API / MCP / web/dist
+```
 
-# 都停
+**备选：双端口**（只在「改后端 + 同时要用 DSH 对局」时）
+
+```powershell
+pwsh -File scripts/dev-isolated.ps1 -Only live   # 3000
+pnpm build
+pwsh -File scripts/dev-isolated.ps1 -Only dev    # 3100
 pwsh -File scripts/dev-isolated.ps1 -Stop
 ```
 
-⚠️ **改完 server 代码必须 `pnpm build`**——`pnpm start` 读 `dist/`。
+⚠️ **`pnpm start` 读 `dist/`**——改完 server 代码必须 `pnpm build` 再重启。
+
+详见 [`DEV-WORKFLOW.md`](DEV-WORKFLOW.md)。
 
 ---
 

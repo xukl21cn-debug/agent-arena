@@ -107,34 +107,52 @@ docs/<topic>      纯文档
 
 ## 5. 开发环境
 
-### 5.1 双端口（推荐）
+### 5.1 日常：`pnpm dev`
 
 ```powershell
-pwsh -File scripts/dev-isolated.ps1            # 两个都起
-pwsh -File scripts/dev-isolated.ps1 -Only dev  # 只起开发服务
-pwsh -File scripts/dev-isolated.ps1 -Stop      # 都停
+pnpm dev
 ```
 
-| 端口 | 用途 | 数据目录 |
+| 进程 | 端口 | 说明 |
 |---|---|---|
-| 3000 | 对局服务（**改代码期间不碰**） | `data/` |
-| 3100 | 开发服务（随便重启） | `data-dev/` |
+| server | **3000** | `tsx watch`，改 `server/` 自动重启 |
+| web | **5173** | Vite + proxy → 3000，改 `web/` 热更新 |
+| shared | — | `tsc --watch` |
 
-**为什么**：改代码要重启服务，而重启会杀掉 MCP 会话。双端口让「改代码」和「下棋」互不干扰。
+**网页开 5173，不是 3000。**
+
+### 5.2 改代码的影响（实测）
+
+| 改了什么 | 对局 | DSH 会话 |
+|---|---|---|
+| `web/` | ✅ 不受影响（HMR） | ✅ 不受影响 |
+| `server/` | ✅ **持久化恢复** | ❌ 断（需新开会话） |
+| `shared/` | ✅ 恢复 | ⚠️ 可能断 |
+
+**P3.5 的持久化让对局在重启后自动恢复**，所以 `pnpm dev` 下改后端只丢 MCP 会话，不丢对局。
+
+### 5.3 什么时候用双端口
+
+只有「改后端 + 同时要用 DSH 对局」时：
+
+```powershell
+pwsh -File scripts/dev-isolated.ps1 -Only live   # 3000 不动
+pnpm build
+pwsh -File scripts/dev-isolated.ps1 -Only dev    # 3100 随便重启
+pwsh -File scripts/dev-isolated.ps1 -Stop
+```
+
+⚠️ 双端口模式没有 Vite，3100 服务的是 `web/dist/`。改前端还是用 `pnpm dev`。
 
 详见 [`docs/DEV-WORKFLOW.md`](docs/DEV-WORKFLOW.md)。
 
-### 5.2 不要用 `pnpm dev` 下棋
-
-`tsx watch` 是**重启进程**（实测 pid 变化、内存归零），改一行代码对局就没了。
-
-### 5.3 常用命令
+### 5.4 常用命令
 
 ```powershell
 pnpm build        # 全量构建（shared + server + web）
 pnpm test         # 全量测试（当前 282）
 pnpm typecheck    # 类型检查
-pnpm start        # 生产模式起服务（读 dist/）
+pnpm start        # 生产模式起服务（读 dist/，改完必须 build）
 pnpm duel         # 两个脚本客户端下一盘五子棋（协议层自测）
 ```
 
