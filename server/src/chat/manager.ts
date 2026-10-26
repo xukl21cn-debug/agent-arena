@@ -3,6 +3,8 @@ import path from 'node:path';
 import { ChatRoom } from './chat-room.js';
 import {
   ChatError,
+  DEFAULT_CHAT_POLICY,
+  type ChatPolicy,
   type ChatRoomSnapshot,
   type ChatRoomSnapshotFile,
 } from './model.js';
@@ -67,7 +69,10 @@ export class ChatManager {
     renameSync(tmp, file);
   }
 
-  create(roomId: string, options: { title?: string } = {}): ChatRoom {
+  create(
+    roomId: string,
+    options: { title?: string; policy?: Partial<ChatPolicy> } = {},
+  ): ChatRoom {
     assertRoomId(roomId);
     if (this.rooms.has(roomId)) {
       throw new ChatError(
@@ -77,12 +82,8 @@ export class ChatManager {
     }
 
     const room = new ChatRoom(roomId, options.title?.trim() || roomId, {
-      // v1 implements relay; other modes are contract placeholders.
-      mode: 'relay',
-      maxHops: 16,
-      maxMessagesPerMember: 8,
-      turnTimeoutMs: 120_000,
-      maxMessageChars: 4000,
+      ...DEFAULT_CHAT_POLICY,
+      ...options.policy,
     });
     room.onChange = () => this.save(room);
     room.humanMember();

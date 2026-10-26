@@ -1,9 +1,11 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
 import {
+  CHAT_MODES,
   CHAT_RECENT_LIMIT,
   ChatError,
   type ChatErrorCode,
   type ChatMessage,
+  type ChatPolicy,
 } from './model.js';
 import { HUMAN_MEMBER_ID } from './chat-room.js';
 import type { ChatManager } from './manager.js';
@@ -61,6 +63,85 @@ function optionalString(
   return value;
 }
 
+/** Integer policy fields with their inclusive ranges. turnTimeoutMs shares
+ *  the MCP wait tool's 1s floor so a room cannot be created with a lease
+ *  shorter than any client can observe. */
+type ChatPolicyIntField = Exclude<keyof ChatPolicy, 'mode'>;
+
+const CHAT_POLICY_INT_FIELDS: ReadonlyArray<
+  readonly [name: ChatPolicyIntField, min: number, max: number]
+> = [
+  ['maxHops', 1, 1000],
+  ['maxMessagesPerMember', 1, 1000],
+  ['turnTimeoutMs', 1_000, 600_000],
+  ['maxMessageChars', 1, 100_000],
+];
+
+function intInRange(
+  value: unknown,
+  name: string,
+  min: number,
+  max: number,
+): number {
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new ChatError(
+      'INVALID_REQUEST',
+      `policy.${name} must be an integer.`,
+    );
+  }
+  if (value < min || value > max) {
+    throw new ChatError(
+      'INVALID_REQUEST',
+      `policy.${name} must be between ${min} and ${max}.`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Parse and validate a policy override. Every field is checked, and an
+ * unknown or out-of-range field is an error rather than a silent default —
+ * silently dropping `policy` was the bug this replaces, and silently
+ * dropping a misspelled field would be the same mistake again.
+ */
+function chatPolicyOf(raw: unknown): Partial<ChatPolicy> {
+  if (raw === undefined) {
+    return {};
+  }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new ChatError('INVALID_REQUEST', 'policy must be an object.');
+  }
+  const input = raw as Record<string, unknown>;
+  const known = new Set<string | number>([
+    'mode',
+    ...CHAT_POLICY_INT_FIELDS.map(([name]) => name),
+  ]);
+  for (const key of Object.keys(input)) {
+    if (!known.has(key)) {
+      throw new ChatError('INVALID_REQUEST', `Unknown policy field "${key}".`);
+    }
+  }
+  const policy: Partial<ChatPolicy> = {};
+  if (input.mode !== undefined) {
+    if (
+      typeof input.mode !== 'string' ||
+      !CHAT_MODES.includes(input.mode as ChatPolicy['mode'])
+    ) {
+      throw new ChatError(
+        'INVALID_REQUEST',
+        `policy.mode must be one of ${CHAT_MODES.join(', ')}.`,
+      );
+    }
+    policy.mode = input.mode as ChatPolicy['mode'];
+  }
+  for (const [name, min, max] of CHAT_POLICY_INT_FIELDS) {
+    if (input[name] !== undefined) {
+      policy[name] = intInRange(input[name], name, min, max);
+    }
+  }
+  return policy;
+}
+
 function renderMessage(message: ChatMessage): ChatMessage {
   return message;
 }
@@ -94,7 +175,11 @@ export function createChatRouter(manager: ChatManager): Router {
       // Human-friendly default ids: chat-<6 hex>.
       roomId = `chat-${Math.random().toString(16).slice(2, 8)}`;
     }
-    const room = manager.create(roomId, title === undefined ? {} : { title });
+    const policy = chatPolicyOf(body.policy);
+    const room = manager.create(roomId, {
+      ...(title === undefined ? {} : { title }),
+      ...(Object.keys(policy).length === 0 ? {} : { policy }),
+    });
     res.status(201).json({ room: room.snapshot() });
   });
 

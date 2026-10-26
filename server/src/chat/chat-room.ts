@@ -389,9 +389,10 @@ export class ChatRoom {
   // -- turn helpers -----------------------------------------------------------
 
   /**
-   * Expired leases settle on the next touch (send / wait / snapshot), not on
-   * a timer: the room has no background clock. A waiter parked across the
-   * deadline wakes at its own poll timeout and settles on the next call.
+   * Expired leases settle on the next touch (send / wait), not on a timer:
+   * the room has no background clock, and snapshot() stays a pure read. A
+   * waiter parked across the deadline wakes at its own poll timeout and
+   * settles on the next call.
    */
   settleExpiredTurn(now: number): void {
     if (this.phase !== 'open' || this.turn === null) {
