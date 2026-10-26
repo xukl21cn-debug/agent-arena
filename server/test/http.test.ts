@@ -218,8 +218,12 @@ describe('WebSocket', () => {
     );
 
     const hello = messages.find(
-      (message): message is Extract<ServerMessage, { type: 'hello' }> =>
-        message.type === 'hello',
+      // `state` picks the game hello; the chat variant greets with a room
+      // snapshot and has no board.
+      (message): message is Extract<
+        ServerMessage,
+        { type: 'hello'; state: { status: string } }
+      > => message.type === 'hello' && 'state' in message,
     );
     expect(hello?.state.status).toBe('idle');
     expect(hello?.commentary).toEqual([]);

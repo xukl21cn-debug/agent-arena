@@ -27,7 +27,7 @@ export interface WaitOutcome {
 /**
  * One chat room: members, a monotonic message log, a relay turn and a hop
  * budget. A pure domain object — no I/O; the manager owns persistence and
- * receives `onChange` after every mutation worth saving.
+ * learns about mutations through {@link ChatRoom.subscribe | subscribe}.
  *
  * Relay turn rules (the v1 policy):
  *  - an agent may speak only when the turn is unset or points at it;
@@ -70,8 +70,27 @@ export class ChatRoom {
     this.createdAt = createdAt;
   }
 
-  /** Called by the manager after any mutation that must reach the disk. */
-  onChange: (() => void) | null = null;
+  /**
+   * Mutation listeners — the manager persists through one, /ws broadcasts
+   * through another. This is a set on purpose: the single-slot `onChange` it
+   * replaced was silently overwritten when a second owner subscribed, and
+   * persistence died without any test noticing.
+   */
+  private readonly changeListeners = new Set<() => void>();
+
+  /** Register a mutation listener; the returned fn detaches it again. */
+  subscribe(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+
+  private emitChange(): void {
+    for (const listener of [...this.changeListeners]) {
+      listener();
+    }
+  }
 
   // -- membership -----------------------------------------------------------
 
@@ -92,7 +111,7 @@ export class ChatRoom {
       if (client !== undefined) {
         existing.client = client;
       }
-      this.onChange?.();
+      this.emitChange();
       return existing;
     }
 
@@ -106,7 +125,7 @@ export class ChatRoom {
       ...(client === undefined ? {} : { client }),
     };
     this.members.set(member.id, member);
-    this.onChange?.();
+    this.emitChange();
     return member;
   }
 
@@ -133,7 +152,7 @@ export class ChatRoom {
       this.turn = this.makeTurn(this.nextSpeakerAfter(participantId), Date.now());
     }
     if (removed) {
-      this.onChange?.();
+      this.emitChange();
     }
     return removed;
   }
@@ -219,7 +238,7 @@ export class ChatRoom {
           now,
         );
         this.turn = this.makeTurn(this.nextSpeakerAfter(member.id), now);
-        this.onChange?.();
+        this.emitChange();
         this.wakeAll();
         throw new ChatError(
           'MEMBER_LIMIT_REACHED',
@@ -283,7 +302,7 @@ export class ChatRoom {
       }
     }
 
-    this.onChange?.();
+    this.emitChange();
     this.wakeAll();
     return message;
   }
@@ -299,7 +318,7 @@ export class ChatRoom {
     this.phase = 'paused';
     this.turn = null;
     this.postSystemMessage('房间已暂停', now);
-    this.onChange?.();
+    this.emitChange();
     this.wakeAll();
   }
 
@@ -314,7 +333,7 @@ export class ChatRoom {
     // Rotation restarts from the top: whatever lease was interrupted is gone.
     this.turn = null;
     this.postSystemMessage('房间已恢复', now);
-    this.onChange?.();
+    this.emitChange();
     this.wakeAll();
   }
 
@@ -325,7 +344,7 @@ export class ChatRoom {
     this.phase = 'closed';
     this.turn = null;
     this.postSystemMessage('房间已关闭', now);
-    this.onChange?.();
+    this.emitChange();
     this.wakeAll();
   }
 
@@ -424,14 +443,14 @@ export class ChatRoom {
       );
       this.phase = 'paused';
       this.turn = null;
-      this.onChange?.();
+      this.emitChange();
       this.wakeAll();
       return;
     }
 
     this.postSystemMessage(`${name} 超时，跳过`, now);
     this.turn = this.makeTurn(this.nextSpeakerAfter(expired.participantId), now);
-    this.onChange?.();
+    this.emitChange();
     this.wakeAll();
   }
 

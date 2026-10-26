@@ -142,6 +142,59 @@ export interface ErrorResponse {
 
 export type ClientMessage = { type: 'ping' };
 
+/* ------------------------------------------------------------------
+   Chat wire frames
+   Chat and game rooms share one /ws endpoint, so the chat event types
+   belong to this transport contract. They are wire shapes only — the
+   chat domain's own types (ChatRoom, ChatPolicy, ChatErrorCode) stay in
+   the server package and are deliberately not mirrored here. Every chat
+   frame carries `kind: 'chat'` so consumers can tell it from a game
+   frame without guessing at payloads.
+------------------------------------------------------------------ */
+
+/** One timeline entry, exactly as it travels over the wire. */
+export interface ChatMessageFrame {
+  /** Room-local, monotonic from 1. */
+  seq: number;
+  id: string;
+  from: string;
+  /** Redundant so transcripts render after a member left. */
+  fromName: string;
+  /** Requested next speaker, member id or name at send time. */
+  to?: string;
+  kind: 'chat' | 'event' | 'system';
+  text: string;
+  replyTo?: string;
+  hop: number;
+  at: string;
+}
+
+export interface ChatMemberFrame {
+  id: string;
+  /** `human` is the reserved host identity. */
+  name: string;
+  kind: 'human' | 'agent';
+  joinedAt: string;
+  /** Agent messages sent; humans are never counted. */
+  messages: number;
+  /** Epoch ms of the member's last activity; a timestamp, not presence. */
+  lastSeenAt: number;
+}
+
+export interface ChatRoomFrame {
+  id: string;
+  title: string;
+  phase: 'open' | 'paused' | 'closed';
+  seq: number;
+  hop: number;
+  /** The policy numbers the UI renders; the full policy stays server-side. */
+  maxHops: number;
+  maxMessagesPerMember: number;
+  turn: { participantId: string; name: string } | null;
+  members: ChatMemberFrame[];
+  messageCount: number;
+}
+
 export type ServerMessage =
   | {
       type: 'hello';
@@ -172,6 +225,29 @@ export type ServerMessage =
       type: 'commentary';
       roomId: string;
       commentary: Commentary;
+    }
+  | {
+      /** Chat greeting on connect: room snapshot plus the recent timeline
+       * tail. Independent fields, not the game `state` — chat has no board. */
+      type: 'hello';
+      roomId: string;
+      kind: 'chat';
+      room: ChatRoomFrame;
+      messages: ChatMessageFrame[];
+    }
+  | {
+      /** One new chat message. */
+      type: 'message';
+      roomId: string;
+      kind: 'chat';
+      message: ChatMessageFrame;
+    }
+  | {
+      /** Chat snapshot after membership, turn, hop or phase moved. */
+      type: 'room';
+      roomId: string;
+      kind: 'chat';
+      room: ChatRoomFrame;
     }
   | {
       type: 'error';

@@ -40,7 +40,7 @@ function main(): void {
 
   const app = createApp(manager, config, { webDist, chat });
   const server = createServer(app);
-  const wss = attachWebSocket(server, manager, { presence });
+  const wss = attachWebSocket(server, manager, { presence, chat });
 
   // Seats with no session, viewer, or parked wait flip to `disconnected` once
   // their last call ages out. This only refreshes what the UI shows.

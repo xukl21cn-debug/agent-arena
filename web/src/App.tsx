@@ -7,6 +7,7 @@ import {
   type StoneColor,
 } from '@arena/shared';
 import { Board } from './components/Board';
+import { ChatRoomPage } from './components/chat/ChatRoomPage';
 import { CommentaryPanel } from './components/CommentaryPanel';
 import { Controls } from './components/Controls';
 import { GoBoard } from './components/GoBoard';
@@ -34,8 +35,25 @@ function roomIdFromLocation(): string {
     : DEFAULT_ROOM_ID;
 }
 
+/**
+ * `?kind=chat` rides the chat page; anything else — including no kind at
+ * all — stays on the games, so existing links keep their behaviour. Same
+ * rule as the /ws endpoint.
+ */
 export default function App() {
   const roomId = useMemo(roomIdFromLocation, []);
+  const chatMode = useMemo(
+    () => new URLSearchParams(window.location.search).get('kind') === 'chat',
+    [],
+  );
+
+  if (chatMode) {
+    return <ChatRoomPage roomId={roomId} />;
+  }
+  return <GamePage roomId={roomId} />;
+}
+
+function GamePage({ roomId }: { roomId: string }) {
   const connect = useRoomStore((store) => store.connect);
   const connection = useRoomStore((store) => store.connection);
   const state = useRoomStore((store) => store.state);

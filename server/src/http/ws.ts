@@ -1,6 +1,12 @@
 import type { Server } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
-import type { ServerMessage } from '@arena/shared';
+import type {
+  ChatMemberFrame,
+  ChatRoomFrame,
+  ServerMessage,
+} from '@arena/shared';
+import type { ChatManager } from '../chat/manager.js';
+import type { ChatRoomSnapshot } from '../chat/model.js';
 import type { PresenceRegistry } from '../core/presence.js';
 import type { RoomManager } from '../rooms/room-manager.js';
 
@@ -9,7 +15,12 @@ export interface WebSocketOptions {
   pingIntervalMs?: number;
   /** Presence registry; when omitted the socket only relays game state. */
   presence?: PresenceRegistry;
+  /** Chat rooms; when passed, sockets asking `?kind=chat` subscribe to them. */
+  chat?: ChatManager;
 }
+
+/** How much timeline a chat `hello` carries; matches the REST room detail. */
+const CHAT_HELLO_MESSAGES = 50;
 
 function sendJson(socket: WebSocket, message: ServerMessage): void {
   if (socket.readyState !== WebSocket.OPEN) {
@@ -23,9 +34,40 @@ function sendJson(socket: WebSocket, message: ServerMessage): void {
 }
 
 /**
+ * Chat domain snapshot → wire frame. The frame flattens the two policy
+ * numbers the UI renders and drops the rest, so the domain's ChatPolicy
+ * never crosses into the shared transport contract.
+ */
+function chatRoomFrame(snapshot: ChatRoomSnapshot): ChatRoomFrame {
+  const members: ChatMemberFrame[] = snapshot.members.map((member) => ({
+    id: member.id,
+    name: member.name,
+    kind: member.kind,
+    joinedAt: member.joinedAt,
+    messages: member.messages,
+    lastSeenAt: member.lastSeenAt,
+  }));
+  return {
+    id: snapshot.id,
+    title: snapshot.title,
+    phase: snapshot.phase,
+    seq: snapshot.seq,
+    hop: snapshot.hop,
+    maxHops: snapshot.policy.maxHops,
+    maxMessagesPerMember: snapshot.policy.maxMessagesPerMember,
+    turn: snapshot.turn
+      ? { participantId: snapshot.turn.participantId, name: snapshot.turn.name }
+      : null,
+    members,
+    messageCount: snapshot.messageCount,
+  };
+}
+
+/**
  * Read-only broadcast channel: `hello` on connect, then `state`, `commentary`,
  * and `participants` events. Clients never mutate state over WS (actions go via
- * REST).
+ * REST). Sockets that ask for `?kind=chat` get the chat flavour instead — the
+ * same rule, one endpoint, so the arena keeps a single push mechanism.
  *
  * Each socket counts as one browser viewer for its room, which is what keeps a
  * human seat at `idle`/`thinking` instead of decaying to `disconnected` while
@@ -39,6 +81,7 @@ export function attachWebSocket(
   const path = options.path ?? '/ws';
   const pingIntervalMs = options.pingIntervalMs ?? 30_000;
   const presence = options.presence;
+  const chat = options.chat;
   const wss = new WebSocketServer({ server, path });
   const alive = new WeakSet<WebSocket>();
   /** Last presence frame sent per socket, so only real changes hit the wire. */
@@ -63,6 +106,76 @@ export function attachWebSocket(
     sendJson(socket, { type: 'participants', roomId, participants });
   };
 
+  /**
+   * The chat half of the channel: `hello` with a snapshot plus the recent
+   * timeline, then a `message` frame per new message and a `room` frame per
+   * mutation. Same rule as the games — clients never mutate over WS; the
+   * human posts through the chat REST routes.
+   */
+  const chatConnection = (
+    socket: WebSocket,
+    registry: ChatManager,
+    roomId: string,
+  ): void => {
+    const room = registry.get(roomId);
+    if (!room) {
+      sendJson(socket, {
+        type: 'error',
+        code: 'ROOM_NOT_FOUND',
+        message: `Chat room "${roomId}" not found.`,
+      });
+      socket.close(1008, 'ROOM_NOT_FOUND');
+      return;
+    }
+
+    // Remember the cursor inside the listener: a reconnect asks for `hello`
+    // again, but a live socket must only ever see messages it has not seen.
+    let lastSeq = room.seq;
+    sendJson(socket, {
+      type: 'hello',
+      roomId,
+      kind: 'chat',
+      room: chatRoomFrame(room.snapshot()),
+      messages: room.recentMessages(CHAT_HELLO_MESSAGES),
+    });
+
+    const unsubscribe = room.subscribe(() => {
+      // Messages first, snapshot after: the timeline appends, then the room
+      // frame refreshes turn / hop / phase around what was appended.
+      const { messages } = room.unreadAfter(lastSeq, Number.POSITIVE_INFINITY);
+      for (const message of messages) {
+        sendJson(socket, {
+          type: 'message',
+          roomId,
+          kind: 'chat',
+          message,
+        });
+      }
+      lastSeq = room.seq;
+      sendJson(socket, {
+        type: 'room',
+        roomId,
+        kind: 'chat',
+        room: chatRoomFrame(room.snapshot()),
+      });
+    });
+
+    let cleanedUp = false;
+    const cleanup = (): void => {
+      if (cleanedUp) {
+        return;
+      }
+      cleanedUp = true;
+      unsubscribe();
+      alive.delete(socket);
+    };
+    socket.on('close', cleanup);
+    socket.on('error', (error) => {
+      console.error(`[ws] chat socket error in room "${roomId}"`, error);
+      cleanup();
+    });
+  };
+
   wss.on('connection', (socket, request) => {
     alive.add(socket);
 
@@ -72,6 +185,50 @@ export function attachWebSocket(
     } catch {
       sendJson(socket, { type: 'error', code: 'INVALID_REQUEST', message: 'Malformed WebSocket URL.' });
       socket.close(1008, 'INVALID_REQUEST');
+      return;
+    }
+
+    // Liveness and client pings work the same for both room kinds.
+    socket.on('pong', () => {
+      alive.add(socket);
+    });
+
+    socket.on('message', (data) => {
+      let message: unknown;
+      try {
+        message = JSON.parse(data.toString());
+      } catch {
+        sendJson(socket, {
+          type: 'error',
+          code: 'INVALID_REQUEST',
+          message: 'Messages must be valid JSON.',
+        });
+        return;
+      }
+
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        (message as { type?: unknown }).type === 'ping'
+      ) {
+        sendJson(socket, { type: 'pong' });
+      }
+    });
+
+    // `kind=chat` rides the same endpoint but a different domain; anything
+    // else — including no kind at all — stays on the games, so existing
+    // clients keep their behaviour byte for byte.
+    if (url.searchParams.get('kind') === 'chat') {
+      if (!chat) {
+        sendJson(socket, {
+          type: 'error',
+          code: 'INVALID_REQUEST',
+          message: 'Chat rooms are not served on this endpoint.',
+        });
+        socket.close(1008, 'INVALID_REQUEST');
+        return;
+      }
+      chatConnection(socket, chat, url.searchParams.get('roomId') ?? '');
       return;
     }
 
@@ -135,32 +292,6 @@ export function attachWebSocket(
       socketRoom.delete(socket);
       alive.delete(socket);
     };
-
-    socket.on('pong', () => {
-      alive.add(socket);
-    });
-
-    socket.on('message', (data) => {
-      let message: unknown;
-      try {
-        message = JSON.parse(data.toString());
-      } catch {
-        sendJson(socket, {
-          type: 'error',
-          code: 'INVALID_REQUEST',
-          message: 'Messages must be valid JSON.',
-        });
-        return;
-      }
-
-      if (
-        typeof message === 'object' &&
-        message !== null &&
-        (message as { type?: unknown }).type === 'ping'
-      ) {
-        sendJson(socket, { type: 'pong' });
-      }
-    });
 
     socket.on('close', cleanup);
     socket.on('error', (error) => {

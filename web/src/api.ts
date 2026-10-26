@@ -1,5 +1,8 @@
 import type {
   AnyGameState,
+  ChatMemberFrame,
+  ChatMessageFrame,
+  ChatRoomFrame,
   Commentary,
   ErrorCode,
   RoomView,
@@ -78,6 +81,41 @@ async function request<T>(
 
 function roomPath(roomId: string, suffix = ''): string {
   return `/api/rooms/${encodeURIComponent(roomId)}${suffix}`;
+}
+
+function chatPath(roomId: string, suffix = ''): string {
+  return `/api/chat/rooms/${encodeURIComponent(roomId)}${suffix}`;
+}
+
+/**
+ * The chat REST snapshot keeps the domain policy object; the wire frame the
+ * UI consumes flattens it. Local mirror of the server's response shape.
+ */
+interface ChatRoomRestSnapshot {
+  id: string;
+  title: string;
+  phase: 'open' | 'paused' | 'closed';
+  policy: { maxHops: number; maxMessagesPerMember: number };
+  seq: number;
+  hop: number;
+  turn: { participantId: string; name: string } | null;
+  members: ChatMemberFrame[];
+  messageCount: number;
+}
+
+function chatRoomFrameOf(rest: ChatRoomRestSnapshot): ChatRoomFrame {
+  return {
+    id: rest.id,
+    title: rest.title,
+    phase: rest.phase,
+    seq: rest.seq,
+    hop: rest.hop,
+    maxHops: rest.policy.maxHops,
+    maxMessagesPerMember: rest.policy.maxMessagesPerMember,
+    turn: rest.turn,
+    members: rest.members,
+    messageCount: rest.messageCount,
+  };
 }
 
 export const api = {
@@ -163,6 +201,35 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ text, kind, mood, actor: 'human' }),
     });
+  },
+
+  /** Speak as the host. `to` names the agent the turn goes to next. */
+  chatSend(
+    roomId: string,
+    text: string,
+    to?: string,
+  ): Promise<{ message: ChatMessageFrame; room: ChatRoomFrame }> {
+    return request<{ message: ChatMessageFrame; room: ChatRoomRestSnapshot }>(
+      chatPath(roomId, '/messages'),
+      {
+        method: 'POST',
+        body: JSON.stringify({ text, ...(to === undefined ? {} : { to }) }),
+      },
+    ).then(({ message, room }) => ({
+      message,
+      room: chatRoomFrameOf(room),
+    }));
+  },
+
+  /** Host phase controls; the room comes back as the wire frame. */
+  chatControl(
+    roomId: string,
+    action: 'pause' | 'resume' | 'close',
+  ): Promise<ChatRoomFrame> {
+    return request<{ room: ChatRoomRestSnapshot }>(
+      chatPath(roomId, `/${action}`),
+      { method: 'POST' },
+    ).then(({ room }) => chatRoomFrameOf(room));
   },
 };
 

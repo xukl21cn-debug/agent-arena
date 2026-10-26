@@ -7,8 +7,7 @@ import type {
   ParticipantView,
   RoomView,
   ServerMessage,
-} from '@arena/shared';
-import { createApp } from '../src/app';
+} from '@arena/shared';import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { PresenceRegistry } from '../src/core/presence';
 import { attachWebSocket } from '../src/http/ws';
@@ -100,8 +99,12 @@ describe('presence over the wire', () => {
     );
 
     const hello = messages.find(
-      (message): message is Extract<ServerMessage, { type: 'hello' }> =>
-        message.type === 'hello',
+      // `participants` picks the game hello — chat rooms greet with a room
+      // snapshot instead and never reach this socket anyway.
+      (message): message is Extract<
+        ServerMessage,
+        { type: 'hello'; participants: ParticipantView[] }
+      > => message.type === 'hello' && 'participants' in message,
     );
     // hello carries presence, so the first paint already knows the seats.
     expect(presenceOf(hello?.participants ?? [], 'black')).toBe('idle');

@@ -85,7 +85,7 @@ export class ChatManager {
       ...DEFAULT_CHAT_POLICY,
       ...options.policy,
     });
-    room.onChange = () => this.save(room);
+    room.subscribe(() => this.save(room));
     room.humanMember();
     this.rooms.set(roomId, room);
     this.save(room);
@@ -170,7 +170,9 @@ export class ChatManager {
       // The file's own id wins as the identity — a renamed file must not
       // resurrect a room under the wrong name.
       const room = ChatRoom.fromSnapshotFile(parsed);
-      room.onChange = () => this.save(room);
+      // Both wiring points (create and this one) must subscribe, or a room
+      // recovered on boot stops persisting its later messages.
+      room.subscribe(() => this.save(room));
       return room;
     } catch (error) {
       console.error(
