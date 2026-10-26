@@ -27,5 +27,7 @@ Thumbs.db
 
 # local data
 data/
+data-dev/
+.dev-isolated.json
 *.sqlite
 *.db
