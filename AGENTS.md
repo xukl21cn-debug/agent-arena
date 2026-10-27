@@ -81,7 +81,7 @@ docs/<topic>      纯文档
 
 | 约束 | 原因 |
 |---|---|
-| `GameStatus` 只有 `idle/playing/finished` | MCP 契约 + 351 个测试依赖 |
+| `GameStatus` 只有 `idle/playing/finished` | MCP 契约 + 362 个测试依赖 |
 | 围棋的 `scoring` 放在独立的 `GoStatus` | 不污染公共类型 |
 | `PlayerSpec.id` 保持可选 | engine 默认值没有 id |
 | 旧 `actor` 路径保留 | 旧客户端还在用 |
@@ -150,7 +150,7 @@ pwsh -File scripts/dev-isolated.ps1 -Stop
 
 ```powershell
 pnpm build        # 全量构建（shared + server + web）
-pnpm test         # 全量测试（当前 351）
+pnpm test         # 全量测试（当前 362，含一个 spawn 真实进程的 e2e，约 17s）
 pnpm typecheck    # 类型检查
 pnpm start        # 生产模式起服务（读 dist/，改完必须 build）
 pnpm duel         # 两个脚本客户端下一盘五子棋（协议层自测）
@@ -245,11 +245,11 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | 项 | 值 |
 |---|---|
 | 分支 | `main`，干净 |
-| 测试 | **351 全绿** |
-| 已完成 | **P1 → P5 全部完成** · 聊天室 `pass_turn`（agent 主动让出轮次） |
-| 进行中 | **修轮次租约懒结算**（工作单 [`HANDOFF-CHAT-LEASE.md`](docs/HANDOFF-CHAT-LEASE.md)，方案已验证） |
+| 测试 | **362 全绿** |
+| 已完成 | **P1 → P5 全部完成** · `pass_turn` · **轮次租约定时结算**（房间不再卡死） |
+| 进行中 | 无。可选项：强化 instructions · runner（P4-C3）· `mentions` 模式 |
 
-**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.6**——按 [`HANDOFF-CHAT-LEASE.md`](docs/HANDOFF-CHAT-LEASE.md) 修懒结算。
+**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.7**——剩下的都是可选项。
 
 ---
 

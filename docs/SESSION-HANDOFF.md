@@ -9,14 +9,14 @@
 
 ## 一、当前状态（一句话）
 
-**`main` 分支干净，351 个测试全绿。P1 → P5 主线 + `pass_turn` 全部完成。剩下的都是可选项。**
+**`main` 分支干净，362 个测试全绿。P1 → P5 + `pass_turn` + 租约定时结算全部完成。剩下的都是可选项。**
 
 | 项 | 值 |
 |---|---|
 | 项目路径 | `E:\code\fun\agent-arena` |
 | 分支 | `main`（干净） |
-| 最新提交 | `99aa214 feat(chat): pass_turn — an agent can yield the turn without burning 120s` |
-| 测试 | **351 全绿** |
+| 最新提交 | `51335de fix(chat): settle dead turn leases on a timer — rooms no longer freeze when everyone leaves` |
+| 测试 | **362 全绿** |
 | 服务 | 3000 端口（`pnpm dev`） |
 | 数据 | 对局落盘在 `data/`（P3.5 完成）；**聊天室落盘在 `server/data/chat/`** |
 
@@ -49,7 +49,8 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 | **P4-C4** | 网页聊天页 | 复用 `/ws`（`kind=chat`）；302 测试全绿，[评审](REVIEW-P4-C4.md) |
 | **P5A** | 棋谱归档 + 回放 | 每房间保留 N 局；逐手重放真实引擎；[评审](REVIEW-P5A.md) |
 | **P5B** | 大厅 | 四组卡片 + 历史对局；[评审](REVIEW-P5B.md) |
-| **pass_turn** | agent 主动让出轮次 | 不烧 hop、清超时计数；351 测试全绿，[评审](REVIEW-CHAT-PASS.md) |
+| **pass_turn** | agent 主动让出轮次 | 不烧 hop、清超时计数；[评审](REVIEW-CHAT-PASS.md) |
+| **租约结算** | 房间不再卡死 | 15 秒定时 sweep；362 测试全绿，[评审](REVIEW-CHAT-LEASE.md) |
 
 **P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
@@ -176,43 +177,65 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 > **下一步建议：先观察真实模型会不会主动用 `pass_turn`。**
 > 如果不用，是 **instructions 措辞**问题，不是代码问题。
 
-### 3.6 ⬅ **下一步**：修轮次租约的懒结算
+### 3.6 ✅ 已完成：轮次租约定时结算
 
-**工作单：[`HANDOFF-CHAT-LEASE.md`](HANDOFF-CHAT-LEASE.md)**，交 GLM。
+工作单：[`HANDOFF-CHAT-LEASE.md`](HANDOFF-CHAT-LEASE.md)
+评审：[`REVIEW-CHAT-LEASE.md`](REVIEW-CHAT-LEASE.md)（`51335de`，已合入 main）
 
-**问题**：全员退出后房间永久卡死。`settleExpiredTurn` 只在
-`sendMessage` / `passTurn` / `wait` 三处被调用，**都要求有人主动操作**。
-agent 发满预算退出后没人操作 → 永不结算。
+**问题**：`settleExpiredTurn` 只在 `sendMessage` / `passTurn` / `wait` 三处被调用，
+**都要求有人主动操作**。agent 发满预算退出后没人操作 → 房间永久卡死。
 
-实测（[`OBSERVE-CHAT-PASS.md`](OBSERVE-CHAT-PASS.md) §4）：双 agent 房间结束后
-等 45 秒，`turn` 和 `phase` **完全没变**，没有任何超时系统消息。
+**修法**：`ChatManager.sweep(now)` + `chat/sweep.ts` 的 15 秒定时器。
 
-**方案**：`ChatManager.sweep(now)` + `index.ts` 加 15 秒定时器
-（照 `presence.sweep()` 的现成模式）。**已用原型验证 15 条**，
-关键结论：sweep 确实唤醒挂起的 `wait`，单个房间抛错不影响其他房间。
+| 项 | 值 |
+|---|---|
+| sweep 间隔 | 15 秒（和 `PRESENCE_SWEEP_MS` 一致） |
+| `snapshot()` | **仍是纯读**，`chat-room.ts` 零改动 |
+| 容错 | per-room try/catch，一个房间抛错不拖垮全局 |
+| 定时器 | `unref()`，不阻止进程退出 |
 
-⚠️ **不能改 `snapshot()` 让它结算**——`chat-room.ts:489` 的注释明确写了
-「snapshot() stays a pure read」，破坏它会把网页轮询、WS 广播、回放全牵连进去。
+**评审方独立验证 21 条 + 延迟实测**：
+
+- T8 端到端：无人触碰的房间 **2.0 秒**后自动结算
+- 延迟实测 6 个房间：最坏 **14.5 秒**，全部在一个 sweep 周期内
+- `snapshot()` 连读 5 次 `turn`/`seq` 不变（纯读保住了）
+
+> ⚠️ **工作单 §1.2 那句话写得不准确**：说「最坏 135 秒结算」，
+> 但 135 秒是「从轮次发放到结算」，**用户感知的是「从租约过期到结算」，
+> 只受 sweep 间隔约束（≤15 秒）**，与 `turnTimeoutMs` 无关。实测证实。
+
+> **GLM 有一处偏离工作单**：定时器抽成 `chat/sweep.ts` 而不是内联 `index.ts`。
+> 理由是 `index.ts:98` 是裸 `main()`，导入即执行，内联就没法测试「unref 生效」。
+> **我核对过，理由成立，这是正确的偏离。**
 
 ### 3.7 之后的可选项（无主线任务）
 
-**P1 → P5 主线 + `pass_turn` 完成，租约修复是当前任务。** 之后还剩两项可选：
+**P1 → P5 + `pass_turn` + 租约结算全部完成。** 还剩三项可选：
 
 | 项 | 价值 | 工作量 |
 |---|---|---|
+| **强化 instructions** | `pass_turn` 是建议式，改成命令式可能提高使用率 | 小，但**必须再跑真实模型验证** |
 | **P4-C3 runner** | 把 CLI 包成常驻成员，不依赖模型耐心循环 | 中（半天） |
 | **`mentions` 模式** | 目前只实现了 relay（`model.ts:20`） | 大（要改 `ChatRoom` 轮次语义） |
 
-建议顺序：runner 其次，`mentions` 最后（需求最不明确）。
+#### 关于强化 instructions
+
+真实模型观察（[`OBSERVE-CHAT-PASS.md`](OBSERVE-CHAT-PASS.md)）发现：
+两个 agent 都**想到了** pass_turn，但只有一个**实际调用**。
+
+现在的措辞是建议式：
+
+> 如果你这轮不想说（或者已经说完了），用 pass_turn 把轮次让给下一位
+
+可以改成命令式（「收工前必须先 pass_turn」），但**改完要再跑一轮验证**——
+提示词改动没法靠单元测试保证。
 
 #### runner 的原始设想
 
-把 CLI 包成常驻成员（`codex exec` / `claude -p`），循环「等 → 跑 CLI → 发消息」，
-不依赖模型耐心。交互式客户端已经能用，所以优先级低。
+把 CLI 包成常驻成员（`codex exec` / `claude -p`），循环「等 → 跑 CLI → 发消息」。
 
-> **`pass_turn` 已完成**，runner 的收益比原来小了——
-> agent 现在能主动交还轮次，不再需要 runner 来兜底「模型不调工具」的问题。
-> 但 runner 仍能解决「模型整个进程退出」的情形。
+> **收益已经变小**：`pass_turn` 解决了「模型不调工具」，租约 sweep 解决了
+> 「全员退出后卡死」。runner 现在只解决「进程完全没起来」这种更极端的情况。
 
 ---
 
@@ -364,7 +387,7 @@ L539  this.history = [];              ← 历史才清空
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增十五份**：
+**这一轮新增十六份**：
 
 | 文件 | 内容 |
 |---|---|
@@ -381,7 +404,8 @@ L539  this.history = [];              ← 历史才清空
 | [`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md) | `pass`/`yield` 工作单（✅ 已完成） |
 | [`REVIEW-CHAT-PASS.md`](REVIEW-CHAT-PASS.md) | `pass`/`yield` 评审记录（独立验证 58 条） |
 | [`OBSERVE-CHAT-PASS.md`](OBSERVE-CHAT-PASS.md) | **真实模型跑 pass_turn 的观察**（模型会用，但暴露了卡死问题） |
-| [`HANDOFF-CHAT-LEASE.md`](HANDOFF-CHAT-LEASE.md) | 修懒结算工作单（**待做**，方案已验证 15 条） |
+| [`HANDOFF-CHAT-LEASE.md`](HANDOFF-CHAT-LEASE.md) | 修懒结算工作单（✅ 已完成） |
+| [`REVIEW-CHAT-LEASE.md`](REVIEW-CHAT-LEASE.md) | 租约结算评审记录（独立验证 21 条 + 延迟实测） |
 
 ---
 
