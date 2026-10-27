@@ -137,6 +137,27 @@ export class ChatManager {
   }
 
   /**
+   * Settle expired turn leases across every room. Settlement is lazy by
+   * design — it fires when someone touches the room (send / pass / wait) —
+   * so a room whose agents all left holds its dead lease forever; this
+   * background pass closes that hole. One room's failure must not stop
+   * the others from settling: the sweep is a side channel, not a critical
+   * path (same posture as the archive prune).
+   */
+  sweep(now: number): void {
+    for (const room of this.rooms.values()) {
+      try {
+        room.settleExpiredTurn(now);
+      } catch (error) {
+        console.error(
+          `[chat] sweep failed for room "${room.id}":`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+  }
+
+  /**
    * Rebuild every persisted chat room on boot. Closed rooms come back too —
    * their transcripts stay queryable. Corrupt files are skipped by load.
    */

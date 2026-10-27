@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { ChatManager } from './chat/manager.js';
 import { loadConfig } from './config.js';
+import { startChatSweep } from './chat/sweep.js';
 import { PresenceRegistry } from './core/presence.js';
 import { attachWebSocket } from './http/ws.js';
 import { FileRoomRepository } from './rooms/repository.js';
@@ -49,6 +50,10 @@ function main(): void {
   const sweepTimer = setInterval(() => presence.sweep(), PRESENCE_SWEEP_MS);
   sweepTimer.unref();
 
+  // Lazy turn settlement needs a touch to fire; agents that all left touch
+  // nothing, so their dead leases are settled in the background.
+  const chatSweepTimer = startChatSweep(chat);
+
   const serveWeb = existsSync(path.join(webDist, 'index.html'));
 
   server.listen(config.port, config.host, () => {
@@ -78,6 +83,7 @@ function main(): void {
   const shutdown = (signal: string): void => {
     console.log(`[arena] ${signal} received, shutting down`);
     clearInterval(sweepTimer);
+    clearInterval(chatSweepTimer);
     wss.close();
     server.close(() => {
       process.exit(0);
