@@ -9,14 +9,14 @@
 
 ## 一、当前状态（一句话）
 
-**`main` 分支干净，336 个测试全绿。P1 → P5 主线全部完成。剩下的都是可选项。**
+**`main` 分支干净，351 个测试全绿。P1 → P5 主线 + `pass_turn` 全部完成。剩下的都是可选项。**
 
 | 项 | 值 |
 |---|---|
 | 项目路径 | `E:\code\fun\agent-arena` |
 | 分支 | `main`（干净） |
-| 最新提交 | `c244287 feat(lobby): the lobby is the home page, over a real activity clock` |
-| 测试 | **336 全绿** |
+| 最新提交 | `99aa214 feat(chat): pass_turn — an agent can yield the turn without burning 120s` |
+| 测试 | **351 全绿** |
 | 服务 | 3000 端口（`pnpm dev`） |
 | 数据 | 对局落盘在 `data/`（P3.5 完成）；**聊天室落盘在 `server/data/chat/`** |
 
@@ -48,7 +48,8 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 | **P4-C2.5** | 修那两个缺陷 | `memberRef()` + `unreadAfter()`；292 测试全绿，[评审](REVIEW-P4-CHAT-FIX.md) |
 | **P4-C4** | 网页聊天页 | 复用 `/ws`（`kind=chat`）；302 测试全绿，[评审](REVIEW-P4-C4.md) |
 | **P5A** | 棋谱归档 + 回放 | 每房间保留 N 局；逐手重放真实引擎；[评审](REVIEW-P5A.md) |
-| **P5B** | 大厅 | 四组卡片 + 历史对局；336 测试全绿，[评审](REVIEW-P5B.md) |
+| **P5B** | 大厅 | 四组卡片 + 历史对局；[评审](REVIEW-P5B.md) |
+| **pass_turn** | agent 主动让出轮次 | 不烧 hop、清超时计数；351 测试全绿，[评审](REVIEW-CHAT-PASS.md) |
 
 **P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
@@ -152,26 +153,32 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 
 > **WS 统一不用做了**：C4 已经复用 `/ws`（`kind=chat`）把聊天室接进去了。
 
-### 3.5 ⬅ **下一步**：`pass`/`yield`（已选定，工作单已写好）
+### 3.5 ✅ 已完成：`pass` / `yield`
 
-**工作单：[`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md)**，交 GLM。
+工作单：[`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md)
+评审：[`REVIEW-CHAT-PASS.md`](REVIEW-CHAT-PASS.md)（`99aa214`，已合入 main）
 
-用户已确认三个决策：
+**`pass_turn(roomId, to?)`**：agent 不发言、把轮次让给下一位。
 
-| 决策 | 选择 | 理由 |
-|---|---|---|
-| 形态 | **新增独立 `pass_turn` 工具** | 语义最清晰，agent 一看名字就知道 |
-| 超时 | **保持 120s 不动** | 10s 对真实模型思考太短，会误判 |
-| hop | **不算 hop，但记系统消息** | pass 不是发言，但要让复盘能追溯 |
+| 行为 | 值 |
+|---|---|
+| 消耗 hop | ❌ 不消耗 |
+| 产生 chat 消息 | ❌ 不产生 |
+| 系统消息 | ✅ 「X 让出轮次」/「X 把轮次交给 Y」 |
+| 超时计数 | ✅ 清零（让出轮次证明 agent 是活的） |
+| 轮次为空时 | 拒绝（`INVALID_REQUEST`）——没有轮次可让 |
 
-**设计方案已用原型验证 19 条**（含「pass 清超时计数」的对照实验）。
-工作单 §1.3 记了一个时序陷阱：`consecutiveTimeouts` 是每人独立的，
-验 P5 必须让**那个人自己 pass**，否则测不出来。
+**评审方独立验证 58 条全过**（含对照组：不 pass 时连续两次超时确实暂停）。
+
+> ⚠️ **合入后 DSH 会话要重开**——`/chat/mcp` 多了 `pass_turn`，
+> 旧会话的 `tools/list` 是启动时的快照（`AGENTS.md` §8）。
+
+> **下一步建议：先观察真实模型会不会主动用 `pass_turn`。**
+> 如果不用，是 **instructions 措辞**问题，不是代码问题。
 
 ### 3.6 之后的可选项（无主线任务）
 
-**P1 → P5 主线全部完成，`pass`/`yield` 是当前选定的下一步。**
-做完它之后还剩两项可选：
+**P1 → P5 主线 + `pass_turn` 全部完成。** 还剩两项可选：
 
 | 项 | 价值 | 工作量 |
 |---|---|---|
@@ -185,8 +192,9 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 把 CLI 包成常驻成员（`codex exec` / `claude -p`），循环「等 → 跑 CLI → 发消息」，
 不依赖模型耐心。交互式客户端已经能用，所以优先级低。
 
-> **`pass`/`yield` 先做的理由**：它解决的是**领域层**的问题
-> （轮次卡死），runner 解决的是**进程编排**问题。前者不做，runner 也得处理同一个坑。
+> **`pass_turn` 已完成**，runner 的收益比原来小了——
+> agent 现在能主动交还轮次，不再需要 runner 来兜底「模型不调工具」的问题。
+> 但 runner 仍能解决「模型整个进程退出」的情形。
 
 ---
 
@@ -338,7 +346,7 @@ L539  this.history = [];              ← 历史才清空
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增十二份**：
+**这一轮新增十三份**：
 
 | 文件 | 内容 |
 |---|---|
@@ -352,7 +360,8 @@ L539  this.history = [];              ← 历史才清空
 | [`REVIEW-P5A.md`](REVIEW-P5A.md) | P5A 评审记录（独立验证 76 条，含 4 次评审方自己的错） |
 | [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅工作单（✅ 已完成） |
 | [`REVIEW-P5B.md`](REVIEW-P5B.md) | P5B 评审记录（独立验证 60 条，一次通过） |
-| [`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md) | `pass`/`yield` 工作单（**待做**，方案已验证 19 条） |
+| [`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md) | `pass`/`yield` 工作单（✅ 已完成） |
+| [`REVIEW-CHAT-PASS.md`](REVIEW-CHAT-PASS.md) | `pass`/`yield` 评审记录（独立验证 58 条） |
 
 ---
 
