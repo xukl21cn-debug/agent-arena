@@ -247,9 +247,9 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | 分支 | `main`，干净 |
 | 测试 | **351 全绿** |
 | 已完成 | **P1 → P5 全部完成** · 聊天室 `pass_turn`（agent 主动让出轮次） |
-| 进行中 | 无。可选项：runner（P4-C3）· `mentions` 模式 |
+| 进行中 | **修轮次租约懒结算**（工作单 [`HANDOFF-CHAT-LEASE.md`](docs/HANDOFF-CHAT-LEASE.md)，方案已验证） |
 
-**主线完成，下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.6**——剩下的都是可选项。
+**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.6**——按 [`HANDOFF-CHAT-LEASE.md`](docs/HANDOFF-CHAT-LEASE.md) 修懒结算。
 
 ---
 

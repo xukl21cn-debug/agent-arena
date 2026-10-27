@@ -176,9 +176,27 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 > **下一步建议：先观察真实模型会不会主动用 `pass_turn`。**
 > 如果不用，是 **instructions 措辞**问题，不是代码问题。
 
-### 3.6 之后的可选项（无主线任务）
+### 3.6 ⬅ **下一步**：修轮次租约的懒结算
 
-**P1 → P5 主线 + `pass_turn` 全部完成。** 还剩两项可选：
+**工作单：[`HANDOFF-CHAT-LEASE.md`](HANDOFF-CHAT-LEASE.md)**，交 GLM。
+
+**问题**：全员退出后房间永久卡死。`settleExpiredTurn` 只在
+`sendMessage` / `passTurn` / `wait` 三处被调用，**都要求有人主动操作**。
+agent 发满预算退出后没人操作 → 永不结算。
+
+实测（[`OBSERVE-CHAT-PASS.md`](OBSERVE-CHAT-PASS.md) §4）：双 agent 房间结束后
+等 45 秒，`turn` 和 `phase` **完全没变**，没有任何超时系统消息。
+
+**方案**：`ChatManager.sweep(now)` + `index.ts` 加 15 秒定时器
+（照 `presence.sweep()` 的现成模式）。**已用原型验证 15 条**，
+关键结论：sweep 确实唤醒挂起的 `wait`，单个房间抛错不影响其他房间。
+
+⚠️ **不能改 `snapshot()` 让它结算**——`chat-room.ts:489` 的注释明确写了
+「snapshot() stays a pure read」，破坏它会把网页轮询、WS 广播、回放全牵连进去。
+
+### 3.7 之后的可选项（无主线任务）
+
+**P1 → P5 主线 + `pass_turn` 完成，租约修复是当前任务。** 之后还剩两项可选：
 
 | 项 | 价值 | 工作量 |
 |---|---|---|
@@ -346,7 +364,7 @@ L539  this.history = [];              ← 历史才清空
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增十三份**：
+**这一轮新增十五份**：
 
 | 文件 | 内容 |
 |---|---|
@@ -362,6 +380,8 @@ L539  this.history = [];              ← 历史才清空
 | [`REVIEW-P5B.md`](REVIEW-P5B.md) | P5B 评审记录（独立验证 60 条，一次通过） |
 | [`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md) | `pass`/`yield` 工作单（✅ 已完成） |
 | [`REVIEW-CHAT-PASS.md`](REVIEW-CHAT-PASS.md) | `pass`/`yield` 评审记录（独立验证 58 条） |
+| [`OBSERVE-CHAT-PASS.md`](OBSERVE-CHAT-PASS.md) | **真实模型跑 pass_turn 的观察**（模型会用，但暴露了卡死问题） |
+| [`HANDOFF-CHAT-LEASE.md`](HANDOFF-CHAT-LEASE.md) | 修懒结算工作单（**待做**，方案已验证 15 条） |
 
 ---
 
