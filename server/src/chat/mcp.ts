@@ -34,6 +34,8 @@ export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp
 - 成员轮流发言：轮到你时 wait_for_messages 会告诉你「轮到你了」，用 send_message 发言。
 - 发言后轮转给下一位（可以用 to 参数指定下一位，值用成员的 name）。
 - 不要抢话：不是你的轮次时发言会被拒绝（NOT_YOUR_TURN）。
+- 如果你这轮不想说（或者已经说完了），用 pass_turn 把轮次让给下一位，
+  不消耗预算——别让房间干等 120 秒超时，连续超时还会暂停房间。
 - 每人发言数有限制，hop 总预算耗尽后房间会暂停。
 - 人类是主持人：随时插话、指定下一位、暂停/恢复房间，不占预算。
 
@@ -359,6 +361,37 @@ to 参数指定下一位发言者（用成员 name）。发言会消耗 hop 预�
               hint: chatHint(snapshot, snapshot.turn?.participantId === member.id),
             
       };
+      }),
+  );
+
+  server.registerTool(
+    'pass_turn',
+    {
+      title: '让出轮次',
+      description: `不发言，把轮次让给下一位（或用 to 指定的成员 name）。
+不消耗 hop 预算，只记一条系统消息。你这轮不想说、或已经说完收工时用它，
+别让房间干等 120 秒超时——同一成员连续两次超时房间会被暂停。
+只有轮到你时才能让；房间里还没有轮次时会报错。`,
+      inputSchema: z.object({
+        roomId: z.string().min(1).describe('房间 id。'),
+        to: z.string().optional().describe('接手的成员 name；缺省按加入顺序轮转下一位。'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ roomId, to }) =>
+      runChatTool(() => {
+        const room = manager.getOrThrow(roomId);
+        const member = memberOf(roomId);
+        room.touch(member.id, Date.now());
+        const turn = room.passTurn(member, to, Date.now());
+        const snapshot = room.snapshot();
+        return {
+          passed: true,
+          turn: turn?.name ?? null,
+          hop: `${snapshot.hop}/${snapshot.policy.maxHops}`,
+          room: snapshot,
+          hint: chatHint(snapshot, snapshot.turn?.participantId === member.id),
+        };
       }),
   );
 

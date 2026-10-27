@@ -31,6 +31,8 @@ export interface WaitOutcome {
  *
  * Relay turn rules (the v1 policy):
  *  - an agent may speak only when the turn is unset or points at it;
+ *  - an agent on turn may pass instead of speaking: the turn moves on the
+ *    same way, without burning a hop, leaving a system trace behind;
  *  - a speaker names the next member with `to`, else the turn rotates to the
  *    next agent in join order (humans never hold a turn — they can always
  *    speak and would deadlock a rotation aimed at an absent typist);
@@ -305,6 +307,73 @@ export class ChatRoom {
     this.emitChange();
     this.wakeAll();
     return message;
+  }
+
+  /**
+   * Yield the speaking turn without speaking. The rotation moves on, a
+   * system message records why, and the passer's timeout streak resets —
+   * an agent awake enough to yield is not timing out. Nothing else moves:
+   * no hop, no chat message, no member counter.
+   *
+   * Unlike sendMessage, a room with no live turn is refused outright: a
+   * turn is claimed by speaking, and there is nothing to yield.
+   */
+  passTurn(member: ChatMember, to: string | undefined, now: number): ChatTurn | null {
+    if (this.phase === 'closed') {
+      throw new ChatError('ROOM_CLOSED', `Chat room "${this.id}" is closed.`);
+    }
+    if (this.phase === 'paused') {
+      throw new ChatError(
+        'ROOM_PAUSED',
+        'The room is paused; wait for the host to resume it.',
+      );
+    }
+
+    this.settleExpiredTurn(now);
+
+    if (this.turn === null) {
+      throw new ChatError(
+        'INVALID_REQUEST',
+        'There is no live turn to yield; speak with send_message to claim one.',
+      );
+    }
+
+    let target: ChatMember | null = null;
+    if (to !== undefined) {
+      target = this.resolveTarget(to);
+      if (target.kind !== 'agent') {
+        throw new ChatError(
+          'INVALID_REQUEST',
+          `"to" must name an agent member; "${target.name}" does not hold turns.`,
+        );
+      }
+      if (target.id === member.id) {
+        throw new ChatError(
+          'INVALID_REQUEST',
+          '"to" must name another member; yielding to yourself changes nothing.',
+        );
+      }
+    }
+
+    if (this.turn.participantId !== member.id) {
+      throw new ChatError(
+        'NOT_YOUR_TURN',
+        `It is ${this.turn.name}'s turn; wait_for_messages until you are asked.`,
+      );
+    }
+
+    this.consecutiveTimeouts.delete(member.id);
+    const next = target ?? this.nextSpeakerAfter(member.id);
+    this.postSystemMessage(
+      target
+        ? `${member.name} 把轮次交给 ${target.name}`
+        : `${member.name} 让出轮次`,
+      now,
+    );
+    this.turn = this.makeTurn(next, now);
+    this.emitChange();
+    this.wakeAll();
+    return this.turn;
   }
 
   /** Host control. Idempotent while the phase already matches. */
