@@ -1,8 +1,8 @@
 # 设计：P5 大厅 + 棋谱回放
 
 > 状态：设计稿（2026-10-26）
-> 前置：[`SESSION-HANDOFF.md`](SESSION-HANDOFF.md) §3.4、[`ROADMAP.md`](ROADMAP.md) P5
-> 本文回答**怎么做**；工作单见 [`HANDOFF-P5A.md`](HANDOFF-P5A.md) / [`HANDOFF-P5B.md`](HANDOFF-P5B.md)
+> 前置：[`session-handoff.md`](../session-handoff.md) §3.4、[`roadmap.md`](../roadmap.md) P5
+> 本文回答**怎么做**；工作单见 [`handoff.md`](../phases/15-p5a-replay/handoff.md) / [`handoff.md`](../phases/16-p5b-lobby/handoff.md)
 >
 > **§2 的重放方案已用原型验证**（22 条检查全过，含围棋提子/ko/连续 pass）。
 > 验证方法见 §2.6。
@@ -350,8 +350,8 @@ REPLAY DESIGN VERIFIED
 
 | 工作单 | 内容 | 依赖 |
 |---|---|---|
-| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | **归档 + 回放 API + 回放页**（含单步控制） | 无 |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅页 + 历史对局列表 + 路由改动 | **读 P5A 的 `/api/archive`** |
+| [`handoff.md`](../phases/15-p5a-replay/handoff.md) | **归档 + 回放 API + 回放页**（含单步控制） | 无 |
+| [`handoff.md`](../phases/16-p5b-lobby/handoff.md) | 大厅页 + 历史对局列表 + 路由改动 | **读 P5A 的 `/api/archive`** |
 
 ⚠️ **依赖关系变了**：原来说「A 和 B 互不依赖」，加了归档之后，
 B 的「历史对局」要用 A 的 `GET /api/archive`。

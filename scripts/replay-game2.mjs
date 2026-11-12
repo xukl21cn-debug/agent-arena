@@ -3,7 +3,7 @@
 // white (agent, GLM) resigned after black's (4,7) 四三 double kill matured
 // into an unstoppable open four.
 //
-// Companion to docs/GAME-2026-10-23-2.md. At the move-21 checkpoint, v0.3
+// Companion to docs/phases/01-agent-view/game-record.md. At the move-21 checkpoint, v0.3
 // showed black's (4,7) only as a `four` candidate; the open three it creates
 // on the r+c=11 anti-diagonal was not merged. v0.4 now emits
 // `double[four+open3]` and `open3At[3,8 & 7,4]` on that point, so the replay

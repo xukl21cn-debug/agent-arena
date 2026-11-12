@@ -333,7 +333,7 @@ agent-arena/
 ├── .gitignore
 ├── README.md                    # 项目入口，链接到设计文档
 ├── docs/
-│   └── DESIGN.md                # 本文件
+│   └── overview.md                # 本文件
 ├── .mcp.json                    # Command Code project 级 MCP 配置
 ├── shared/
 │   ├── package.json             # @arena/shared，只放类型与常量

@@ -2,7 +2,7 @@
 
 给在这个仓库里干活的 AI agent 看的。**先读这一份，再读具体的工作单。**
 
-最后更新：2026-10-26
+最后更新：2026-11-12
 
 ---
 
@@ -36,7 +36,7 @@
 ## 3. 工作流程
 
 ```text
-① 评审方写工作单 docs/HANDOFF-*.md
+① 评审方建 docs/phases/<NN>-<主题>/，写 handoff.md
     - 边界（做什么 / 不做什么）
     - 硬约束（踩了就返工）
     - 易错点
@@ -48,7 +48,7 @@
 
 ③ 评审方评审
     - 独立验证（不看 GLM 的断言，自己写）
-    - 写 docs/REVIEW-*.md
+    - 写同目录的 review.md
     - 通过则合并，不通过则打回
 
 ④ 合入 main，删除分支，跑全量测试
@@ -76,6 +76,8 @@ docs/<topic>      纯文档
 ---
 
 ## 4. 硬性约束（踩了就返工）
+
+> 这里是**速查表**。每条约束的「为什么 + 谁在哪一轮踩的」见 [`docs/architecture/constraints.md`](docs/architecture/constraints.md)。
 
 ### 4.1 棋类侧
 
@@ -144,7 +146,7 @@ pwsh -File scripts/dev-isolated.ps1 -Stop
 
 ⚠️ 双端口模式没有 Vite，3100 服务的是 `web/dist/`。改前端还是用 `pnpm dev`。
 
-详见 [`docs/DEV-WORKFLOW.md`](docs/DEV-WORKFLOW.md)。
+详见 [`docs/dev-workflow.md`](docs/dev-workflow.md)。
 
 ### 5.4 常用命令
 
@@ -194,6 +196,8 @@ pnpm duel         # 两个脚本客户端下一盘五子棋（协议层自测）
 ---
 
 ## 7. 设计原则（从实战学到的）
+
+> 具体取舍（当时放弃了什么、为什么）见 [`docs/architecture/decisions.md`](docs/architecture/decisions.md)。
 
 ### 7.1 工具给事实，模型做判断
 
@@ -249,28 +253,33 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 | 已完成 | **P1 → P5 全部完成** · `pass_turn` · **轮次租约定时结算**（房间不再卡死） |
 | 进行中 | 无。可选项：强化 instructions · runner（P4-C3）· `mentions` 模式 |
 
-**下一步见 [`docs/SESSION-HANDOFF.md`](docs/SESSION-HANDOFF.md) §3.7**——剩下的都是可选项。
+**下一步见 [`docs/session-handoff.md`](docs/session-handoff.md) §3.7**——剩下的都是可选项。
 
 ---
 
 ## 10. 文档地图
 
+**入口是 [`docs/README.md`](docs/README.md)**——按「我想干什么」导航。这里只列主干：
+
 | 文件 | 内容 |
 |---|---|
 | **`AGENTS.md`** | 本文件：通用约定，**先读这个** |
-| `docs/ROADMAP.md` | 路线图、编号对照（P/M/G）、各阶段状态 |
-| `docs/SESSION-HANDOFF.md` | **最新交接**（读它知道从哪继续） |
-| `docs/DEV-WORKFLOW.md` | 双端口开发流程 |
-| `docs/DESIGN.md` | 原始设计文档 |
-| `docs/DESIGN-*.md` | 阶段性设计稿（如 P5 回放方案，含原型验证结论） |
-| `docs/HANDOFF-*.md` | 各阶段工作单 |
-| `docs/REVIEW-*.md` | 各阶段评审记录 |
-| `docs/OBSERVE-*.md` | 实测观察记录（真实模型行为、缺陷证据） |
-| `docs/PROPOSAL-*.md` | 提案（围棋、聊天室、参与者模型） |
+| `docs/README.md` | **文档索引**，不知道该读哪份就看它 |
+| `docs/roadmap.md` | 路线图、编号对照（P/M/G）、各阶段状态 |
+| `docs/session-handoff.md` | **最新交接**（读它知道从哪继续） |
+| `docs/dev-workflow.md` | 双端口开发流程 |
+| `docs/architecture/overview.md` | 原始设计文档（系统怎么搭的） |
+| `docs/architecture/constraints.md` | **硬约束完整版** + 每条踩坑的出处 |
+| `docs/architecture/decisions.md` | 决策记录：当时放弃了什么、为什么 |
+| `docs/proposals/*.md` | 提案（参与者模型 / 围棋 / 聊天室） |
+| `docs/phases/NN-<主题>/` | **过程档案**：每轮的 `handoff.md` + `review.md`（有实测再加 `observation.md` / `result.md`） |
+| `docs/archive/` | 作废但保留结论的文档 |
 
 ### 文档惯例
 
-- 工作单：`HANDOFF-<阶段>.md`，**边界写死**，做完即停
-- 评审：`REVIEW-<阶段>.md`，**记录独立验证的过程和结论**
-- 交接：`SESSION-HANDOFF.md`，**只写「从哪继续」和「别再踩什么」**
-- 作废的工作单：**顶部加醒目警告**，保留实验结论（别删，别人会重踩）
+- 一轮工作 = 一个目录：`docs/phases/<NN>-<主题>/`，**编号只增不减**
+- 工作单 `handoff.md`：**边界写死**，做完即停
+- 评审 `review.md`：**记录独立验证的过程和结论**
+- 交接 `session-handoff.md`：**只写「从哪继续」和「别再踩什么」**
+- 作废的工作单：挪进 `docs/archive/`，**顶部加醒目警告**，保留实验结论（别删，别人会重踩）
+- 跨目录引用**写相对路径指到文件**，别只写 `handoff.md`——同名文件太多

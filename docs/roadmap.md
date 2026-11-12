@@ -3,7 +3,7 @@
 > 状态：**P1 → P5 + `pass_turn` + 租约结算全部完成**（2026-10-27 更新）。剩下的都是可选项：强化 instructions · runner · `mentions`。
 > 回答一个问题：**双 AI、围棋、聊天室三件事，按什么顺序做，才不会互相重复、互相踩？**
 >
-> 📖 **先读 [`AGENTS.md`](../AGENTS.md)**（通用约定）和 [`SESSION-HANDOFF.md`](SESSION-HANDOFF.md)（从哪继续）。
+> 📖 **先读 [`AGENTS.md`](../AGENTS.md)**（通用约定）和 [最新交接](session-handoff.md)（从哪继续）。
 > 本文只讲**顺序和依赖**，不讲怎么干活。
 
 ---
@@ -15,8 +15,8 @@
 | 前缀 | 出处 | 含义 | 例子 |
 |---|---|---|---|
 | **P** | 本文件 | **项目阶段**，跨功能 | `P2` 双 AI 对弈 |
-| **M** | `PROPOSAL-GO-MCP.md` | **围棋内部里程碑** | `M1` 围棋规则引擎 |
-| **G** | `PROPOSAL-GO-MCP.md` §3.7 | **围棋引擎测试用例** | `G3` 自杀非法 |
+| **M** | `go-mcp.md` | **围棋内部里程碑** | `M1` 围棋规则引擎 |
+| **G** | `go-mcp.md` §3.7 | **围棋引擎测试用例** | `G3` 自杀非法 |
 
 层次关系：
 
@@ -47,7 +47,7 @@ P0 文档与决策
 
 > **P3.5 为什么插进来**：P3 实战验收时，用户与 AI 下完一盘棋，服务一停棋谱就没了。
 > `MemoryRoomRepository` 是纯内存的，重启即失忆。这不是「不方便」，而是
-> 基础设施缺口——P4 的对话记录会同样丢失。详见 [`HANDOFF-PERSIST.md`](HANDOFF-PERSIST.md)。
+> 基础设施缺口——P4 的对话记录会同样丢失。详见 [P3.5 持久化工作单](phases/10-p35-persistence/handoff.md)。
 
 ---
 
@@ -98,7 +98,7 @@ P0 文档与决策
 
 ### P0 文档与决策（本周）
 
-- 三份文档：本文件、[PARTICIPANTS](proposals/PROPOSAL-PARTICIPANTS.md)、[AGENT-CHAT](proposals/PROPOSAL-AGENT-CHAT.md)。
+- 三份文档：本文件、[PARTICIPANTS](proposals/participants.md)、[AGENT-CHAT](proposals/agent-chat.md)。
 - 拍板第 8 节的 5 个决策。
 - 约定：P1 合入前，`shared` 的 Participant/GameState 相关类型冻结，别人只加不改。
 
@@ -108,7 +108,7 @@ P0 文档与决策
 |---|---|---|---|
 | P1a | presence + `RoomView.participants` + WS 事件（**不改座位**） | 网页能看到「等待中 / 思考中 / 未连接」 | ✅ **已完成** |
 | P1b | Participant 替换 PlayerSpec；按 id 落子/等待；兼容层 | 旧客户端不返工 + 双 AI 可跑 | ✅ **已完成** |
-| P1c | lobby/ready/phase + 前端准备态 | 双方 ready 才开局；60s 未齐给提示 | ⬅ **下一步**，工作单 [`HANDOFF-P1C.md`](HANDOFF-P1C.md) |
+| P1c | lobby/ready/phase + 前端准备态 | 双方 ready 才开局；60s 未齐给提示 | ⬅ **下一步**，[工作单](phases/03-p1c-lobby/handoff.md) |
 
 P1a + P1b 已合入 main，**193 个测试全绿**（P2 修 bug +1，P3a 引擎 +26）。
 
@@ -131,7 +131,7 @@ P1b 交付的能力：
 - 两个客户端：**DSH（deepseek）+ Claude Code**
 - 验证 6 个问题：会不会 join、会不会 wait、会不会替对手下、能否理解 yourColor、重连能否拿回座位、报错能否自我修正
 
-**结果见 [`P2-RESULT.md`](P2-RESULT.md)**。一盘完整对局：claude（白）64 手五连获胜，用时 1 小时 41 分。
+**结果见 [P2 结果](phases/04-p2-real-models/result.md)**。一盘完整对局：claude（白）64 手五连获胜，用时 1 小时 41 分。
 
 **关键发现**：双 AI 时 `get_state` / `say` / `new_game` 的 `yourColor` 返回**第一个**
 agent 座位，白方 agent 被告知自己执黑，而且它的 MCP 会话被挂到黑方座位上，
@@ -142,7 +142,7 @@ agent 座位，白方 agent 被告知自己执黑，而且它的 MCP 会话被�
 
 ### P3 围棋（引擎 2–3 天并行，集成 2–3 天）—— ✅ **已完成**
 
-- **P3a**（= M1）：`go.ts` 纯函数规则引擎 + 测试。✅ **已完成**，见 [`REVIEW-P3A.md`](REVIEW-P3A.md)
+- **P3a**（= M1）：`go.ts` 纯函数规则引擎 + 测试。✅ **已完成**，见 [评审](phases/05-p3a-go-rules/review.md)
 - **P3b**（= M0 + M2 + M3 + M4）：类型契约 → 接入 → scoring → 网页棋盘。✅ **已完成**
 
 **实战验收通过**（2026-10-26）：用户与 AI 在网页下完一整盘 9 路，
@@ -153,10 +153,10 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
 
 | 顺序 | 工作单 | 内容 | 状态 |
 |---|---|---|---|
-| 1 | [`HANDOFF-P3B-1.md`](HANDOFF-P3B-1.md) | 类型契约（M0） | ✅ **已完成**，[评审](REVIEW-P3B-1.md) |
-| 2 | [`HANDOFF-P3B-2.md`](HANDOFF-P3B-2.md) | 接入 room/REST/MCP（M2） | ✅ **已完成**，[评审](REVIEW-P3B-2.md) |
-| 3 | [`HANDOFF-P3B-3.md`](HANDOFF-P3B-3.md) | scoring 全流程（M3） | ✅ **已完成**，[评审](REVIEW-P3B-3.md) |
-| 4 | [`HANDOFF-P3B-4.md`](HANDOFF-P3B-4.md) | 网页围棋盘 + 端到端（M4） | ⬅ **下一步** |
+| 1 | [工作单](phases/06-p3b-1-go-types/handoff.md) | 类型契约（M0） | ✅ **已完成**，[评审](phases/06-p3b-1-go-types/review.md) |
+| 2 | [工作单](phases/07-p3b-2-go-integration/handoff.md) | 接入 room/REST/MCP（M2） | ✅ **已完成**，[评审](phases/07-p3b-2-go-integration/review.md) |
+| 3 | [工作单](phases/08-p3b-3-go-scoring/handoff.md) | scoring 全流程（M3） | ✅ **已完成**，[评审](phases/08-p3b-3-go-scoring/review.md) |
+| 4 | [工作单](phases/09-p3b-4-go-web/handoff.md) | 网页围棋盘 + 端到端（M4） | ⬅ **下一步** |
 
 > **围棋服务端已完整**（P3b-1/2/3 全部合入，249 测试全绿）。
 > P3b-4 是纯前端 + 端到端验收，**服务端不该再改**。
@@ -178,7 +178,7 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
 - **做法**：`FileRoomRepository`（一房间一 JSON + 原子写）+ 启动时 `restoreAll()`。
 - **接口已就绪**：`repository.ts` 的注释本来就写了「换实现只动这个文件」。
 - **不做**：SQLite、棋谱回放 UI。
-- **详见 [`HANDOFF-PERSIST.md`](HANDOFF-PERSIST.md)**。
+- **详见 [P3.5 工作单](phases/10-p35-persistence/handoff.md)**。
 
 > ⚠️ **roster 不持久化**：重启后连接已不存在，恢复「在线」是撒谎。
 > agent 重连时用同名 `join_game` 拿回座位（P1b 已实现）。
@@ -189,7 +189,7 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
 - 只依赖 P1a/P1b，不依赖围棋。
 - **依赖 P3.5**：对话记录要能落盘，否则重启即失忆。
 
-**已拍板的决策**（见 [`HANDOFF-P4-C1.md`](HANDOFF-P4-C1.md)）：
+**已拍板的决策**（见 [P4-C1 工作单](phases/11-p4-c1-chat-server/handoff.md)）：
 
 | 问题 | 决定 |
 |---|---|
@@ -202,12 +202,12 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| C1+C2 | 模型 + REST + `/chat/mcp` + 长轮询 | ✅ **已完成**，[评审](REVIEW-P4-C1.md) |
-| C2.5 | 修两个服务端缺陷 | ✅ **已完成**，[评审](REVIEW-P4-CHAT-FIX.md)（`785b172`） |
+| C1+C2 | 模型 + REST + `/chat/mcp` + 长轮询 | ✅ **已完成**，[评审](phases/11-p4-c1-chat-server/review.md) |
+| C2.5 | 修两个服务端缺陷 | ✅ **已完成**，[评审](phases/13-p4-c25-chat-fix/review.md)（`785b172`） |
 | C3 | runner（CLI 包成常驻成员） | ⬜ 可选（交互式客户端已能用） |
-| C4 | 网页聊天页 | ✅ **已完成**，[评审](REVIEW-P4-C4.md)（`59d6fc6`） |
+| C4 | 网页聊天页 | ✅ **已完成**，[评审](phases/14-p4-c4-chat-web/review.md)（`59d6fc6`） |
 
-> **C2.5 为什么插进来**：真实模型聊了一轮（[观察报告](OBSERVE-CHAT-REAL-MODELS.md)），
+> **C2.5 为什么插进来**：真实模型聊了一轮（[观察报告](phases/13-p4-c25-chat-fix/observation.md)），
 > 模型行为没问题，但挖出两个服务端缺陷——
 > `maxMessagesPerMember` 完全失效（`snapshot()` 深拷贝导致计数器加在副本上）、
 > `wait_for_messages` 静默丢消息（只返回最近 12 条，不给 `omitted`/`hasMore`）。
@@ -227,12 +227,12 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
 
 ### P5 大厅 / 棋谱回放（1–2 天）— ✅ **已完成**
 
-**设计见 [`DESIGN-P5.md`](DESIGN-P5.md)**，拆成两份互不依赖的工作单：
+**设计见 [P5 大厅与回放设计](architecture/p5-lobby-replay.md)**，拆成两份互不依赖的工作单：
 
 | 工作单 | 内容 | 状态 |
 |---|---|---|
-| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放（**可单步前进/后退**） | ✅ **已完成**，[评审](REVIEW-P5A.md)（`2ee13b9`） |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | ✅ **已完成**，[评审](REVIEW-P5B.md)（`c244287`） |
+| [P5A 工作单](phases/15-p5a-replay/handoff.md) | 棋谱归档 + 回放（**可单步前进/后退**） | ✅ **已完成**，[评审](phases/15-p5a-replay/review.md)（`2ee13b9`） |
+| [P5B 工作单](phases/16-p5b-lobby/handoff.md) | 大厅 + 聊天室 `updatedAt` 修复 | ✅ **已完成**，[评审](phases/16-p5b-lobby/review.md)（`c244287`） |
 
 - 首页按 kind 列出三类房间：五子棋 / 围棋 / 聊天；显示 phase、成员、最后活动。
 - 这一步之后，"三选一"的观感才真正消失。

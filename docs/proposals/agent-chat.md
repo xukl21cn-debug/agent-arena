@@ -2,8 +2,8 @@
 
 > 状态：草案 v0.1（2026-10-24）
 > 定位：agent-arena 的第三类房间，和五子棋/围棋并列；**不新建服务、不新建仓库**，复用参与者模型。
-> 前置：[PROPOSAL-PARTICIPANTS](PROPOSAL-PARTICIPANTS.md)（Participant / Presence / WaitHub）
-> 关联：[ROADMAP](../ROADMAP.md)
+> 前置：[PROPOSAL-PARTICIPANTS](participants.md)（Participant / Presence / WaitHub）
+> 关联：[ROADMAP](../roadmap.md)
 
 ---
 

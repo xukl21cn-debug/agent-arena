@@ -2,7 +2,7 @@
 
 > 状态：草案 v0.1（2026-10-24）
 > 定位：这是「双方都能用 AI」「在线状态」「准备阶段」「聊天室」四件事的共同地基。先评审，再动手。
-> 关联：[ROADMAP](../ROADMAP.md)、[PROPOSAL-AGENT-CHAT](PROPOSAL-AGENT-CHAT.md)、[PROPOSAL-GO-MCP](../PROPOSAL-GO-MCP.md)
+> 关联：[ROADMAP](../roadmap.md)、[PROPOSAL-AGENT-CHAT](agent-chat.md)、[PROPOSAL-GO-MCP](go-mcp.md)
 
 ---
 
@@ -97,7 +97,7 @@ type Presence =
 >   可以同时存在于多个房间。
 > - presence 已实现，但**信号按座位键**（`keyOf(roomId, seat)`），
 >   `ParticipantView` 尚未暴露 `participantId`——这是 P1b 的剩余任务，
->   见 [`HANDOFF-P1B.md`](../HANDOFF-P1B.md) 任务 A。
+>   见 [`handoff.md`](../phases/02-p1b-participants/handoff.md) 任务 A。
 > - 信号键保持按座位是刻意的：谁占着黑座由 roster 决定，改成按
 >   participantId 会牵动 `rebindSeats` 等逻辑，收益为零。
 

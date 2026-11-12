@@ -45,12 +45,12 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 | **P4-C1/C2** | 聊天室服务端 | `/chat/mcp` + 4 个工具 + 长轮询 |
 | 修复 | chat policy 参数 | REST 建房时 policy 被静默丢弃 |
 | **P4 §3.1** | 真实模型聊天观察 | claude + DSH 聊 13 条；**挖出 2 个服务端缺陷** |
-| **P4-C2.5** | 修那两个缺陷 | `memberRef()` + `unreadAfter()`；292 测试全绿，[评审](REVIEW-P4-CHAT-FIX.md) |
-| **P4-C4** | 网页聊天页 | 复用 `/ws`（`kind=chat`）；302 测试全绿，[评审](REVIEW-P4-C4.md) |
-| **P5A** | 棋谱归档 + 回放 | 每房间保留 N 局；逐手重放真实引擎；[评审](REVIEW-P5A.md) |
-| **P5B** | 大厅 | 四组卡片 + 历史对局；[评审](REVIEW-P5B.md) |
-| **pass_turn** | agent 主动让出轮次 | 不烧 hop、清超时计数；[评审](REVIEW-CHAT-PASS.md) |
-| **租约结算** | 房间不再卡死 | 15 秒定时 sweep；362 测试全绿，[评审](REVIEW-CHAT-LEASE.md) |
+| **P4-C2.5** | 修那两个缺陷 | `memberRef()` + `unreadAfter()`；292 测试全绿，[评审](phases/13-p4-c25-chat-fix/review.md) |
+| **P4-C4** | 网页聊天页 | 复用 `/ws`（`kind=chat`）；302 测试全绿，[评审](phases/14-p4-c4-chat-web/review.md) |
+| **P5A** | 棋谱归档 + 回放 | 每房间保留 N 局；逐手重放真实引擎；[评审](phases/15-p5a-replay/review.md) |
+| **P5B** | 大厅 | 四组卡片 + 历史对局；[评审](phases/16-p5b-lobby/review.md) |
+| **pass_turn** | agent 主动让出轮次 | 不烧 hop、清超时计数；[评审](phases/17-chat-pass-turn/review.md) |
+| **租约结算** | 房间不再卡死 | 15 秒定时 sweep；362 测试全绿，[评审](phases/18-chat-lease/review.md) |
 
 **P3 围棋已实战验收**：用户与 AI 下完一整盘，反馈「感觉很不错」。
 
@@ -60,7 +60,7 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 
 ### 3.1 ✅ 已完成：真实模型聊了一轮
 
-**结果见 [`OBSERVE-CHAT-REAL-MODELS.md`](OBSERVE-CHAT-REAL-MODELS.md)。**
+**结果见 [`observation.md`](phases/13-p4-c25-chat-fix/observation.md)。**
 
 用 **claude CLI（真实进程）+ DSH 本人** 在 `real637936` 房间聊了 13 条消息、11 次 agent 发言。
 
@@ -75,8 +75,8 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 
 ### 3.2 ✅ 已完成：两个缺陷已修复合入
 
-工作单：[`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md)
-评审：[`REVIEW-P4-CHAT-FIX.md`](REVIEW-P4-CHAT-FIX.md)（`785b172`，已合入 main）
+工作单：[`handoff.md`](phases/13-p4-c25-chat-fix/handoff.md)
+评审：[`review.md`](phases/13-p4-c25-chat-fix/review.md)（`785b172`，已合入 main）
 
 | 缺陷 | 修法 |
 |---|---|
@@ -91,8 +91,8 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 
 ### 3.3 ✅ 已完成：P4-C4 网页聊天页
 
-工作单：[`HANDOFF-P4-C4.md`](HANDOFF-P4-C4.md)
-评审：[`REVIEW-P4-C4.md`](REVIEW-P4-C4.md)（`59d6fc6`，已合入 main）
+工作单：[`handoff.md`](phases/14-p4-c4-chat-web/handoff.md)
+评审：[`review.md`](phases/14-p4-c4-chat-web/review.md)（`59d6fc6`，已合入 main）
 
 | 项 | 落地方式 |
 |---|---|
@@ -115,8 +115,8 @@ http://localhost:5173/?room=<id>&kind=chat    → 聊天室
 
 | 工作单 | 内容 | 评审 |
 |---|---|---|
-| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放（可单步前进/后退） | ✅ [`REVIEW-P5A.md`](REVIEW-P5A.md)（`2ee13b9`） |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅 + 聊天室 `updatedAt` 修复 | ✅ [`REVIEW-P5B.md`](REVIEW-P5B.md)（`c244287`） |
+| [`handoff.md`](phases/15-p5a-replay/handoff.md) | 棋谱归档 + 回放（可单步前进/后退） | ✅ [`review.md`](phases/15-p5a-replay/review.md)（`2ee13b9`） |
+| [`handoff.md`](phases/16-p5b-lobby/handoff.md) | 大厅 + 聊天室 `updatedAt` 修复 | ✅ [`review.md`](phases/16-p5b-lobby/review.md)（`c244287`） |
 
 #### 现在有什么
 
@@ -156,8 +156,8 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 
 ### 3.5 ✅ 已完成：`pass` / `yield`
 
-工作单：[`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md)
-评审：[`REVIEW-CHAT-PASS.md`](REVIEW-CHAT-PASS.md)（`99aa214`，已合入 main）
+工作单：[`handoff.md`](phases/17-chat-pass-turn/handoff.md)
+评审：[`review.md`](phases/17-chat-pass-turn/review.md)（`99aa214`，已合入 main）
 
 **`pass_turn(roomId, to?)`**：agent 不发言、把轮次让给下一位。
 
@@ -179,8 +179,8 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 
 ### 3.6 ✅ 已完成：轮次租约定时结算
 
-工作单：[`HANDOFF-CHAT-LEASE.md`](HANDOFF-CHAT-LEASE.md)
-评审：[`REVIEW-CHAT-LEASE.md`](REVIEW-CHAT-LEASE.md)（`51335de`，已合入 main）
+工作单：[`handoff.md`](phases/18-chat-lease/handoff.md)
+评审：[`review.md`](phases/18-chat-lease/review.md)（`51335de`，已合入 main）
 
 **问题**：`settleExpiredTurn` 只在 `sendMessage` / `passTurn` / `wait` 三处被调用，
 **都要求有人主动操作**。agent 发满预算退出后没人操作 → 房间永久卡死。
@@ -220,7 +220,7 @@ GET /api/archive/:archiveId/replay    → 归档局回放
 
 #### 关于强化 instructions
 
-真实模型观察（[`OBSERVE-CHAT-PASS.md`](OBSERVE-CHAT-PASS.md)）发现：
+真实模型观察（[`observation.md`](phases/17-chat-pass-turn/observation.md)）发现：
 两个 agent 都**想到了** pass_turn，但只有一个**实际调用**。
 
 现在的措辞是建议式：
@@ -387,25 +387,25 @@ L539  this.history = [];              ← 历史才清空
 
 见 `AGENTS.md` §10 的文档地图。
 
-**这一轮新增十六份**：
+**这一轮的产出**（全部已归档进 `docs/phases/`，编号即顺序）：
 
-| 文件 | 内容 |
+| 文档 | 内容 |
 |---|---|
-| [`OBSERVE-CHAT-REAL-MODELS.md`](OBSERVE-CHAT-REAL-MODELS.md) | 真实模型聊天观察：模型表现 + 两个缺陷的实测证据 |
-| [`HANDOFF-P4-CHAT-FIX.md`](HANDOFF-P4-CHAT-FIX.md) | 修那两个缺陷的工作单（✅ 已完成） |
-| [`REVIEW-P4-CHAT-FIX.md`](REVIEW-P4-CHAT-FIX.md) | 修复的评审记录（独立验证 55 条全过） |
-| [`HANDOFF-P4-C4.md`](HANDOFF-P4-C4.md) | 网页聊天页工作单（✅ 已完成） |
-| [`REVIEW-P4-C4.md`](REVIEW-P4-C4.md) | C4 评审记录（独立验证 49 条全过） |
-| [`DESIGN-P5.md`](DESIGN-P5.md) | P5 设计稿：回放方案（含原型验证 22 条） |
-| [`HANDOFF-P5A.md`](HANDOFF-P5A.md) | 棋谱归档 + 回放工作单（✅ 已完成） |
-| [`REVIEW-P5A.md`](REVIEW-P5A.md) | P5A 评审记录（独立验证 76 条，含 4 次评审方自己的错） |
-| [`HANDOFF-P5B.md`](HANDOFF-P5B.md) | 大厅工作单（✅ 已完成） |
-| [`REVIEW-P5B.md`](REVIEW-P5B.md) | P5B 评审记录（独立验证 60 条，一次通过） |
-| [`HANDOFF-CHAT-PASS.md`](HANDOFF-CHAT-PASS.md) | `pass`/`yield` 工作单（✅ 已完成） |
-| [`REVIEW-CHAT-PASS.md`](REVIEW-CHAT-PASS.md) | `pass`/`yield` 评审记录（独立验证 58 条） |
-| [`OBSERVE-CHAT-PASS.md`](OBSERVE-CHAT-PASS.md) | **真实模型跑 pass_turn 的观察**（模型会用，但暴露了卡死问题） |
-| [`HANDOFF-CHAT-LEASE.md`](HANDOFF-CHAT-LEASE.md) | 修懒结算工作单（✅ 已完成） |
-| [`REVIEW-CHAT-LEASE.md`](REVIEW-CHAT-LEASE.md) | 租约结算评审记录（独立验证 21 条 + 延迟实测） |
+| [C2.5 观察](phases/13-p4-c25-chat-fix/observation.md) | 真实模型聊天观察：模型表现 + 两个缺陷的实测证据 |
+| [C2.5 工作单](phases/13-p4-c25-chat-fix/handoff.md) | 修那两个缺陷（✅ 已完成） |
+| [C2.5 评审](phases/13-p4-c25-chat-fix/review.md) | 独立验证 55 条全过 |
+| [C4 工作单](phases/14-p4-c4-chat-web/handoff.md) | 网页聊天页（✅ 已完成） |
+| [C4 评审](phases/14-p4-c4-chat-web/review.md) | 独立验证 49 条全过 |
+| [P5 设计稿](architecture/p5-lobby-replay.md) | 回放方案（含原型验证 22 条） |
+| [P5A 工作单](phases/15-p5a-replay/handoff.md) | 棋谱归档 + 回放（✅ 已完成） |
+| [P5A 评审](phases/15-p5a-replay/review.md) | 独立验证 76 条，含 4 次评审方自己的错 |
+| [P5B 工作单](phases/16-p5b-lobby/handoff.md) | 大厅（✅ 已完成） |
+| [P5B 评审](phases/16-p5b-lobby/review.md) | 独立验证 60 条，一次通过 |
+| [pass_turn 工作单](phases/17-chat-pass-turn/handoff.md) | `pass` / `yield`（✅ 已完成） |
+| [pass_turn 评审](phases/17-chat-pass-turn/review.md) | 独立验证 58 条 |
+| [pass_turn 观察](phases/17-chat-pass-turn/observation.md) | **真实模型跑 `pass_turn`**：会用，但暴露了卡死问题 |
+| [租约工作单](phases/18-chat-lease/handoff.md) | 修懒结算（✅ 已完成） |
+| [租约评审](phases/18-chat-lease/review.md) | 独立验证 21 条 + 延迟实测 |
 
 ---
 
@@ -435,7 +435,7 @@ pwsh -File scripts/dev-isolated.ps1 -Stop
 
 ⚠️ **`pnpm start` 读 `dist/`**——改完 server 代码必须 `pnpm build` 再重启。
 
-详见 [`DEV-WORKFLOW.md`](DEV-WORKFLOW.md)。
+详见 [`dev-workflow.md`](dev-workflow.md)。
 
 ---
 

@@ -434,5 +434,5 @@ GET  /api/rooms/:id/wait-for-turn  ?actor=&timeoutMs=
 - **GLM 实现**：M0–M4；先做 M0 类型契约，再写 M1 引擎；每个里程碑单独 commit。
 - **DeepSeek 评审**：M0 类型设计、M1 提子/劫/数子、M3 scoring wait、G6/G11 测试；
   评审意见直接改本文件或提交 PR 评论。
-- 本文档通过后，把 §3–§7 的契约增补进 `DESIGN.md` 作为围棋规范章节；
-  不要把本文件直接当实现文档，规则细节以增补后的 `DESIGN.md` 为准。
+- 本文档通过后，把 §3–§7 的契约增补进 `overview.md` 作为围棋规范章节；
+  不要把本文件直接当实现文档，规则细节以增补后的 `overview.md` 为准。
