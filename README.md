@@ -11,7 +11,7 @@
 
 P1 → P5 全部完成：参与者模型（稳定 id、同名重连、会话绑定身份）、双 AI 对弈、围棋全链路（落子 / 提子 / 数子）、聊天室、棋谱持久化与回放、大厅。**362 个测试全绿**。
 
-从哪继续见 [`docs/session-handoff.md`](docs/session-handoff.md)，文档全貌见 [`docs/README.md`](docs/README.md)。
+之后的可选项见 [`docs/roadmap.md`](docs/roadmap.md) §11，文档全貌见 [`docs/README.md`](docs/README.md)。
 
 ## Agent 视图：LLM 友好的棋盘表达
 

@@ -206,7 +206,7 @@ ROADMAP 风险表里写的「双 AI 无限对局 → 烧钱、卡死」，**这�
 `404 Session not found`，而**客户端不会自动重连**（DSH 的 mcp-client 只在传输层
 `onclose` 时重连，而 404 只是个普通 HTTP 错误）。结果：工具全部报错，只能新开会话。
 
-已记入 `session-handoff.md` 的已知坑。
+已记入 [`AGENTS.md` §6.2](../../../AGENTS.md) 的踩坑清单。
 
 ### 4.4 长考会触发 presence「假断线」（yourColor 修复后仍然存在）
 

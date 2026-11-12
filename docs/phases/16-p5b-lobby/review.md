@@ -177,7 +177,7 @@ archive → view=replay → kind=chat → 无 room 参数才进大厅 → 棋类
 
 **结果：60 条检查一次通过，零返工。**
 
-这条已写进 `session-handoff.md` §4.8 的规则里，以后照做。
+这条已写进 [`AGENTS.md` §6.2](../../../AGENTS.md) 的踩坑清单，以后照做。
 
 ---
 

@@ -191,7 +191,37 @@ Get-NetTCPConnection -LocalPort 3000 -State Listen | ForEach-Object { Stop-Proce
 
 ---
 
-## 6. 相关文件
+## 6. 接入 DSH（MCP 客户端）
+
+配置在 `C:\Users\<你>\.dsh\profiles\web\cordis.patch.yml`，服务名 `arena`：
+
+```yaml
+# 新增插件必须用 insert:
+- insert:
+    - id: mcp-arena
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: arena
+        transport: streamable-http
+        url: http://127.0.0.1:3000/mcp
+```
+
+**聊天室是另一个端点**，要用 DSH 聊就再加一条：
+
+```yaml
+    - id: mcp-arena-chat
+      name: "@deepseek-ai/dsh-mcp-client"
+      config:
+        serverName: chat
+        transport: streamable-http
+        url: http://127.0.0.1:3000/chat/mcp
+```
+
+⚠️ **改完配置必须新开会话**——MCP 工具在会话启动时注入，旧会话看不到新端点（见 §4）。
+
+---
+
+## 7. 相关文件
 
 | 文件 | 内容 |
 |---|---|
