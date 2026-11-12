@@ -13,12 +13,26 @@ import { RoomManager } from './rooms/room-manager.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDist = path.resolve(here, '../../web/dist');
+/**
+ * Where the cwd-relative default used to put everything when the server was
+ * started through pnpm. Kept only to warn about it - see main().
+ */
+const legacyDataDir = path.resolve(here, '..', 'data');
 
 /** How often silent seats are re-checked for the stale fallback. */
 const PRESENCE_SWEEP_MS = 15_000;
 
 function main(): void {
   const config = loadConfig();
+
+  // The default used to be relative to the working directory, which put data
+  // under `server/data` whenever the server was started through pnpm. Warn
+  // instead of starting empty and looking like the games vanished.
+  if (config.dataDir !== legacyDataDir && existsSync(legacyDataDir)) {
+    console.warn(
+      `[arena] WARNING legacy data at ${legacyDataDir} is ignored - move it to ${config.dataDir}, or set ARENA_DATA_DIR to keep using the old path`,
+    );
+  }
 
   const presence = new PresenceRegistry();
   const repository = new FileRoomRepository(config.dataDir, {
@@ -62,6 +76,7 @@ function main(): void {
     console.log(`[arena] REST  ${base}/api`);
     console.log(`[arena] MCP   ${base}/mcp`);
     console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
+    console.log(`[arena] data  ${config.dataDir}`);
     console.log(
       `[arena] room  "${defaultRoom.id}" (${defaultRoom.getState().status})`,
     );

@@ -293,16 +293,11 @@ SDK 源码："State is maintained in-memory (connections, message history)"
 **规则**：需要**改**的对象，从领域对象拿本体（如 `members.get(id)`）；
 需要**返回给外面**的，才用 `snapshot()` 拷贝。
 
-### 4.6 聊天室数据在 `server/data/`，不在 `data/`
+### 4.6 数据目录曾经会跟着 cwd 漂
 
-`pnpm dev` 下 server 的 cwd 是 `server/`，所以：
+**已修（2026-11-12）。** 原来 `dataDir` 取 `process.cwd()/data`，而 `pnpm dev` / `pnpm start` 的 cwd 是 `server/`，直接 `node server/dist/index.js` 的 cwd 是仓库根——同一份代码把数据分裂到 `server/data/` 和 `data/` 两处。
 
-```text
-棋类对局   E:\code\fun\agent-arena\data\rooms\*.json
-聊天室     E:\code\fun\agent-arena\server\data\chat\*.json   ← 注意多一层
-```
-
-找落盘文件时别在 `data/chat` 里空找（这一轮找了半天）。
+现在锚在代码文件位置，固定 `<repo>/data/{rooms,chat,archive}`，启动日志会打印实际路径。详见 [`dev-workflow.md`](dev-workflow.md) §5.5。
 
 ### 4.7 真实模型的行为和 mock 不一样，必须实测
 

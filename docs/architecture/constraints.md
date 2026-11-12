@@ -89,6 +89,8 @@
 | 归档文件名用 `__` 分隔；`archiveId` 必须校验格式 | `roomId` 本身允许 `-`，用 `-` 会解析歧义；文件名从 id 拼出来，是唯一的路径穿越面 | [P5A 评审 §5](../phases/15-p5a-replay/review.md) |
 | 回放复用真实引擎，不自己实现提子/劫/五连；`gameId` 沿用落盘值，`now` 传 `move.at`，失败抛错带手数 | 新生成 `gameId` 会对不上；不传 `move.at` 时间戳全变「现在」；静默截断会把坏数据藏起来 | [P5A 评审 §3](../phases/15-p5a-replay/review.md) |
 | roster 不持久化；重启后靠同名 `join_game` 拿回座位 | 连接已不存在，恢复一个「在线」状态是撒谎 | [P3.5 工作单 §5.3](../phases/10-p35-persistence/handoff.md) |
+| 落盘根目录**不得绑 `process.cwd()`**，必须锚在代码文件位置；唯一覆盖方式是 `ARENA_DATA_DIR` | `pnpm dev` / `pnpm start` 的 cwd 是 `server/`，直接 `node server/dist/index.js` 是仓库根——同一份代码因此把数据分裂到 `server/data/` 和 `data/` 两处，找对局时两边都要翻 | 2026-11-12 统一路径（`server/src/config.ts`） |
+| 数据按领域分子目录：`data/rooms/` `data/chat/` `data/archive/`，一个根目录 | 两个领域共用一个 `dataDir` 却因为 cwd 漂移落到不同位置；分目录才能一眼看出哪份数据属于谁 | 2026-11-12 统一路径（`server/src/config.ts`） |
 
 ---
 

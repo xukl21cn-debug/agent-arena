@@ -1,10 +1,32 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_ROOM_ID,
   DEFAULT_WAIT_MS,
   MAX_WAIT_MS,
   MIN_WAIT_MS,
 } from '@arena/shared';
+
+/**
+ * `<repo>/server/src` in dev (tsx) and `<repo>/server/dist` once built, so
+ * going up twice lands on the repo root either way.
+ */
+const projectRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+);
+
+/**
+ * Default root for persisted state, split per domain: `<dataDir>/rooms`,
+ * `<dataDir>/chat`, `<dataDir>/archive`.
+ *
+ * Anchored to this file, not to `process.cwd()`. `pnpm dev` and `pnpm start`
+ * run the server with `server/` as the working directory while
+ * `node server/dist/index.js` from the repo root does not, so a cwd-relative
+ * default silently split the same project across `server/data` and `data/`.
+ */
+export const DEFAULT_DATA_DIR = path.join(projectRoot, 'data');
 
 export const DEFAULT_PORT = 3000;
 export const DEFAULT_HOST = '127.0.0.1';
@@ -17,7 +39,7 @@ export interface ServerConfig {
   waitMaxMs: number;
   defaultRoomId: string;
   serverUrl: string;
-  /** Root for persisted rooms; one JSON file per room under <dataDir>/rooms. */
+  /** Root for persisted state; one subdirectory per domain (rooms / chat / archive). */
   dataDir: string;
   /** Archived games kept per room, newest first, under <dataDir>/archive. */
   archiveLimit: number;
@@ -66,7 +88,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     waitMaxMs: Math.max(waitDefaultMs, waitMaxMs),
     defaultRoomId: env.DEFAULT_ROOM_ID?.trim() || DEFAULT_ROOM_ID,
     serverUrl: env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL,
-    dataDir: env.ARENA_DATA_DIR?.trim() || path.join(process.cwd(), 'data'),
+    dataDir: env.ARENA_DATA_DIR?.trim() || DEFAULT_DATA_DIR,
     archiveLimit: readInteger(env, 'ARENA_ARCHIVE_LIMIT', 20, 1, 500),
   };
 }

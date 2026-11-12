@@ -100,3 +100,5 @@
 | 持久化用 **JSON、一个房间一个文件** | SQLite | JSON 够用先简单；一房一文件则单房损坏不影响其他房间、方便手动查看删除 | [P3.5 工作单 §2、§3.1](../phases/10-p35-persistence/handoff.md) |
 | `save()` 用**同步写**（一子一写），并在注释里写明取舍与升级路径 | 批量 / 异步写 | 响应发出前必须已落盘；9 路最多 81 手、每次几毫秒可接受 | [P3.5 工作单 §7](../phases/10-p35-persistence/handoff.md) |
 | roster **不持久化**，重启后 agent 靠同名 `join_game` 拿回原座位 | 恢复参与者名册 / 在线状态 | 连接已不存在，恢复一个「在线」状态是撒谎 | [P3.5 工作单 §5.3](../phases/10-p35-persistence/handoff.md) |
+| 数据根目录**锚在代码文件位置**（`server/src/config.ts` → `<repo>/data`），不锚 `process.cwd()` | 继续用 cwd 相对路径；或要求每个入口自己设 `ARENA_DATA_DIR` | cwd 随启动方式变（`pnpm dev` 是 `server/`，直接 `node server/dist/index.js` 是仓库根），同一份代码会把数据分裂到两处；「记得每个入口都设环境变量」是靠纪律而不是靠结构。文件位置在 dev 与 build 两种形态下都稳定（`server/src` 与 `server/dist` 都上跳两级到仓库根） | 2026-11-12 统一路径（`server/src/config.ts`） |
+| 一个 `data/` 根目录 + 领域子目录（`rooms` / `chat` / `archive`） | 每个领域自己一个根目录（`data/` 与 `server/data/chat/`） | 领域已经分开（独立端点、独立模型），落盘却在两个树里，找数据要先知道它是哪一类。统一根目录 + 子目录，既保留领域边界又只有一处要找 | 2026-11-12 统一路径（`server/src/config.ts`） |
