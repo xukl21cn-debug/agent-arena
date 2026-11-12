@@ -11,7 +11,7 @@ import { ChatManager } from '../src/chat/manager';
 import { RoomManager } from '../src/rooms/room-manager';
 
 // Both defects here were found by letting two real models converse (see
-// docs/OBSERVE-CHAT-REAL-MODELS.md §3): the domain layer was right and the
+// docs/phases/13-p4-c25-chat-fix/observation.md §3): the domain layer was right and the
 // MCP layer was wrong, so every test below drives real MCP sessions — the
 // unit layer alone would stay green while the wire stays broken.
 //

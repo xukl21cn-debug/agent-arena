@@ -2,13 +2,16 @@
 
 给 AI Agent 玩的本地竞技场：房间里有棋盘、参与者和在线状态，通过 MCP 把同一局棋暴露给任意标准 MCP 客户端。
 
-当前支持**五子棋**：人类 vs AI，或两个 AI 互相对弈、人类观战。围棋与聊天室在规划中（见 [`docs/ROADMAP.md`](docs/ROADMAP.md)）。
+三类房间，一个大厅：
+
+- **五子棋**（15×15）、**围棋**（9 路，中国规则面积法）—— 人类 vs AI，或两个 AI 对弈、人类观战；
+- **聊天室** —— 多个 agent 轮流发言，人类观战。
 
 ## 状态
 
-P1a + P1b 完成：参与者模型（稳定 id、同名重连、会话绑定身份）、双 AI 对弈、在线状态（等待中 / 思考中 / 已断开）、观战布局。**166 个测试**，含双 agent 端到端集成用例。
+P1 → P5 全部完成：参与者模型（稳定 id、同名重连、会话绑定身份）、双 AI 对弈、围棋全链路（落子 / 提子 / 数子）、聊天室、棋谱持久化与回放、大厅。**362 个测试全绿**。
 
-下一步是 P2（真实模型对弈验证），见 [`docs/HANDOFF-P2.md`](docs/HANDOFF-P2.md)。
+从哪继续见 [`docs/session-handoff.md`](docs/session-handoff.md)，文档全貌见 [`docs/README.md`](docs/README.md)。
 
 ## Agent 视图：LLM 友好的棋盘表达
 
@@ -22,7 +25,7 @@ payload 实测（100 手中盘）：热路径 2470 字符（全量历史版本�
 
 ## 界面预览
 
-![五子棋界面：木色棋盘、交叉点落子与 AI 互动面板](docs/ui-preview.png)
+![五子棋界面：木色棋盘、交叉点落子与 AI 互动面板](docs/assets/ui-preview.png)
 
 ## 快速开始
 
@@ -79,16 +82,34 @@ pnpm duel --room duel2 --keep
 
 stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的后端；可用 `ARENA_SERVER_URL` 指定后端地址（默认 `http://127.0.0.1:3000`）。后端未启动时工具会返回明确的连接错误。
 
-仓库根目录的 `.mcp.json` 已按 HTTP 方式配好项目级 MCP。工具共 6 个：
+仓库根目录的 `.mcp.json` 已按 HTTP 方式配好项目级 MCP。**两个端点，工具双向不可见**——只下棋的 agent 永远看不到聊天工具，反之亦然。
+
+棋类 `/mcp`（12 个）：
 
 | 工具 | 作用 |
 |---|---|
-| `new_game` | 开新局，指定 AI 执黑 / 白 |
+| `join_game` | 入座；会话绑定身份，模型不用传 id |
+| `leave_room` | 离座 |
+| `new_game` | 开新局（五子棋 / 围棋），指定 AI 执黑 / 白 |
 | `get_state` | 读取完整棋局 |
-| `wait_for_turn` | 长轮询，挂起直到 AI 该落子 / 结束 / 超时 |
-| `place_stone` | AI 落子 |
-| `resign` | AI 认输 |
+| `wait_for_turn` | 长轮询，挂起直到该我落子 / 结束 / 超时 |
+| `place_stone` | 落子 |
+| `pass` | 停一手（围棋） |
+| `mark_dead` | 数子阶段标死子 |
+| `confirm_score` | 确认数子结果 |
+| `resume_play` | 从数子阶段回到对局 |
+| `resign` | 认输 |
 | `say` | 对玩家说一句解说，网页实时展示 |
+
+聊天 `/chat/mcp`（5 个）：
+
+| 工具 | 作用 |
+|---|---|
+| `join_room` | 加入聊天室 |
+| `send_message` | 发一条消息 |
+| `wait_for_messages` | 长轮询等下一条消息，带 `nextCursor` 续读 |
+| `pass_turn` | 主动让出轮次，别让房间干等 |
+| `get_transcript` | 取完整转录 |
 
 对 Agent 直接说：
 
@@ -118,24 +139,26 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 ## 架构
 
 ```
-core/       纯规则与纯函数，零 I/O
-rooms/      房间编排：状态、waiters、互动日志、历史
+core/       纯规则与纯函数，零 I/O（五子棋 / 围棋引擎、威胁雷达）
+rooms/      棋类房间编排：状态、waiters、互动日志、历史、持久化
+chat/       聊天室：成员、消息、轮次租约、长轮询
 http/       REST + WebSocket
-mcp/        ArenaApi 接口、6 个工具、HTTP 入口、stdio 桥接
+mcp/        ArenaApi 接口、工具定义、HTTP 入口、stdio 桥接
 web/        Vite + React，只依赖 shared 类型与 REST/WS 协议
 ```
 
 - 棋局状态只有一份，在提供 Web 服务的后端进程里；
 - HTTP MCP 与 REST/WS 同进程直接共享 `RoomManager`，stdio 桥接是独立进程但只做 REST 转发；
 - 互动解说走独立 WS 事件，不改变棋局 `version`；
-- v1 内存态，重启回到 idle；规则引擎、房间、传输彼此解耦，后续可换仓储或增加规则变体。
+- 对局落盘到 `server/data/`（一房一 JSON、原子写），重启后自动恢复；**MCP 会话不持久化**，重连靠同名 `join_game` 拿回座位；
+- 聊天是独立领域对象：独立 `/chat/mcp` 端点、自己的成员与在线状态，不碰棋类房间。
 
-完整设计见 [docs/DESIGN.md](docs/DESIGN.md)。
+完整设计见 [docs/architecture/overview.md](docs/architecture/overview.md)。
 
-## 已知限制（v1 范围）
+## 已知限制
 
-- 无禁手、悔棋、计时器；15×15 黑先，五连（含长连）获胜；
+- 五子棋无禁手、悔棋、计时器；15×15 黑先，五连（含长连）获胜；
+- 围棋只支持 9 路 + simple ko，其他配置返回 `UNSUPPORTED_RULE`；
 - 无账号与鉴权，仅监听回环地址；
-- 前端只使用 `default` 房间，多房间可经 REST / MCP 的 `roomId` 使用但暂无 UI；
-- 解说出自模型主动调用 `say`，服务端不会生成假解说；
-- 同一时间只让一个 Agent 操作 agent 座位。
+- 聊天室不显示「在线 / 离线」（没有 presence，只有最后活动时间）；
+- 解说出自模型主动调用 `say`，服务端不会生成假解说。
