@@ -160,12 +160,32 @@ Get-NetTCPConnection -LocalPort 3000 -State Listen | ForEach-Object { Stop-Proce
 
 ### 5.5 数据在哪
 
+**一个根目录，按领域分子目录**：
+
+| 子目录 | 内容 |
+|---|---|
+| `data/rooms/` | 棋类对局，一房一个 JSON |
+| `data/chat/` | 聊天室转录，一房一个 JSON |
+| `data/archive/` | 归档的历史对局（按房间保留最近 N 局） |
+
+路径锚在**代码文件位置**（`server/src/config.ts`），**不是 `process.cwd()`**。所以怎么启动都落在同一处：
+
 | 启动方式 | 数据目录 |
 |---|---|
-| `pnpm dev` / `pnpm start`（仓库根） | `<repo>/data/` |
-| `dev-isolated.ps1` live | `<repo>/data/` |
-| `dev-isolated.ps1` dev | `<repo>/data-dev/` |
-| 从 `server/` 目录直接 `node dist/index.js` | `server/data/` |
+| `pnpm dev` / `pnpm start` | `<repo>/data/` |
+| `dev-isolated.ps1` live | `<repo>/data/`（与默认一致） |
+| `dev-isolated.ps1` dev | `<repo>/data-dev/`（显式覆盖） |
+| 直接 `node server/dist/index.js` | `<repo>/data/` |
+
+要换位置就设 `ARENA_DATA_DIR`——**这是唯一的覆盖方式**，别靠切 cwd。
+
+服务启动时会打印实际路径，找不着数据先看这行：
+
+```text
+[arena] data  E:\code\fun\agent-arena\data
+[arena] rooms  2 restored from E:\code\fun\agent-arena\data\rooms
+[arena] chats  24 restored from E:\code\fun\agent-arena\data\chat
+```
 
 都在 `.gitignore` 里。
 

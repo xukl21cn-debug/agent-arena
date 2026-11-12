@@ -83,7 +83,7 @@ docs/<topic>      纯文档
 
 | 约束 | 原因 |
 |---|---|
-| `GameStatus` 只有 `idle/playing/finished` | MCP 契约 + 362 个测试依赖 |
+| `GameStatus` 只有 `idle/playing/finished` | MCP 契约 + 365 个测试依赖 |
 | 围棋的 `scoring` 放在独立的 `GoStatus` | 不污染公共类型 |
 | `PlayerSpec.id` 保持可选 | engine 默认值没有 id |
 | 旧 `actor` 路径保留 | 旧客户端还在用 |
@@ -133,6 +133,8 @@ pnpm dev
 
 **P3.5 的持久化让对局在重启后自动恢复**，所以 `pnpm dev` 下改后端只丢 MCP 会话，不丢对局。
 
+落盘位置固定为 `<repo>/data/{rooms,chat,archive}`——锚在代码文件位置，**与启动目录无关**；启动日志会打印实际路径。要换位置只设 `ARENA_DATA_DIR`，别靠切 cwd。
+
 ### 5.3 什么时候用双端口
 
 只有「改后端 + 同时要用 DSH 对局」时：
@@ -152,7 +154,7 @@ pwsh -File scripts/dev-isolated.ps1 -Stop
 
 ```powershell
 pnpm build        # 全量构建（shared + server + web）
-pnpm test         # 全量测试（当前 362，含一个 spawn 真实进程的 e2e，约 17s）
+pnpm test         # 全量测试（当前 365，含一个 spawn 真实进程的 e2e，约 17s）
 pnpm typecheck    # 类型检查
 pnpm start        # 生产模式起服务（读 dist/，改完必须 build）
 pnpm duel         # 两个脚本客户端下一盘五子棋（协议层自测）
@@ -244,12 +246,12 @@ P2 复盘时确认过：黑棋拿到了全部信息，也把正确的点念出�
 
 ---
 
-## 9. 当前状态（2026-10-26）
+## 9. 当前状态（2026-11-12）
 
 | 项 | 值 |
 |---|---|
 | 分支 | `main`，干净 |
-| 测试 | **362 全绿** |
+| 测试 | **365 全绿** |
 | 已完成 | **P1 → P5 全部完成** · `pass_turn` · **轮次租约定时结算**（房间不再卡死） |
 | 进行中 | 无。可选项：强化 instructions · runner（P4-C3）· `mentions` 模式 |
 

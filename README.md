@@ -135,6 +135,8 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `WAIT_MAX_MS` | 60000 | `wait_for_turn` 上限 |
 | `ARENA_SERVER_URL` | `http://127.0.0.1:3000` | stdio 桥接访问的后端地址，也用于 Vite 代理 |
 | `DEFAULT_ROOM_ID` | default | 默认房间 |
+| `ARENA_DATA_DIR` | `<repo>/data` | 落盘根目录，下分 `rooms/` `chat/` `archive/` |
+| `ARENA_ARCHIVE_LIMIT` | 20 | 每个房间保留多少局归档对局 |
 
 ## 架构
 
