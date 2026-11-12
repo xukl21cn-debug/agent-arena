@@ -26,8 +26,9 @@
 
 | 我想… | 读 |
 |---|---|
-| 知道项目是什么、硬约束有哪些、评审怎么做 | [`../AGENTS.md`](../AGENTS.md) |
-| 知道现在做到哪、之后能做什么 | [`roadmap.md`](roadmap.md) §11（也可直接看 [`../AGENTS.md`](../AGENTS.md) §9） |
+| 知道项目是什么、硬约束有哪些 | [`../AGENTS.md`](../AGENTS.md) |
+| 评审一轮工作、写审计脚本 | [`reviewing.md`](reviewing.md)（套路 + 坑表，评审前必读） |
+| 知道现在做到哪、之后能做什么 | [`roadmap.md`](roadmap.md) §11 |
 | 知道为什么按这个顺序做、P/M/G 编号怎么对 | [`roadmap.md`](roadmap.md) |
 | 看懂系统怎么搭的 | [`architecture/overview.md`](architecture/overview.md) |
 | 起服务、双端口调试 | [`dev-workflow.md`](dev-workflow.md) |
@@ -101,4 +102,5 @@ mkdir docs/phases/19-<主题>
 - **`phases/` 只增不改。** 结论错了就在新一轮的评审里纠正，别回头改旧档案。
 - **`handoff.md` 是开工前的合同。** 它写的时候还不知道答案，所以允许和最终实现不一致——`review.md` 里会记差异。
 - **作废的工作单进 `archive/`**，顶部加醒目警告，实验结论保留。
+- **不设常驻交接文档**：当前状态与可选项看 [`roadmap.md`](roadmap.md) §11；有新工作就开新的 phase 目录。
 - **链接用相对路径**，跨目录引用直接指到文件，不要只写文件名——同名文件太多了（`handoff.md`、`review.md`）。
