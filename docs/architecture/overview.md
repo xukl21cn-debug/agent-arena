@@ -1,5 +1,9 @@
 # 五子棋 MCP 对弈系统 · 设计文档
 
+> ⚠️ **本文是 2026-10-23 的原始设计稿，只覆盖五子棋时期。**
+> 之后的围棋、聊天室、持久化、大厅与回放见 [`../roadmap.md`](../roadmap.md) 和各轮 [`../phases/`](../phases/) 档案。
+> **当前代码在哪，看文末附录。**
+
 > 版本：v0.8（Agent 视图：double 威胁合并 + 防守纪律）
 > 日期：2026-10-23
 > 项目路径：`E:\code\fun\agent-arena`
@@ -1123,3 +1127,56 @@ cmd mcp get gomoku
 - v0.8：`HotPoint.double`（four+open3 / 双活三）+ `open3At` 拆点；同方向 four+three 不合并；
   double 点排在同级之前；提示词把“对手 double 本手优先占点（four+open3 可拆，双活三必须占点）”
   “对手 four 本手挡 fiveAt”写成硬约束；新增第二局 25 手复盘与 `scripts/replay-game2.mjs`；测试 106
+
+---
+
+## 附录：当前代码地图（2026-11-12）
+
+> 正文停在五子棋时期。下面这张表反映**当前**的代码分布，按领域分组。
+
+### 棋类
+
+| 文件 | 内容 |
+|---|---|
+| `server/src/rooms/room.ts` | 棋类房间（五子棋 + 围棋分派） |
+| `server/src/core/engine.ts` | 五子棋引擎 |
+| `server/src/core/go.ts` | 围棋引擎（纯函数，独立审计通过） |
+| `server/src/core/go-game.ts` | 围棋状态搬运（对应 `engine.ts`） |
+| `server/src/core/replay.ts` | 回放：逐手重放真实引擎，产出 frames |
+| `server/src/rooms/repository.ts` | 落盘 + 归档（`data/rooms`、`data/archive`） |
+| `server/src/core/presence.ts` | 在线状态（**按座位索引**） |
+| `server/src/mcp/tools.ts` | 棋类 MCP 工具（12 个） |
+| `shared/src/game.ts` | 核心类型（`GameState` / `GoState` / `RoomView`） |
+
+### 聊天室（独立领域，不碰棋类对象）
+
+| 文件 | 内容 |
+|---|---|
+| `server/src/chat/chat-room.ts` | 领域对象：成员、消息、轮次租约 |
+| `server/src/chat/manager.ts` | 房间管理 + 落盘（`data/chat`） |
+| `server/src/chat/mcp.ts` | 聊天 MCP 工具（5 个，挂在 `/chat/mcp`） |
+| `server/src/chat/model.ts` | 类型与 policy（`ChatMode` 等） |
+| `server/src/chat/http.ts` | REST 端点 |
+| `server/src/chat/sweep.ts` | 轮次租约定时结算 |
+
+### 前端
+
+| 文件 | 内容 |
+|---|---|
+| `web/src/components/Board.tsx` | 五子棋棋盘（15×15 交叉点） |
+| `web/src/components/GoBoard.tsx` | 围棋盘（9 路，独立组件，只复用 CSS） |
+| `web/src/components/replay/ReplayPage.tsx` | 回放页（单步前进 / 后退） |
+| `web/src/components/ScoringPanel.tsx` | 围棋数子面板 |
+
+### 脚本
+
+| 文件 | 内容 |
+|---|---|
+| `scripts/dev-isolated.ps1` | 双端口启停（**备选**，日常用 `pnpm dev`） |
+| `scripts/e2e-go-web.mjs` | 围棋端到端（REST 人类 + MCP agent） |
+| `scripts/chat-duel.mjs` | 两个 MCP 客户端聊天 |
+| `scripts/smoke-go-white.mjs` | 围棋白方冒烟 |
+| `server/scripts/duel.mjs` | 两个 MCP 客户端下五子棋（`pnpm duel`） |
+
+> `scripts/` 下还有几个历史调试脚本（`demo-agent-view.mjs` / `measure-payload.mjs` /
+> `replay-game2.mjs`），不在日常流程里。

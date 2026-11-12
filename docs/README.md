@@ -11,7 +11,7 @@
 
 | 位置 | 是什么 | 会变吗 |
 |---|---|---|
-| 本层（`docs/*.md`） | **现行文档**：路线图、交接、开发流程 | 持续更新 |
+| 本层（`docs/*.md`） | **现行文档**：路线图、开发流程 | 持续更新 |
 | `architecture/` | **系统设计与长期约束**：长什么样、为什么这么定 | 慢。结构变了才改 |
 | `proposals/` | **提案**：还没变成代码的想法 | 采纳后沉进 roadmap / architecture |
 | `phases/` | **过程档案**：每一轮工作的原始记录 | **只增不改** |
@@ -27,7 +27,7 @@
 | 我想… | 读 |
 |---|---|
 | 知道项目是什么、硬约束有哪些、评审怎么做 | [`../AGENTS.md`](../AGENTS.md) |
-| 知道现在做到哪、从哪继续 | [`session-handoff.md`](session-handoff.md) |
+| 知道现在做到哪、之后能做什么 | [`roadmap.md`](roadmap.md) §11（也可直接看 [`../AGENTS.md`](../AGENTS.md) §9） |
 | 知道为什么按这个顺序做、P/M/G 编号怎么对 | [`roadmap.md`](roadmap.md) |
 | 看懂系统怎么搭的 | [`architecture/overview.md`](architecture/overview.md) |
 | 起服务、双端口调试 | [`dev-workflow.md`](dev-workflow.md) |

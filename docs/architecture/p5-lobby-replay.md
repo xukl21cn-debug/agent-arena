@@ -1,7 +1,7 @@
 # 设计：P5 大厅 + 棋谱回放
 
 > 状态：设计稿（2026-10-26）
-> 前置：[`session-handoff.md`](../session-handoff.md) §3.4、[`roadmap.md`](../roadmap.md) P5
+> 前置：[`roadmap.md`](../roadmap.md) P5
 > 本文回答**怎么做**；工作单见 [`handoff.md`](../phases/15-p5a-replay/handoff.md) / [`handoff.md`](../phases/16-p5b-lobby/handoff.md)
 >
 > **§2 的重放方案已用原型验证**（22 条检查全过，含围棋提子/ko/连续 pass）。
