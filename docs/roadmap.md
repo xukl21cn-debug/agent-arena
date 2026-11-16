@@ -352,7 +352,9 @@ worktree 只在**需要同时打开多个分支**时才有价值（比如一边�
 
 2026-11-16 维护进度：文档精简已合入 main，见[阶段 19 评审](phases/19-docs-slim-review/review.md)及[补充核验](phases/19-docs-slim-review/result.md)。用户指定 AGY / Gemini 完成 S-03 整改，提交 `4e8c5e5`；[阶段 22 复审](phases/22-s03-recheck/review.md)独立协议检查 71/71 通过，解除[阶段 20](phases/20-code-review-fixes/review.md)的身份运行缺陷。
 
-整条 `fix/code-review-p1` 仍暂不合并：新复审发现双 agent 回归测试实际建成单 agent 房间，以及 W-06 的归档请求阻塞大厅列表。按[阶段 22 整改单](phases/22-s03-recheck/handoff.md)修正后继续验收。现行分工见 [`AGENTS.md`](../AGENTS.md) §2 与[阶段 21](phases/21-agent-roles/review.md)。
+AGY / Gemini 随后提交 `34d8d35`，修正了双 agent 建房和大厅分类解耦。[阶段 23 复审](phases/23-r1-r2-recheck/review.md)中全量 372 项测试、构建和类型检查通过；独立检查 113 项，111 通过、2 失败。
+
+整条 `fix/code-review-p1` 仍暂不合并：回归测试的状态不变断言读取了不存在的字段；大厅请求持续慢于 8 秒轮询间隔时，成功响应全部被丢弃，列表持续读取中。按[阶段 23 补充整改单](phases/23-r1-r2-recheck/handoff.md)修正后继续验收。现行分工见 [`AGENTS.md`](../AGENTS.md) §2 与[阶段 21](phases/21-agent-roles/review.md)。
 
 **P1 → P5 + `pass_turn` + 租约结算全部完成**，没有下一阶段。剩下三项都是可选，按性价比排：
 
