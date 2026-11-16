@@ -72,6 +72,7 @@
 | 21 | 11-16 | Agent 分工调整 | GPT-6 Astra 统筹，其余 harness / 模型作为可调度工作 agent | [工作单](phases/21-agent-roles/handoff.md) · [文档检查](phases/21-agent-roles/review.md) |
 | 22 | 11-16 | S-03 复审与浏览器验收 | 身份运行修复通过；测试设置与 W-06 大厅加载仍需整改 | [工作单](phases/22-s03-recheck/handoff.md) · [评审](phases/22-s03-recheck/review.md) |
 | 23 | 11-16 | R1 / R2 整改复审 | 双 agent 设置与分类解耦通过；空断言和持续慢响应仍需整改 | [工作单](phases/23-r1-r2-recheck/handoff.md) · [评审](phases/23-r1-r2-recheck/review.md) |
+| 24 | 11-16 | 最终修复验收 | R3 / R4 通过，独立检查 120/120，可合入 main | [工作单](phases/24-final-fix-review/handoff.md) · [评审](phases/24-final-fix-review/review.md) |
 
 **每轮的文件名是固定的四种**：
 
@@ -87,9 +88,9 @@
 ## 4. 新增一轮工作怎么做
 
 ```powershell
-mkdir docs/phases/24-<主题>
-# 写 docs/phases/24-<主题>/handoff.md      ← 开工前
-# 实现完，写 docs/phases/24-<主题>/review.md
+mkdir docs/phases/25-<主题>
+# 写 docs/phases/25-<主题>/handoff.md      ← 开工前
+# 实现完，写 docs/phases/25-<主题>/review.md
 # 有实测再补 observation.md / result.md
 ```
 
