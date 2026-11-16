@@ -407,7 +407,10 @@ function clientName(session: McpSession): string | undefined {
 }
 
 /**
- * Mounts the MCP Streamable HTTP endpoint at POST/GET/DELETE /mcp.
+ * Mounts the games MCP Streamable HTTP endpoint at POST/GET/DELETE
+ * /game/mcp. The bare /mcp is retired and answers 410 with the new
+ * location, so a stale client config fails diagnosably instead of
+ * quietly talking to a route that no longer serves the protocol.
  * One McpServer + transport per session, all sharing the same RoomManager.
  */
 export function mountMcpHttp(
@@ -420,7 +423,7 @@ export function mountMcpHttp(
 
   const createMcpServer = (): McpServer => {
     const server = new McpServer(
-      { name: 'arena', version: '0.1.0' },
+      { name: 'arena-game', version: '0.1.0' },
       { instructions: SERVER_INSTRUCTIONS },
     );
     registerTools(server, api);
@@ -431,7 +434,7 @@ export function mountMcpHttp(
     res.status(400).json(jsonRpcError(-32000, message));
   };
 
-  app.post('/mcp', async (req: Request, res: Response) => {
+  const handlePost = async (req: Request, res: Response): Promise<void> => {
     try {
       const sessionId = sessionIdOf(req);
 
@@ -486,15 +489,15 @@ export function mountMcpHttp(
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
-      console.error('[mcp] POST /mcp failed', error);
+      console.error(`[mcp] POST ${req.path} failed`, error);
       if (!res.headersSent) {
         res.status(500).json(jsonRpcError(-32603, 'Internal server error'));
       }
     }
-  });
+  };
 
   // Optional server-initiated SSE stream for notifications.
-  app.get('/mcp', async (req: Request, res: Response) => {
+  const handleGet = async (req: Request, res: Response): Promise<void> => {
     const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
     if (!session) {
@@ -505,14 +508,14 @@ export function mountMcpHttp(
     try {
       await session.transport.handleRequest(req, res);
     } catch (error) {
-      console.error('[mcp] GET /mcp failed', error);
+      console.error(`[mcp] GET ${req.path} failed`, error);
       if (!res.headersSent) {
         res.status(500).json(jsonRpcError(-32603, 'Internal server error'));
       }
     }
-  });
+  };
 
-  app.delete('/mcp', async (req: Request, res: Response) => {
+  const handleDelete = async (req: Request, res: Response): Promise<void> => {
     const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
     if (!session) {
@@ -529,10 +532,26 @@ export function mountMcpHttp(
       // departed agent must stop reading as connected.
       manager.presenceSource?.detachSession(sessionId!);
     } catch (error) {
-      console.error('[mcp] DELETE /mcp failed', error);
+      console.error(`[mcp] DELETE ${req.path} failed`, error);
       if (!res.headersSent) {
         res.status(500).json(jsonRpcError(-32603, 'Internal server error'));
       }
     }
-  });
+  };
+
+  // The canonical path pairs with the chat domain's /chat/mcp.
+  app.post('/game/mcp', handlePost);
+  app.get('/game/mcp', handleGet);
+  app.delete('/game/mcp', handleDelete);
+
+  // The bare /mcp is retired (2026-11-16): point stale configs at the new
+  // location instead of leaving them to trip over a generic 404.
+  const retired = (_req: Request, res: Response): void => {
+    res
+      .status(410)
+      .json(jsonRpcError(-32000, 'The games MCP moved to /game/mcp'));
+  };
+  app.post('/mcp', retired);
+  app.get('/mcp', retired);
+  app.delete('/mcp', retired);
 }

@@ -77,14 +77,14 @@ pnpm duel --room duel2 --keep
 
 | 方式 | 配置 |
 |---|---|
-| Streamable HTTP | URL `http://127.0.0.1:3000/mcp` |
+| Streamable HTTP | 棋类 `http://127.0.0.1:3000/game/mcp` · 聊天 `http://127.0.0.1:3000/chat/mcp` |
 | stdio 桥接 | `node <项目目录>/server/dist/mcp/stdio.js` |
 
 stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的后端；可用 `ARENA_SERVER_URL` 指定后端地址（默认 `http://127.0.0.1:3000`）。后端未启动时工具会返回明确的连接错误。
 
-仓库根目录的 `.mcp.json` 已按 HTTP 方式配好项目级 MCP。**两个端点，工具双向不可见**——只下棋的 agent 永远看不到聊天工具，反之亦然。
+仓库根目录的 `.mcp.json` 是项目级 MCP 配置，随各客户端配置一起迁移：棋类改为 `arena-game` → `http://127.0.0.1:3000/game/mcp`，聊天加一条 `arena-chat` → `http://127.0.0.1:3000/chat/mcp`（旧 `/mcp` 已退役，返回 410 和新地址）。**两个端点，工具双向不可见**——只下棋的 agent 永远看不到聊天工具，反之亦然。
 
-棋类 `/mcp`（12 个）：
+棋类 `/game/mcp`（服务名 `arena-game`，12 个）：
 
 | 工具 | 作用 |
 |---|---|
@@ -101,7 +101,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `resign` | 认输 |
 | `say` | 对玩家说一句解说，网页实时展示 |
 
-聊天 `/chat/mcp`（5 个）：
+聊天 `/chat/mcp`（服务名 `arena-chat`，5 个）：
 
 | 工具 | 作用 |
 |---|---|
@@ -113,7 +113,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 
 对 Agent 直接说：
 
-> 用 arena 工具和我下一局五子棋。每步先用 say 评价我的落子，落子后再评论一下局势，输赢时给点反应。
+> 用 arena-game 工具和我下一局五子棋。每步先用 say 评价我的落子，落子后再评论一下局势，输赢时给点反应。
 
 ## 对局流程
 

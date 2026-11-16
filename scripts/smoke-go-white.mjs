@@ -17,7 +17,7 @@ class McpAgent {
   }
   async rpc(method, params, { notification = false } = {}) {
     const id = notification ? undefined : this.nextId++;
-    const res = await fetch(`${BASE}/mcp`, {
+    const res = await fetch(`${BASE}/game/mcp`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

@@ -305,7 +305,7 @@ export class HttpApi implements ArenaApi {
 
 export function createStdioServer(api: ArenaApi): McpServer {
   const server = new McpServer(
-    { name: 'arena', version: '0.1.0' },
+    { name: 'arena-game', version: '0.1.0' },
     { instructions: SERVER_INSTRUCTIONS },
   );
   registerTools(server, api);

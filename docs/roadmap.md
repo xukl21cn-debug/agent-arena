@@ -193,7 +193,7 @@ P3b 拆成四份工作单，**必须按顺序做**（后一份依赖前一份的
 
 | 问题 | 决定 |
 |---|---|
-| MCP 端点 | **独立 `/chat/mcp`**，与棋类 `/mcp` 分离 |
+| MCP 端点 | **独立 `/chat/mcp`**，与棋类 `/game/mcp` 分离 |
 | 默认策略 | **`relay` 接力** |
 | presence | **不复用** `PresenceRegistry`（它按 seat 索引，聊天成员无座位） |
 | WS | C1/C2 **不做**，用长轮询；统一留给 P5 |
@@ -355,6 +355,8 @@ worktree 只在**需要同时打开多个分支**时才有价值（比如一边�
 AGY / Gemini 随后提交 `34d8d35`，修正双 agent 建房和大厅分类解耦；[阶段 23](phases/23-r1-r2-recheck/review.md)发现的空断言与持续慢响应问题已在 `81ecc32` 修复。[阶段 24 最终复审](phases/24-final-fix-review/review.md)通过：全量 372 项测试、构建和类型检查通过，独立检查 120/120 通过。
 
 `fix/code-review-p1` 已按原计划合入本地 main，合并提交 `74f23fd`；合并后全量测试 372/372 通过，修复分支已删除，未推送远端，见[合并结果](phases/24-final-fix-review/result.md)。现行分工见 [`AGENTS.md`](../AGENTS.md) §2 与[阶段 21](phases/21-agent-roles/review.md)。剩余 P3 仍按[缺陷清单](code-review.md)跟踪。
+
+2026-11-17，`fix/mcp-naming` 的 `7c015b9` 已补齐 duel、启动日志和 README 的迁移遗漏；[阶段 26 复核](phases/26-mcp-naming-recheck/review.md)通过，独立检查 21/21、全量测试 373/373。可按流程合入本地 main。用户明确允许退役旧 `/mcp`，客户端配置（含 `.mcp.json`）由用户统一迁移；[阶段 25](phases/25-mcp-naming-review/review.md)保留原始失败证据。
 
 **P1 → P5 + `pass_turn` + 租约结算全部完成**，没有下一阶段。剩下三项都是可选，按性价比排：
 

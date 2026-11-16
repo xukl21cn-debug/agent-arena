@@ -121,7 +121,7 @@ describe('presence over the wire', () => {
     // Drive a real MCP session so the seat is bound to an actual session id.
     const client = new Client({ name: 'test-agent', version: '0.0.1' });
     const transport = new StreamableHTTPClientTransport(
-      new URL(`${baseUrl}/mcp`),
+      new URL(`${baseUrl}/game/mcp`),
     );
     await client.connect(transport);
 
@@ -165,7 +165,7 @@ describe('presence over the wire', () => {
   it('reports thinking for the agent seat while it is the agent turn', async () => {
     const client = new Client({ name: 'turn-agent', version: '0.0.1' });
     const transport = new StreamableHTTPClientTransport(
-      new URL(`${baseUrl}/mcp`),
+      new URL(`${baseUrl}/game/mcp`),
     );
     await client.connect(transport);
 

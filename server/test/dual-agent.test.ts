@@ -30,10 +30,10 @@ async function call(
   return payloadOf(await client.callTool({ name, arguments: args }));
 }
 
-async function connect(name: string): Promise<Client> {
+async function connect(name: string, endpoint = '/game/mcp'): Promise<Client> {
   const client = new Client({ name, version: '0.0.1' });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)),
+    new StreamableHTTPClientTransport(new URL(`${baseUrl}${endpoint}`)),
   );
   return client;
 }
@@ -136,6 +136,55 @@ describe('two agents in one room', () => {
       await black.close().catch(() => undefined);
       await white.close().catch(() => undefined);
     }
+  });
+
+  it('serves the games MCP at /game/mcp and retires the bare /mcp', async () => {
+    // The canonical endpoint pairs with the chat domain's /chat/mcp; the
+    // bare /mcp must refuse loudly so stale client configs surface fast.
+    const viaNewPath = await connect('new-path-agent', '/game/mcp');
+    try {
+      expect(viaNewPath.getServerVersion()?.name).toBe('arena-game');
+
+      const join = await call(viaNewPath, 'join_game', {
+        roomId: 'game-path-room',
+        name: 'path-agent',
+        seat: 'black',
+      });
+      expect(join.seat).toBe('black');
+      await call(viaNewPath, 'new_game', {
+        roomId: 'game-path-room',
+        agentColor: 'black',
+      });
+      const move = await call(viaNewPath, 'place_stone', {
+        roomId: 'game-path-room',
+        row: 3,
+        col: 3,
+      });
+      expect(move.ok).toBe(true);
+      expect(move.state.moveCount).toBe(1);
+    } finally {
+      await viaNewPath.close().catch(() => undefined);
+    }
+
+    const initializeOnRetiredPath = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'stale-config', version: '0.0.0' },
+        },
+      }),
+    });
+    expect(initializeOnRetiredPath.status).toBe(410);
+    const payload = (await initializeOnRetiredPath.json()) as {
+      error?: { message?: string };
+    };
+    expect(payload.error?.message).toContain('/game/mcp');
   });
 
   it('reconnects to the same participant when the name repeats', async () => {

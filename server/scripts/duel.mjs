@@ -115,7 +115,7 @@ function chooseMove(fullState, strategy) {
 
 async function connect(name) {
   const client = new Client({ name, version: '0.1.0' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`)));
+  await client.connect(new StreamableHTTPClientTransport(new URL(`${BASE}/game/mcp`)));
   return client;
 }
 
