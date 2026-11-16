@@ -1,6 +1,7 @@
 # agent-arena 全局代码审查报告 (Code Review)
 
 > 审查时间：2026-11-16  
+> 代码基线：`9958c6d`（业务代码与 `3320238` 相同）。下列行号指向该基线；修复进度以缺陷清单及后续阶段评审为准。  
 > 审查范围：`shared/`, `server/`, `web/`, 以及与 `docs/architecture/constraints.md` / `AGENTS.md` 的契约一致性  
 > 评审组织：Swarm 评审联合工作组（后端专家 @server-rev、前端专家 @web-rev、验证与文档负责人 @verifier）
 
@@ -17,8 +18,8 @@
 
 **重要结论**：现存 365 个自动化测试全部通过，但这**并不代表代码没有重大缺陷**（严格符合 `docs/reviewing.md` §1「不要只看测试，通过不等于正确」）。测试套件中缺少针对部分组合场景（如围棋房间成员退出、双 Agent 经 stdio 桥接查询身份、Web 端未开局房间的错误捕获与重连行为等）的用例覆盖。
 
-本次审查共发现并独立验证了 **23 项具体问题**，按严重程度分级如下：
-- **P0 严重 (Critical)**：0 项（无进程崩溃或远程未授权利用漏洞）
+本报告汇总 **23 项问题与改进建议**；源码分析、复现步骤与实际运行证据应分别看待，未附运行记录的项目不视为已经独立实测，按严重程度分级如下：
+- **P0 严重 (Critical)**：0 项（本次未列出 P0，不构成完整安全性保证）
 - **P1 高危 (High)**：7 项（逻辑崩溃、状态机脱节、状态竞争污染、协议假在线/假思考、死循环重连）
 - **P2 中危 (Medium)**：7 项（领域边界击穿、长轮询死循环忙等、IME 输入法中断、时区错位、内存泄漏）
 - **P3 低危 / 改进建议 (Low & Suggestions)**：9 项（边缘边界值、文案规范、移动端触摸事件、选择器避坑指导）
@@ -36,12 +37,12 @@
 | **W-01** | **P1** | `web/App` | `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」 | 界面核心状态自相矛盾（标题「轮到你了」vs 状态栏「AI 正在思考」） |
 | **W-02** | **P1** | `web/store` | 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏 | 访问不存在/非法聊天室时前端死锁在重连中 |
 | **W-03** | **P1** | `web/store` | 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；乱序状态合并清空当前局解说 | 访问新房间死循环重连；解说记录被异常抹除 |
-| **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界破坏，聊天室报 500 而非 400 |
+| **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界破坏，聊天 MCP 错误码退化为 INTERNAL_ERROR |
 | **S-06** | **P2** | `server/chat` | `chatHint` 在暂停房间提示「继续 wait_for_messages」，但 `hasWakeup` 立即返回 | 导致 Agent 陷入 0ms 极速轮询死循环 |
 | **S-07** | **P2** | `server/mcp` | `SessionBindings` 在会话关闭/销毁时未执行 `clear` | MCP 长连接生命周期产生内存泄漏 |
 | **W-04** | **P2** | `web/chat` | `ChatComposer` 缺少中文输入法 `isComposing` 判断 | 中文拼音回车时误发送半截消息或误选点名候选人 |
 | **W-05** | **P2** | `web/chat` | 聊天时间戳与复盘页使用 UTC `slice(11, 16)`，与解说面板本地时间存在 8 小时时差 | 中国时区下界面出现反直觉时间跳变 |
-| **W-06** | **P2** | `web/lobby` | `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合 | 离开页面后控制台报错；聊天接口异常拖垮游戏大厅 |
+| **W-06** | **P2** | `web/lobby` | `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合 | 卸载后仍尝试更新状态；单类接口失败阻止另一类列表更新 |
 | **W-07** | **P2** | `web/chat` | 聊天室暂停时 Web 界面过度禁用输入框，主持人无法发话 | 违反领域规则「暂停时人类可随时发言插话」 |
 | **S-08** | **P3** | `server/chat` | `ChatRoom.transcript` 在 `limit: 0` 时因 JS `-0` 机制返回全部历史 | 参数边界异常行为 |
 | **S-09** | **P3** | `server/rules` | `resolveRules` 校验失败抛出原生 `Error` 而非 `RoomError` | 规则不支持时报 500 而非 400 `UNSUPPORTED_RULE` |
@@ -58,7 +59,7 @@
 ## 3. P1 高危问题深度剖析与修复建议
 
 ### [S-01] `GameRoom.leave()` 在围棋房间中调用触发 `WRONG_GAME` 崩溃
-- **文件与行号**：[`server/src/rooms/room.ts:397-405`](file:///E:/code/fun/agent-arena/server/src/rooms/room.ts#L397-L405)
+- **文件与行号**：[`server/src/rooms/room.ts:397-405`](../server/src/rooms/room.ts#L397-L405)
 - **根本原因**：
   在 `leave(participantId: string)` 中，当退出的参与者持有座位时，代码无条件调用了：
   ```ts
@@ -94,7 +95,7 @@
 ---
 
 ### [S-02] `GameRoom.join()` 换座/重连时未清理旧席位，导致 participantId 幽灵占双座
-- **文件与行号**：[`server/src/rooms/room.ts:336-340`](file:///E:/code/fun/agent-arena/server/src/rooms/room.ts#L336-L340), [`server/src/rooms/participant-roster.ts:144-152`](file:///E:/code/fun/agent-arena/server/src/rooms/participant-roster.ts#L144-L152)
+- **文件与行号**：[`server/src/rooms/room.ts:336-340`](../server/src/rooms/room.ts#L336-L340), [`server/src/rooms/participant-roster.ts:144-152`](../server/src/rooms/participant-roster.ts#L144-L152)
 - **根本原因**：
   在 `ParticipantRoster.join` 中，如果同名用户以不同席位（例如原先是 `black`，现在请求 `white`）重新加入，`assignSeat` 正确地将 `existing.seat` 更新为 `white`。
   但在 `GameRoom.join` 中：
@@ -130,7 +131,7 @@
 ---
 
 ### [S-03] stdio 桥接模式下双 Agent 对局 `newGame`/`getState` 恒返回 `yourColor: 'black'`
-- **文件与行号**：[`server/src/mcp/stdio.ts:115, 126`](file:///E:/code/fun/agent-arena/server/src/mcp/stdio.ts#L115), [`server/src/mcp/api.ts:105-113`](file:///E:/code/fun/agent-arena/server/src/mcp/api.ts#L105-L113)
+- **文件与行号**：[`server/src/mcp/stdio.ts:115, 126`](../server/src/mcp/stdio.ts#L115), [`server/src/mcp/api.ts:105-113`](../server/src/mcp/api.ts#L105-L113)
 - **根本原因**：
   在 `server/src/mcp/api.ts` 中定义的辅助函数：
   ```ts
@@ -164,7 +165,7 @@
 ---
 
 ### [S-04] `GameRoom.getPhase()` 与 `summarize()` 遗漏围棋 `scoring` 状态，回退为 `lobby`/`waiting`
-- **文件与行号**：[`server/src/rooms/room.ts:228-239`](file:///E:/code/fun/agent-arena/server/src/rooms/room.ts#L228-L239), [`server/src/rooms/repository.ts:127-133`](file:///E:/code/fun/agent-arena/server/src/rooms/repository.ts#L127-L133)
+- **文件与行号**：[`server/src/rooms/room.ts:228-239`](../server/src/rooms/room.ts#L228-L239), [`server/src/rooms/repository.ts:127-133`](../server/src/rooms/repository.ts#L127-L133)
 - **根本原因**：
   在 `GameRoom.getPhase()` 中：
   ```ts
@@ -207,7 +208,7 @@
 ---
 
 ### [W-01] `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」
-- **文件与行号**：[`web/src/App.tsx:133-136`](file:///E:/code/fun/agent-arena/web/src/App.tsx#L133-L136)
+- **文件与行号**：[`web/src/App.tsx:133-136`](../web/src/App.tsx#L133-L136)
 - **根本原因**：
   在 `App.tsx` 的 `GamePage` 组件中：
   ```ts
@@ -232,7 +233,7 @@
 ---
 
 ### [W-02] 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏
-- **文件与行号**：[`web/src/store/chat.ts:207-209, 212-229`](file:///E:/code/fun/agent-arena/web/src/store/chat.ts#L207-L209), [`server/src/http/ws.ts:122-127`](file:///E:/code/fun/agent-arena/server/src/http/ws.ts#L122-L127)
+- **文件与行号**：[`web/src/store/chat.ts:207-209, 212-229`](../web/src/store/chat.ts#L207-L209), [`server/src/http/ws.ts:122-127`](../server/src/http/ws.ts#L122-L127)
 - **根本原因**：
   当用户通过 URL 进入一个不存在的聊天室时，前端请求 `/ws?roomId=bad&kind=chat`。
   服务端在 `server/src/http/ws.ts:122` 查不到房间，发送错误帧：
@@ -261,7 +262,7 @@
 ---
 
 ### [W-03] 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；`applyState` 抹除解说记录
-- **文件与行号**：[`web/src/store/room.ts:169-178, 437-444, 450-460`](file:///E:/code/fun/agent-arena/web/src/store/room.ts#L169-L178)
+- **文件与行号**：[`web/src/store/room.ts:169-178, 437-444, 450-460`](../web/src/store/room.ts#L169-L178)
 - **根本原因**：
   - **问题 A**：大厅提示语引导用户「打开 `?room=<房间名>` 即可开一间」。但打开未创建的房间名时，WS 握手被服务端返回 1008 `ROOM_NOT_FOUND`。前端 `store/room.ts` 收到 `error` 帧仅执行了 `console.warn`，未把错误存入 store；在 `onclose` 中无条件执行 `scheduleReconnect()`，导致控制台每隔几秒刷新一次重连失败，界面一直卡在「重连中」。
   - **问题 B**：在 `applyState(state)` 中：
@@ -284,7 +285,7 @@
 ## 4. P2 中危问题深度剖析与修复建议
 
 ### [S-05] `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError`
-- **文件与行号**：[`server/src/chat/manager.ts:11, 52, 76`](file:///E:/code/fun/agent-arena/server/src/chat/manager.ts#L11), [`server/src/chat/mcp.ts:101-114`](file:///E:/code/fun/agent-arena/server/src/chat/mcp.ts#L101-L114)
+- **文件与行号**：[`server/src/chat/manager.ts:11, 52, 76`](../server/src/chat/manager.ts#L11), [`server/src/chat/mcp.ts:101-114`](../server/src/chat/mcp.ts#L101-L114)
 - **根本原因**：
   `ChatManager` 引用了 `../rooms/room-manager.js` 的 `assertRoomId`。该断言在校验失败时抛出棋类领域的 `RoomError('INVALID_ROOM_ID')`。
   但在 `/chat/mcp` 端点（`server/src/chat/mcp.ts`）的 `chatErrorResult` 异常处理器中，仅识别 `ChatError`：
@@ -294,14 +295,14 @@
   return { isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'INTERNAL_ERROR', message }) }] };
   ```
 - **影响**：
-  聊天客户端传入不合法的 roomId 时，API 返回 500 `INTERNAL_ERROR` 而非 400 `INVALID_ROOM_ID`。严重破坏了 AGENTS.md §4.2 规定的「聊天室为独立领域对象，不依赖 rooms/」的设计约束。
+  聊天 MCP 客户端传入不合法的 roomId 时，工具结果返回 `INTERNAL_ERROR` 而非 `INVALID_ROOM_ID`。REST 路径则由后续 `apiErrorHandler` 接住 `RoomError`，仍返回 HTTP 400；不能将 MCP 工具错误等同于 HTTP 500。严重破坏了 AGENTS.md §4.2 规定的「聊天室为独立领域对象，不依赖 rooms/」的设计约束。
 - **推荐修复**：
   在 `server/src/chat/model.ts` 或 `manager.ts` 内使用 `@arena/shared` 的 `ROOM_ID_PATTERN` 自行校验，抛出 `ChatError('INVALID_ROOM_ID', ...)`。
 
 ---
 
 ### [S-06] `chatHint` 在暂停房间提示「继续 wait_for_messages」，但 `hasWakeup` 立即返回
-- **文件与行号**：[`server/src/chat/model.ts:180`](file:///E:/code/fun/agent-arena/server/src/chat/model.ts#L180), [`server/src/chat/chat-room.ts:473`](file:///E:/code/fun/agent-arena/server/src/chat/chat-room.ts#L473)
+- **文件与行号**：[`server/src/chat/model.ts:180`](../server/src/chat/model.ts#L180), [`server/src/chat/chat-room.ts:473`](../server/src/chat/chat-room.ts#L473)
 - **根本原因**：
   在 `chat-room.ts` 的 `hasWakeup` 中：
   ```ts
@@ -329,7 +330,7 @@
 ---
 
 ### [S-07] `SessionBindings` 在会话关闭/销毁时未执行 `clear`
-- **文件与行号**：[`server/src/mcp/http.ts:472-479, 520-524`](file:///E:/code/fun/agent-arena/server/src/mcp/http.ts#L472-L479), [`server/src/chat/mcp.ts:189-195, 230-234`](file:///E:/code/fun/agent-arena/server/src/chat/mcp.ts#L189-L195)
+- **文件与行号**：[`server/src/mcp/http.ts:472-479, 520-524`](../server/src/mcp/http.ts#L472-L479), [`server/src/chat/mcp.ts:189-195, 230-234`](../server/src/chat/mcp.ts#L189-L195)
 - **根本原因**：
   `server/src/core/session-context.ts` 中专门实现了 `SessionBindings.clear(sessionId)` 方法用于释放会话关联的席位映射。
   但在 `server/src/mcp/http.ts` 与 `server/src/chat/mcp.ts` 的 `transport.onclose` 以及 `DELETE /mcp` / `DELETE /chat/mcp` 回调中，仅删除了 local `sessions` Map，从未调用 `bindings.clear(sessionId)`。
@@ -344,7 +345,7 @@
 ---
 
 ### [W-04] `ChatComposer` 缺少中文输入法 `isComposing` 判断
-- **文件与行号**：[`web/src/components/chat/ChatComposer.tsx:96-129`](file:///E:/code/fun/agent-arena/web/src/components/chat/ChatComposer.tsx#L96-L129)
+- **文件与行号**：[`web/src/components/chat/ChatComposer.tsx:96-129`](../web/src/components/chat/ChatComposer.tsx#L96-L129)
 - **根本原因**：
   中文拼音输入法输入英文字母并敲回车确认上屏汉字时，浏览器会派发 `keydown (Enter)` 事件。
   `ChatComposer` 的 `handleKeyDown` 中直接捕获了 `Enter`：
@@ -361,7 +362,7 @@
 ---
 
 ### [W-05] 聊天时间戳与复盘页使用 UTC `slice(11, 16)`，与解说面板本地时间存在 8 小时时差
-- **文件与行号**：[`web/src/components/chat/ChatTimeline.tsx:16`](file:///E:/code/fun/agent-arena/web/src/components/chat/ChatTimeline.tsx#L16), [`web/src/components/replay/ReplayPage.tsx:9`](file:///E:/code/fun/agent-arena/web/src/components/replay/ReplayPage.tsx#L9), [`web/src/labels.ts:38`](file:///E:/code/fun/agent-arena/web/src/labels.ts#L38)
+- **文件与行号**：[`web/src/components/chat/ChatTimeline.tsx:16`](../web/src/components/chat/ChatTimeline.tsx#L16), [`web/src/components/replay/ReplayPage.tsx:9`](../web/src/components/replay/ReplayPage.tsx#L9), [`web/src/labels.ts:38`](../web/src/labels.ts#L38)
 - **根本原因**：
   `ChatTimeline` 和 `ReplayPage` 的时间截取函数为：
   ```ts
@@ -379,10 +380,10 @@
 ---
 
 ### [W-06] `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合
-- **文件与行号**：[`web/src/components/lobby/LobbyPage.tsx:156-177`](file:///E:/code/fun/agent-arena/web/src/components/lobby/LobbyPage.tsx#L156-L177)
+- **文件与行号**：[`web/src/components/lobby/LobbyPage.tsx:156-177`](../web/src/components/lobby/LobbyPage.tsx#L156-L177)
 - **根本原因**：
-  1. `LobbyPage` 8 秒一次的 `load()` 异步方法内部未持有 `isMounted` 或 `AbortController` 守卫，离开大厅页面后若网络请求刚好返回，React 会抛出在已卸载组件上触发 state 更新的警告；
-  2. `Promise.all([api.listRooms(), api.listChatRooms()])` 将棋类房间和聊天房间强行绑定。只要聊天服务路由或特定持久化文件出现异常返回 500，整个大厅直接崩溃展示错误横幅，导致健康的五子棋和围棋对局也全部无法加载。
+  1. `LobbyPage` 8 秒一次的 `load()` 异步方法内部未持有 `isMounted` 或 `AbortController` 守卫，离开大厅页面后若网络请求刚好返回，仍会尝试更新状态；本项目 React 19 下不能据此断言控制台会出现卸载更新警告；
+  2. `Promise.all([api.listRooms(), api.listChatRooms()])` 将棋类房间和聊天房间强行绑定。任一列表请求失败都会进入同一个 catch，另一类成功结果也不会写入状态。首次加载会缺失健康列表，后续轮询则保留旧列表；不是整个页面崩溃。
 - **推荐修复**：
   1. 在 `useEffect` 闭包内设置 `let cancelled = false;` 守卫；
   2. 采用 `Promise.allSettled` 或独立请求解耦两者故障域。
@@ -390,7 +391,7 @@
 ---
 
 ### [W-07] 聊天室暂停时 Web 界面过度禁用输入框，主持人无法发话
-- **文件与行号**：[`web/src/components/chat/ChatRoomPage.tsx:200-209`](file:///E:/code/fun/agent-arena/web/src/components/chat/ChatRoomPage.tsx#L200-L209)
+- **文件与行号**：[`web/src/components/chat/ChatRoomPage.tsx:200-209`](../web/src/components/chat/ChatRoomPage.tsx#L200-L209)
 - **根本原因**：
   在后端领域设计（`server/src/chat/model.ts:13` 及 `chat-room.ts:193`）中明确规定：
   `/** Host paused the room: agents may not speak, humans still may. */`
@@ -451,7 +452,7 @@
 
 ### 6.1 `shared/` 契约一致性复核
 - **类型只增不减**：`shared/src/game.ts` 中 `GameState` 与 `GoState` 的联合区隔规范，`GameStatus` 保持 `idle/playing/finished` 365 项测试契约，围棋专用状态 `GoStatus` 独立分离，完全符合 `docs/architecture/constraints.md`。
-- **缺失共享方法**：`server/src/core/go.ts` 与 `web/src/scoring.ts` 存在两份完全镜像实现的 `scoreBoard` 面积计算逻辑。目前虽逻辑一致，但未来算法演进时存在漂移风险。建议后续重构阶段将纯算法函数沉淀至 `@arena/shared`。
+- **缺失共享方法**：`server/src/core/go.ts` 的 `scoreBoard` 与 `web/src/scoring.ts` 的 `previewScore` 分别提供权威终局分和显示预览。分开实现是已有[设计取舍](architecture/decisions.md)，不作为本轮缺陷；未来如要共享算法，应另开工作单并验证预览与权威结果的契约。
 
 ### 6.2 自动化测试与独立审查选择器陷阱（摘自实战踩坑）
 在编写针对 Web 端落子与盘面的独立测试脚本时，必须注意以下两处 DOM 选择器陷阱：

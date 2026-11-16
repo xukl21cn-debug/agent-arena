@@ -66,6 +66,7 @@
 | 16 | 10-27 | **P5B** | 大厅：三类房间统一入口 | [工作单](phases/16-p5b-lobby/handoff.md) · [评审](phases/16-p5b-lobby/review.md) |
 | 17 | 10-27 | `pass_turn` | agent 主动让出轮次 | [观察](phases/17-chat-pass-turn/observation.md) · [工作单](phases/17-chat-pass-turn/handoff.md) · [评审](phases/17-chat-pass-turn/review.md) |
 | 18 | 10-27 | 租约结算 | 定时结算死轮次，房间不再卡死 | [工作单](phases/18-chat-lease/handoff.md) · [评审](phases/18-chat-lease/review.md) |
+| 19 | 11-16 | 文档精简评审 | AGENTS.md 迁移完整性、审查报告修订与合并 | [工作单](phases/19-docs-slim-review/handoff.md) · [评审](phases/19-docs-slim-review/review.md) |
 
 **每轮的文件名是固定的四种**：
 
@@ -81,9 +82,9 @@
 ## 4. 新增一轮工作怎么做
 
 ```powershell
-mkdir docs/phases/19-<主题>
-# 写 docs/phases/19-<主题>/handoff.md      ← 开工前
-# 实现完，写 docs/phases/19-<主题>/review.md
+mkdir docs/phases/20-<主题>
+# 写 docs/phases/20-<主题>/handoff.md      ← 开工前
+# 实现完，写 docs/phases/20-<主题>/review.md
 # 有实测再补 observation.md / result.md
 ```
 
