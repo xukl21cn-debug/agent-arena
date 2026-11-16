@@ -108,6 +108,7 @@ export class HttpApi implements ArenaApi {
       if (state.seats.white.id === this.participantId) {
         return 'white';
       }
+      return null;
     }
     return agentColorOf(state);
   }

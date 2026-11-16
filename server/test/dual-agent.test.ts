@@ -409,27 +409,71 @@ describe('two agents in one room', () => {
     expect(resume.status).toBe(400);
   });
 
-  it('S-03: HttpApi (stdio) resolves yourColor correctly for white agent in dual-agent room', async () => {
+  it('S-03: HttpApi (stdio) resolves yourColor correctly and never misidentifies unseated agents as black', async () => {
     const { HttpApi } = await import('../src/mcp/stdio');
-    const api = new HttpApi(baseUrl);
-    const room = 'dual-stdio-test';
+    const apiWhite = new HttpApi(baseUrl);
+    const apiSpectator = new HttpApi(baseUrl);
+    const apiThird = new HttpApi(baseUrl);
+    const apiLegacy = new HttpApi(baseUrl);
+    const room = 'dual-stdio-test-s03';
 
     // Room starts with dual agents
-    await call(await connect('setup-stdio'), 'new_game', {
+    await call(await connect('setup-stdio-s03'), 'new_game', {
       roomId: room,
       black: { kind: 'agent' },
       white: { kind: 'agent' },
     });
 
-    // Join as white agent
-    await api.joinGame(room, {
+    // 1. Join as white agent
+    await apiWhite.joinGame(room, {
       name: 'AgentWhite',
       seat: 'white',
       kind: 'agent',
     });
+    const whiteState = await apiWhite.getState(room);
+    expect(whiteState.yourColor).toBe('white');
 
-    const stateResp = await api.getState(room);
-    expect(stateResp.yourColor).toBe('white');
+    // 2. Spectator joins without seat
+    await apiSpectator.joinGame(room, {
+      name: 'AgentSpectator',
+      kind: 'agent',
+    });
+    const spectatorState = await apiSpectator.getState(room);
+    // Must return null, NOT black
+    expect(spectatorState.yourColor).toBeNull();
+
+    // 3. Third agent joins and takes white seat (evicting AgentWhite)
+    await apiThird.joinGame(room, {
+      name: 'AgentThird',
+      seat: 'white',
+      kind: 'agent',
+    });
+    const thirdState = await apiThird.getState(room);
+    expect(thirdState.yourColor).toBe('white');
+
+    // Evicted AgentWhite now has seat = null in roster
+    const evictedState = await apiWhite.getState(room);
+    // Must return null, NOT black
+    expect(evictedState.yourColor).toBeNull();
+
+    // Evicted agent attempting to place stone fails with NOT_SEATED
+    await expect(apiWhite.placeStone(room, 0, 0)).rejects.toMatchObject({
+      code: 'NOT_SEATED',
+    });
+
+    // 4. Legacy unjoined client falls back to agentColorOf
+    // In this room, white is the agent seat (held by AgentThird)
+    const legacyState = await apiLegacy.getState(room);
+    expect(legacyState.yourColor).toBe('white');
+
+    // In a room where black is the agent seat, legacy client sees black
+    const blackRoom = 'dual-stdio-legacy-black';
+    await call(await connect('setup-stdio-legacy-black'), 'new_game', {
+      roomId: blackRoom,
+      agentColor: 'black',
+    });
+    const legacyBlackState = await apiLegacy.getState(blackRoom);
+    expect(legacyBlackState.yourColor).toBe('black');
   });
 
   it('S-07: InProcessApi.clearSession drops session bindings cleanly', async () => {
