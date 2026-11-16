@@ -14,7 +14,13 @@ export function authorColor(name: string): string {
 }
 
 function clockOf(at: string): string {
-  return at.slice(11, 16);
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) {
+    return at.slice(11, 16);
+  }
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 interface TimelineProps {

@@ -410,7 +410,7 @@ GET  /api/rooms/:id/wait-for-turn  ?actor=&timeoutMs=
 | M4 | Web：开局选择 + GoBoard + pass/scoring 交互 | 完整人机对局一盘（含 pass、标死子、数子） |
 | M5 | 可选：5/7/13 路、superko、字母坐标显示 | 不影响 v1 契约 |
 
-总验收：用户与 GLM 通过 web + MCP 完整下一盘 9 路，终局以面积法出分；
+总验收：用户与承担联调的工作 agent 通过 web + MCP 完整下一盘 9 路，终局以面积法出分；
 五子棋现有行为不回归；Go 视图热路径 ≤4000 字符。
 
 ## 9. 待定夺（评审结论）
@@ -429,10 +429,11 @@ GET  /api/rooms/:id/wait-for-turn  ?actor=&timeoutMs=
    `GameState` 直接改成“所有游戏”的 union 再全仓库修。
 6. **Web 排期**：M4 完整做可以；M2 必须先做类型收窄，否则 `pnpm build` 过不了。
 
-## 10. 分工
+## 10. 分工（现行安排见 AGENTS.md）
 
-- **GLM 实现**：M0–M4；先做 M0 类型契约，再写 M1 引擎；每个里程碑单独 commit。
-- **DeepSeek 评审**：M0 类型设计、M1 提子/劫/数子、M3 scoring wait、G6/G11 测试；
-  评审意见直接改本文件或提交 PR 评论。
+原提案采用 GLM 实现、DeepSeek 评审；作者与历史阶段记录保留。2026-11-16 起，后续维护按 [`AGENTS.md`](../../AGENTS.md) §2–3 的现行分工执行，不再固定绑定上述模型。
+
+- **统筹 agent**：负责类型契约、规则与 scoring 等跨模块设计及高难度评审，明确里程碑边界和验收标准。
+- **工作 agent**：按工作单实现或修复、补测试、回报证据；先确认类型契约，再改引擎与集成，每个里程碑单独 commit。
 - 本文档通过后，把 §3–§7 的契约增补进 `overview.md` 作为围棋规范章节；
   不要把本文件直接当实现文档，规则细节以增补后的 `overview.md` 为准。

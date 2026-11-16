@@ -190,6 +190,7 @@ export function mountChatMcp(
         const closedId = transport.sessionId;
         if (closedId) {
           sessions.delete(closedId);
+          bindings.clear(closedId);
         }
       };
 
@@ -230,6 +231,7 @@ export function mountChatMcp(
     try {
       await session.transport.handleRequest(req, res);
       sessions.delete(sessionId!);
+      bindings.clear(sessionId!);
     } catch (error) {
       console.error('[chat-mcp] DELETE /chat/mcp failed', error);
       if (!res.headersSent) {

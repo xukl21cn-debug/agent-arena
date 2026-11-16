@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ArchiveSummary, RoomSummary } from '@arena/shared';
 import { api, errorMessage, type ChatRoomSummaryDto } from '../../api';
 import { endLabel, timeAgo } from '../../labels';
@@ -124,16 +124,38 @@ interface GroupProps {
   note: string;
   emptyHint: string;
   cards: CardProps[];
+  loading?: boolean;
+  error?: string | null;
 }
 
-function Group({ title, note, emptyHint, cards }: GroupProps) {
+function Group({
+  title,
+  note,
+  emptyHint,
+  cards,
+  loading = false,
+  error = null,
+}: GroupProps) {
+  const isInitialLoading = loading && cards.length === 0;
+  const isFailed = error !== null && cards.length === 0;
+
   return (
     <section className="lobby-group">
       <div className="group-head">
         <h2 className="group-title">{title}</h2>
-        <span className="group-note">{note}</span>
+        <span className="group-note">
+          {isInitialLoading
+            ? '读取中…'
+            : isFailed
+              ? '加载失败'
+              : note}
+        </span>
       </div>
-      {cards.length === 0 ? (
+      {isFailed ? (
+        <p className="lobby-empty">{error}</p>
+      ) : isInitialLoading ? (
+        <p className="lobby-empty">读取中…</p>
+      ) : cards.length === 0 ? (
         <p className="lobby-empty">{emptyHint}</p>
       ) : (
         <div className="lobby-grid">
@@ -146,34 +168,107 @@ function Group({ title, note, emptyHint, cards }: GroupProps) {
   );
 }
 
-export function LobbyPage() {
-  const [games, setGames] = useState<RoomSummary[] | null>(null);
-  const [chats, setChats] = useState<ChatRoomSummaryDto[] | null>(null);
-  const [archives, setArchives] = useState<ArchiveSummary[] | null>(null);
+/**
+ * The archive surface answers "absent or failing" with null; the lobby words
+ * that as its own category error instead of an empty list, so it throws here
+ * and all three lists share one loader.
+ */
+async function fetchArchives(): Promise<ArchiveSummary[]> {
+  const list = await api.listArchives();
+  if (list === null) {
+    throw new Error('无法读取历史对局。');
+  }
+  return list;
+}
+
+/**
+ * One lobby list: data, loading, error, and its own race control.
+ *
+ * A response may apply only when it is newer than the last applied OUTCOME,
+ * not merely the newest request sent. When the API is slower than the poll
+ * interval, "newest request" invalidates every response on arrival and the
+ * list can never leave the loading state; comparing against applied outcomes
+ * lets slow responses land while a late older snapshot still cannot
+ * overwrite newer data. Failures count as outcomes too, so a fast 503 keeps
+ * a slower success behind it from silently clearing the error.
+ */
+function useLobbyList<T>(fetchList: () => Promise<T[]>) {
+  const [data, setData] = useState<T[] | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAllHistory, setShowAllHistory] = useState(false);
+
+  const seqRef = useRef(0);
+  const appliedRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const load = useCallback(async (): Promise<void> => {
+    const seq = ++seqRef.current;
+    setLoading(true);
     try {
-      const [roomList, chatList] = await Promise.all([
-        api.listRooms(),
-        api.listChatRooms(),
-      ]);
-      setGames(roomList);
-      setChats(chatList);
+      const list = await fetchList();
+      if (!mountedRef.current || seq <= appliedRef.current) {
+        return;
+      }
+      appliedRef.current = seq;
+      setData(list);
       setError(null);
+      setLoading(false);
     } catch (caught) {
+      if (!mountedRef.current || seq <= appliedRef.current) {
+        return;
+      }
+      appliedRef.current = seq;
       setError(errorMessage(caught));
+      setLoading(false);
     }
-    // Absent or failing archive surface degrades to null: the rest of the
-    // lobby stays standing.
-    setArchives(await api.listArchives());
-  }, []);
+  }, [fetchList]);
 
   useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), POLL_MS);
-    return () => clearInterval(timer);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  return { data, loading, error, load };
+}
+
+export function LobbyPage() {
+  const {
+    data: games,
+    loading: gamesLoading,
+    error: gamesError,
+    load: loadRooms,
+  } = useLobbyList(api.listRooms);
+
+  const {
+    data: chats,
+    loading: chatsLoading,
+    error: chatsError,
+    load: loadChats,
+  } = useLobbyList(api.listChatRooms);
+
+  const {
+    data: archives,
+    loading: archivesLoading,
+    error: archivesError,
+    load: loadArchives,
+  } = useLobbyList(fetchArchives);
+
+  const [showAllHistory, setShowAllHistory] = useState(false);
+
+  const load = useCallback((): void => {
+    void loadRooms();
+    void loadChats();
+    void loadArchives();
+  }, [loadRooms, loadChats, loadArchives]);
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(() => load(), POLL_MS);
+    return () => {
+      clearInterval(timer);
+    };
   }, [load]);
 
   const byRecent = (list: RoomSummary[], game: 'gomoku' | 'go') =>
@@ -199,7 +294,12 @@ export function LobbyPage() {
     : history.slice(0, HISTORY_LIMIT);
   const hiddenHistory = history.length - visibleHistory.length;
 
-  const loading = games === null || chats === null;
+  const activeErrors = [
+    gamesError ? `棋类房间：${gamesError}` : null,
+    chatsError ? `聊天房间：${chatsError}` : null,
+    archivesError ? `历史对局：${archivesError}` : null,
+  ].filter(Boolean) as string[];
+  const topError = activeErrors.length > 0 ? activeErrors.join('；') : null;
 
   return (
     <div className="app">
@@ -214,13 +314,13 @@ export function LobbyPage() {
         </div>
       </header>
 
-      {error !== null ? (
+      {topError !== null ? (
         <div className="error-bar" role="alert">
-          <span>{error}</span>
+          <span>{topError}</span>
           <button
             type="button"
             className="error-dismiss"
-            onClick={() => void load()}
+            onClick={() => load()}
           >
             重试
           </button>
@@ -233,28 +333,42 @@ export function LobbyPage() {
           note={`${gomoku.length} 间`}
           emptyHint="暂无房间。打开 ?room=<房间名> 即可开一间。"
           cards={gomoku}
+          loading={gamesLoading}
+          error={gamesError}
         />
         <Group
           title="围棋"
           note={`${go.length} 间`}
           emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
           cards={go}
+          loading={gamesLoading}
+          error={gamesError}
         />
         <Group
           title="聊天"
           note={`${chatCards.length} 间`}
           emptyHint="暂无房间。POST /api/chat/rooms 或 MCP 建房。"
           cards={chatCards}
+          loading={chatsLoading}
+          error={chatsError}
         />
 
         <section className="lobby-group lobby-history">
           <div className="group-head">
             <h2 className="group-title">历史对局</h2>
             <span className="group-note">
-              {loading ? '读取中…' : `${history.length} 局`}
+              {archivesLoading && archives === null
+                ? '读取中…'
+                : archivesError !== null && archives === null
+                  ? '加载失败'
+                  : `${history.length} 局`}
             </span>
           </div>
-          {history.length === 0 ? (
+          {archivesError !== null && archives === null ? (
+            <p className="lobby-empty">{archivesError}</p>
+          ) : archivesLoading && archives === null ? (
+            <p className="lobby-empty">读取中…</p>
+          ) : history.length === 0 ? (
             <p className="lobby-empty">
               暂无历史对局。一局下完再开新局，旧局会来到这里。
             </p>

@@ -132,7 +132,7 @@ function GamePage({ roomId }: { roomId: string }) {
   // never connected must not read as thinking, or the player waits for nobody.
   const opponentState = opponentStatus(opponent, {
     playing: state?.status === 'playing',
-    isOpponentTurn: trackedSeat !== null && state?.status === 'playing',
+    isOpponentTurn: state?.status === 'playing' && state.turn === trackedSeat,
   });
 
   const visible = useMemo(

@@ -59,6 +59,10 @@ export class InProcessApi implements ArenaApi {
     private readonly bindings: SessionBindings = new SessionBindings(),
   ) {}
 
+  clearSession(sessionId: string): void {
+    this.bindings.clear(sessionId);
+  }
+
   /**
    * The participant this call is acting as, if this session has joined.
    *
@@ -473,6 +477,7 @@ export function mountMcpHttp(
         const closedId = transport.sessionId;
         if (closedId) {
           sessions.delete(closedId);
+          api.clearSession(closedId);
           // A closed session is a confirmed disconnect: forget it everywhere.
           manager.presenceSource?.detachSession(closedId);
         }
@@ -518,6 +523,7 @@ export function mountMcpHttp(
     try {
       await session.transport.handleRequest(req, res);
       sessions.delete(sessionId!);
+      api.clearSession(sessionId!);
       // A DELETE is a client saying goodbye. The transport's own close hook is
       // not guaranteed to fire on every path, so detach here explicitly — a
       // departed agent must stop reading as connected.

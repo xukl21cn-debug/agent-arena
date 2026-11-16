@@ -302,6 +302,7 @@ export type ServerMessage =
       type: 'error';
       code: string;
       message: string;
+      kind?: 'chat';
     }
   | {
       type: 'pong';

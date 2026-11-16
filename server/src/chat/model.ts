@@ -177,7 +177,7 @@ export function chatHint(snapshot: ChatRoomSnapshot, yourTurn: boolean): string 
     return '房间已关闭';
   }
   if (snapshot.phase === 'paused') {
-    return '房间已暂停，等主持人恢复；继续 wait_for_messages';
+    return '房间已暂停，等主持人恢复';
   }
   if (yourTurn) {
     return '轮到你了，用 send_message 发言';

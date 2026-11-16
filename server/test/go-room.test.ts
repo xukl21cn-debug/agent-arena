@@ -316,3 +316,45 @@ describe('G8: the Go agent view stays within its serialization budget', () => {
     expect(view.scorePreview).toBeNull();
   });
 });
+
+describe('P1 code review fixes regression: S-01, S-02, S-04', () => {
+  it('S-01: leave() on a Go room does not throw WRONG_GAME and clears the seat', () => {
+    const room = goRoom();
+    const alice = room.join({ name: 'Alice', kind: 'human', seat: 'black' });
+    expect(room.getState().seats.black.id).toBe(alice.id);
+
+    // Previously, leave() unconditionally called this.gomoku() which threw WRONG_GAME
+    expect(() => room.leave(alice.id)).not.toThrow();
+    expect(room.getState().seats.black.id).toBeUndefined();
+    expect(room.getState().seats.black.kind).toBe('human');
+  });
+
+  it('S-02: switching seat in join() clears the participant from their old seat', () => {
+    const room = goRoom();
+    const bob = room.join({ name: 'Bob', kind: 'human', seat: 'black' });
+    expect(room.getState().seats.black.id).toBe(bob.id);
+    expect(room.getState().seats.white.id).toBeUndefined();
+
+    // Bob switches to white
+    room.join({ name: 'Bob', kind: 'human', seat: 'white' });
+    expect(room.getState().seats.white.id).toBe(bob.id);
+    // Old seat must be cleared, not retained
+    expect(room.getState().seats.black.id).toBeUndefined();
+
+    // Bob unseats to spectate (seat: null)
+    room.join({ name: 'Bob', kind: 'human', seat: null });
+    expect(room.getState().seats.white.id).toBeUndefined();
+    expect(room.getState().seats.black.id).toBeUndefined();
+  });
+
+  it('S-04: getPhase() returns "playing" during Go scoring phase', () => {
+    const room = goRoom();
+    // Two passes in a row transition Go to scoring
+    room.passAs({ actor: 'human' }); // black passes
+    room.passAs({ actor: 'agent' }); // white passes
+
+    expect(room.getState().status).toBe('scoring');
+    // Previously returned 'waiting' or 'lobby'
+    expect(room.getPhase()).toBe('playing');
+  });
+});

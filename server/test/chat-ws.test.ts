@@ -320,6 +320,8 @@ describe('chat over /ws?kind=chat', () => {
       (frame) =>
         frame.type === 'error' && (frame as any).code === 'ROOM_NOT_FOUND',
     );
+    const errorFrame = handle.frames.find((f) => f.type === 'error');
+    expect((errorFrame as any)?.kind).toBe('chat');
     await new Promise<void>((resolve) => {
       if (handle.socket.readyState === WebSocket.CLOSED) {
         resolve();
