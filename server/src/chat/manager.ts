@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, openSync, closeSync, fsyncSync, readdirSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import path from 'node:path';
+import { ROOM_ID_PATTERN } from '@arena/shared';
 import { ChatRoom } from './chat-room.js';
 import {
   ChatError,
@@ -8,7 +9,15 @@ import {
   type ChatRoomSnapshot,
   type ChatRoomSnapshotFile,
 } from './model.js';
-import { assertRoomId } from '../rooms/room-manager.js';
+
+export function assertChatRoomId(roomId: unknown): asserts roomId is string {
+  if (typeof roomId !== 'string' || !ROOM_ID_PATTERN.test(roomId)) {
+    throw new ChatError(
+      'INVALID_ROOM_ID',
+      `Invalid roomId "${String(roomId)}": expected 1-32 characters of [a-zA-Z0-9_-].`,
+    );
+  }
+}
 
 /** Room list entries — lighter than a snapshot, enough for a lobby. */
 export interface ChatRoomSummary {
@@ -49,7 +58,7 @@ export class ChatManager {
     // Chat room ids go through the same validator as game rooms — the
     // pattern already forbids `/`, `\` and `..`, which is the whole
     // traversal surface for a filename built from the id.
-    assertRoomId(roomId);
+    assertChatRoomId(roomId);
     return path.join(this.chatDir, `${roomId}.json`);
   }
 
@@ -73,7 +82,7 @@ export class ChatManager {
     roomId: string,
     options: { title?: string; policy?: Partial<ChatPolicy> } = {},
   ): ChatRoom {
-    assertRoomId(roomId);
+    assertChatRoomId(roomId);
     if (this.rooms.has(roomId)) {
       throw new ChatError(
         'ROOM_EXISTS',

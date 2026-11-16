@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ArchiveSummary, RoomSummary } from '@arena/shared';
 import { api, errorMessage, type ChatRoomSummaryDto } from '../../api';
 import { endLabel, timeAgo } from '../../labels';
@@ -152,28 +152,46 @@ export function LobbyPage() {
   const [archives, setArchives] = useState<ArchiveSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const mountedRef = useRef(true);
 
   const load = useCallback(async (): Promise<void> => {
-    try {
-      const [roomList, chatList] = await Promise.all([
-        api.listRooms(),
-        api.listChatRooms(),
-      ]);
-      setGames(roomList);
-      setChats(chatList);
-      setError(null);
-    } catch (caught) {
-      setError(errorMessage(caught));
+    const [roomsResult, chatsResult, archivesResult] = await Promise.allSettled([
+      api.listRooms(),
+      api.listChatRooms(),
+      api.listArchives(),
+    ]);
+
+    if (!mountedRef.current) {
+      return;
     }
-    // Absent or failing archive surface degrades to null: the rest of the
-    // lobby stays standing.
-    setArchives(await api.listArchives());
+
+    if (roomsResult.status === 'fulfilled') {
+      setGames(roomsResult.value);
+    }
+    if (chatsResult.status === 'fulfilled') {
+      setChats(chatsResult.value);
+    }
+    if (archivesResult.status === 'fulfilled') {
+      setArchives(archivesResult.value);
+    } else {
+      setArchives(null);
+    }
+
+    if (roomsResult.status === 'rejected' && chatsResult.status === 'rejected') {
+      setError(errorMessage(roomsResult.reason));
+    } else {
+      setError(null);
+    }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void load();
     const timer = setInterval(() => void load(), POLL_MS);
-    return () => clearInterval(timer);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(timer);
+    };
   }, [load]);
 
   const byRecent = (list: RoomSummary[], game: 'gomoku' | 'go') =>

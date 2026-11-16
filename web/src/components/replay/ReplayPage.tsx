@@ -6,7 +6,13 @@ import { Board } from '../Board';
 import { GoBoard } from '../GoBoard';
 
 function clockOf(at: string): string {
-  return at.slice(11, 16);
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) {
+    return at.slice(11, 16);
+  }
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
 }
 
 /**
@@ -152,7 +158,7 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
   }
 
   const frame = replay.frames[index] ?? replay.frames[0]!;
-  const endLabel = endLabelOf(replay.final);
+  const finalEndLabel = endLabelOf(replay.final);
   const atFinal = index === replay.frames.length - 1;
   const goScoring =
     frame.state.game === 'go' && frame.state.status === 'scoring';
@@ -167,7 +173,7 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
             {replay.game === 'go'
               ? `围棋 · ${replay.frames.length - 1} 手`
               : `五子棋 · ${replay.frames.length - 1} 手`}
-            {endLabel !== null ? ` · ${endLabel}` : ''}
+            {finalEndLabel !== null ? ` · ${finalEndLabel}` : ''}
           </p>
         </div>
         <div className="topbar-meta">
@@ -179,8 +185,8 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
           <span className="room-chip" title="房间号">
             room / {replay.roomId}
           </span>
-          {endLabel !== null ? (
-            <span className="replay-result">{endLabel}</span>
+          {finalEndLabel !== null ? (
+            <span className="replay-result">{finalEndLabel}</span>
           ) : null}
         </div>
       </header>
@@ -264,8 +270,8 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
             {goScoring ? <span className="replay-scoring">进入数子</span> : null}
           </p>
 
-          {atFinal && endLabel !== null ? (
-            <p className="replay-final">{endLabel}</p>
+          {atFinal && finalEndLabel !== null ? (
+            <p className="replay-final">{finalEndLabel}</p>
           ) : null}
 
           <p className="rule-note">回放只重演落子，不含认输与数子</p>

@@ -197,16 +197,13 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   const phase = room?.phase ?? 'open';
   const agents = room?.members.filter((member) => member.kind === 'agent') ?? [];
 
-  const composerDisabled =
-    busy || room === null || phase === 'paused' || phase === 'closed';
+  const composerDisabled = busy || room === null || phase === 'closed';
   const composerHint =
     room === null
       ? '连接中…'
-      : phase === 'paused'
-        ? '房间已暂停'
-        : phase === 'closed'
-          ? '房间已关闭'
-          : null;
+      : phase === 'closed'
+        ? '房间已关闭'
+        : null;
 
   return (
     <div className="app">

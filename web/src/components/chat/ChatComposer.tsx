@@ -94,6 +94,9 @@ export function ChatComposer({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.nativeEvent.isComposing || event.keyCode === 229) {
+      return;
+    }
     if (mention !== null && candidates.length > 0) {
       if (event.key === 'ArrowDown') {
         event.preventDefault();

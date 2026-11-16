@@ -431,4 +431,17 @@ describe('two agents in one room', () => {
     const stateResp = await api.getState(room);
     expect(stateResp.yourColor).toBe('white');
   });
+
+  it('S-07: InProcessApi.clearSession drops session bindings cleanly', async () => {
+    const { InProcessApi } = await import('../src/mcp/http');
+    const { SessionBindings } = await import('../src/core/session-context');
+    const bindings = new SessionBindings();
+    const testApi = new InProcessApi({} as any, {} as any, bindings);
+
+    bindings.bind('sess-1', 'room-1', 'part-1');
+    expect(bindings.participantOf('sess-1', 'room-1')).toBe('part-1');
+
+    testApi.clearSession('sess-1');
+    expect(bindings.participantOf('sess-1', 'room-1')).toBeUndefined();
+  });
 });

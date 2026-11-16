@@ -330,3 +330,25 @@ describe('ChatRoom basics', () => {
     expect(room.snapshot().members.find((m) => m.id === a1.id)?.messages).toBe(4);
   });
 });
+
+describe('P2 code review fixes regression: S-05, S-06', () => {
+  it('S-05: ChatManager.create with invalid roomId throws ChatError(INVALID_ROOM_ID), not RoomError', () => {
+    const mgr = manager();
+    expect(() => mgr.create('invalid/room')).toThrow(ChatError);
+    try {
+      mgr.create('invalid/room');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ChatError);
+      expect((error as ChatError).code).toBe('INVALID_ROOM_ID');
+    }
+  });
+
+  it('S-06: chatHint on paused room does not instruct agent to keep waiting in busy spin', async () => {
+    const { chatHint } = await import('../src/chat/model');
+    const room = manager().create('hint-paused');
+    room.pause(T0);
+    const hint = chatHint(room.snapshot(), false);
+    expect(hint).toBe('房间已暂停，等主持人恢复');
+    expect(hint).not.toContain('wait_for_messages');
+  });
+});
