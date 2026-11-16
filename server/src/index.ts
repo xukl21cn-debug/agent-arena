@@ -74,7 +74,8 @@ function main(): void {
     const base = `http://${config.host}:${config.port}`;
     console.log(`[arena] server ready at ${base}`);
     console.log(`[arena] REST  ${base}/api`);
-    console.log(`[arena] MCP   ${base}/mcp`);
+    console.log(`[arena] MCP   ${base}/game/mcp  (games, arena-game)`);
+    console.log(`[arena] MCP   ${base}/chat/mcp  (chat, arena-chat)`);
     console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
     console.log(`[arena] data  ${config.dataDir}`);
     console.log(
