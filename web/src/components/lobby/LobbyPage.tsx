@@ -124,16 +124,38 @@ interface GroupProps {
   note: string;
   emptyHint: string;
   cards: CardProps[];
+  loading?: boolean;
+  error?: string | null;
 }
 
-function Group({ title, note, emptyHint, cards }: GroupProps) {
+function Group({
+  title,
+  note,
+  emptyHint,
+  cards,
+  loading = false,
+  error = null,
+}: GroupProps) {
+  const isInitialLoading = loading && cards.length === 0;
+  const isFailed = error !== null && cards.length === 0;
+
   return (
     <section className="lobby-group">
       <div className="group-head">
         <h2 className="group-title">{title}</h2>
-        <span className="group-note">{note}</span>
+        <span className="group-note">
+          {isInitialLoading
+            ? '读取中…'
+            : isFailed
+              ? '加载失败'
+              : note}
+        </span>
       </div>
-      {cards.length === 0 ? (
+      {isFailed ? (
+        <p className="lobby-empty">{error}</p>
+      ) : isInitialLoading ? (
+        <p className="lobby-empty">读取中…</p>
+      ) : cards.length === 0 ? (
         <p className="lobby-empty">{emptyHint}</p>
       ) : (
         <div className="lobby-grid">
@@ -148,46 +170,101 @@ function Group({ title, note, emptyHint, cards }: GroupProps) {
 
 export function LobbyPage() {
   const [games, setGames] = useState<RoomSummary[] | null>(null);
+  const [gamesLoading, setGamesLoading] = useState(true);
+  const [gamesError, setGamesError] = useState<string | null>(null);
+
   const [chats, setChats] = useState<ChatRoomSummaryDto[] | null>(null);
+  const [chatsLoading, setChatsLoading] = useState(true);
+  const [chatsError, setChatsError] = useState<string | null>(null);
+
   const [archives, setArchives] = useState<ArchiveSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [archivesLoading, setArchivesLoading] = useState(true);
+  const [archivesError, setArchivesError] = useState<string | null>(null);
+
   const [showAllHistory, setShowAllHistory] = useState(false);
   const mountedRef = useRef(true);
+  const seqRef = useRef({ rooms: 0, chats: 0, archives: 0 });
 
-  const load = useCallback(async (): Promise<void> => {
-    const [roomsResult, chatsResult, archivesResult] = await Promise.allSettled([
-      api.listRooms(),
-      api.listChatRooms(),
-      api.listArchives(),
-    ]);
-
-    if (!mountedRef.current) {
-      return;
-    }
-
-    if (roomsResult.status === 'fulfilled') {
-      setGames(roomsResult.value);
-    }
-    if (chatsResult.status === 'fulfilled') {
-      setChats(chatsResult.value);
-    }
-    if (archivesResult.status === 'fulfilled') {
-      setArchives(archivesResult.value);
-    } else {
-      setArchives(null);
-    }
-
-    if (roomsResult.status === 'rejected' && chatsResult.status === 'rejected') {
-      setError(errorMessage(roomsResult.reason));
-    } else {
-      setError(null);
+  const loadRooms = useCallback(async (): Promise<void> => {
+    const seq = ++seqRef.current.rooms;
+    setGamesLoading(true);
+    try {
+      const roomList = await api.listRooms();
+      if (!mountedRef.current || seq !== seqRef.current.rooms) {
+        return;
+      }
+      setGames(roomList);
+      setGamesError(null);
+    } catch (caught) {
+      if (!mountedRef.current || seq !== seqRef.current.rooms) {
+        return;
+      }
+      setGamesError(errorMessage(caught));
+    } finally {
+      if (mountedRef.current && seq === seqRef.current.rooms) {
+        setGamesLoading(false);
+      }
     }
   }, []);
 
+  const loadChats = useCallback(async (): Promise<void> => {
+    const seq = ++seqRef.current.chats;
+    setChatsLoading(true);
+    try {
+      const chatList = await api.listChatRooms();
+      if (!mountedRef.current || seq !== seqRef.current.chats) {
+        return;
+      }
+      setChats(chatList);
+      setChatsError(null);
+    } catch (caught) {
+      if (!mountedRef.current || seq !== seqRef.current.chats) {
+        return;
+      }
+      setChatsError(errorMessage(caught));
+    } finally {
+      if (mountedRef.current && seq === seqRef.current.chats) {
+        setChatsLoading(false);
+      }
+    }
+  }, []);
+
+  const loadArchives = useCallback(async (): Promise<void> => {
+    const seq = ++seqRef.current.archives;
+    setArchivesLoading(true);
+    try {
+      const archiveList = await api.listArchives();
+      if (!mountedRef.current || seq !== seqRef.current.archives) {
+        return;
+      }
+      if (archiveList === null) {
+        setArchivesError('无法读取历史对局。');
+      } else {
+        setArchives(archiveList);
+        setArchivesError(null);
+      }
+    } catch (caught) {
+      if (!mountedRef.current || seq !== seqRef.current.archives) {
+        return;
+      }
+      setArchivesError(errorMessage(caught));
+    } finally {
+      if (mountedRef.current && seq === seqRef.current.archives) {
+        setArchivesLoading(false);
+      }
+    }
+  }, []);
+
+  const load = useCallback((): void => {
+    void loadRooms();
+    void loadChats();
+    void loadArchives();
+  }, [loadRooms, loadChats, loadArchives]);
+
   useEffect(() => {
     mountedRef.current = true;
-    void load();
-    const timer = setInterval(() => void load(), POLL_MS);
+    load();
+    const timer = setInterval(() => load(), POLL_MS);
     return () => {
       mountedRef.current = false;
       clearInterval(timer);
@@ -217,7 +294,12 @@ export function LobbyPage() {
     : history.slice(0, HISTORY_LIMIT);
   const hiddenHistory = history.length - visibleHistory.length;
 
-  const loading = games === null || chats === null;
+  const activeErrors = [
+    gamesError ? `棋类房间：${gamesError}` : null,
+    chatsError ? `聊天房间：${chatsError}` : null,
+    archivesError ? `历史对局：${archivesError}` : null,
+  ].filter(Boolean) as string[];
+  const topError = activeErrors.length > 0 ? activeErrors.join('；') : null;
 
   return (
     <div className="app">
@@ -232,13 +314,13 @@ export function LobbyPage() {
         </div>
       </header>
 
-      {error !== null ? (
+      {topError !== null ? (
         <div className="error-bar" role="alert">
-          <span>{error}</span>
+          <span>{topError}</span>
           <button
             type="button"
             className="error-dismiss"
-            onClick={() => void load()}
+            onClick={() => load()}
           >
             重试
           </button>
@@ -251,28 +333,42 @@ export function LobbyPage() {
           note={`${gomoku.length} 间`}
           emptyHint="暂无房间。打开 ?room=<房间名> 即可开一间。"
           cards={gomoku}
+          loading={gamesLoading}
+          error={gamesError}
         />
         <Group
           title="围棋"
           note={`${go.length} 间`}
           emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
           cards={go}
+          loading={gamesLoading}
+          error={gamesError}
         />
         <Group
           title="聊天"
           note={`${chatCards.length} 间`}
           emptyHint="暂无房间。POST /api/chat/rooms 或 MCP 建房。"
           cards={chatCards}
+          loading={chatsLoading}
+          error={chatsError}
         />
 
         <section className="lobby-group lobby-history">
           <div className="group-head">
             <h2 className="group-title">历史对局</h2>
             <span className="group-note">
-              {loading ? '读取中…' : `${history.length} 局`}
+              {archivesLoading && archives === null
+                ? '读取中…'
+                : archivesError !== null && archives === null
+                  ? '加载失败'
+                  : `${history.length} 局`}
             </span>
           </div>
-          {history.length === 0 ? (
+          {archivesError !== null && archives === null ? (
+            <p className="lobby-empty">{archivesError}</p>
+          ) : archivesLoading && archives === null ? (
+            <p className="lobby-empty">读取中…</p>
+          ) : history.length === 0 ? (
             <p className="lobby-empty">
               暂无历史对局。一局下完再开新局，旧局会来到这里。
             </p>
