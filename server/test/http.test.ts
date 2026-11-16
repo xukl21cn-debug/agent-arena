@@ -291,7 +291,7 @@ describe('WebSocket', () => {
 describe('MCP over Streamable HTTP', () => {
   it('plays a full turn loop through the MCP tools', async () => {
     const transport = new StreamableHTTPClientTransport(
-      new URL(`${baseUrl}/mcp`),
+      new URL(`${baseUrl}/game/mcp`),
     );
     const client = new Client({ name: 'http-integration', version: '0.0.0' });
 

@@ -408,8 +408,9 @@ function clientName(session: McpSession): string | undefined {
 
 /**
  * Mounts the games MCP Streamable HTTP endpoint at POST/GET/DELETE
- * /game/mcp, with the bare /mcp kept as a legacy alias — one handler set,
- * one session table, both paths.
+ * /game/mcp. The bare /mcp is retired and answers 410 with the new
+ * location, so a stale client config fails diagnosably instead of
+ * quietly talking to a route that no longer serves the protocol.
  * One McpServer + transport per session, all sharing the same RoomManager.
  */
 export function mountMcpHttp(
@@ -538,12 +539,19 @@ export function mountMcpHttp(
     }
   };
 
-  // The canonical path pairs with the chat domain's /chat/mcp; the bare
-  // /mcp stays registered so clients configured before the split keep
-  // working against the same sessions.
-  for (const path of ['/game/mcp', '/mcp']) {
-    app.post(path, handlePost);
-    app.get(path, handleGet);
-    app.delete(path, handleDelete);
-  }
+  // The canonical path pairs with the chat domain's /chat/mcp.
+  app.post('/game/mcp', handlePost);
+  app.get('/game/mcp', handleGet);
+  app.delete('/game/mcp', handleDelete);
+
+  // The bare /mcp is retired (2026-11-16): point stale configs at the new
+  // location instead of leaving them to trip over a generic 404.
+  const retired = (_req: Request, res: Response): void => {
+    res
+      .status(410)
+      .json(jsonRpcError(-32000, 'The games MCP moved to /game/mcp'));
+  };
+  app.post('/mcp', retired);
+  app.get('/mcp', retired);
+  app.delete('/mcp', retired);
 }

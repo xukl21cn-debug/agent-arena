@@ -30,7 +30,7 @@ async function call(
   return payloadOf(await client.callTool({ name, arguments: args }));
 }
 
-async function connect(name: string, endpoint = '/mcp'): Promise<Client> {
+async function connect(name: string, endpoint = '/game/mcp'): Promise<Client> {
   const client = new Client({ name, version: '0.0.1' });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`${baseUrl}${endpoint}`)),
@@ -138,14 +138,12 @@ describe('two agents in one room', () => {
     }
   });
 
-  it('serves the games MCP at /game/mcp with /mcp as a legacy alias', async () => {
+  it('serves the games MCP at /game/mcp and retires the bare /mcp', async () => {
     // The canonical endpoint pairs with the chat domain's /chat/mcp; the
-    // bare /mcp must keep serving clients configured before the split.
+    // bare /mcp must refuse loudly so stale client configs surface fast.
     const viaNewPath = await connect('new-path-agent', '/game/mcp');
-    const viaLegacyPath = await connect('legacy-path-agent');
     try {
       expect(viaNewPath.getServerVersion()?.name).toBe('arena-game');
-      expect(viaLegacyPath.getServerVersion()?.name).toBe('arena-game');
 
       const join = await call(viaNewPath, 'join_game', {
         roomId: 'game-path-room',
@@ -166,8 +164,27 @@ describe('two agents in one room', () => {
       expect(move.state.moveCount).toBe(1);
     } finally {
       await viaNewPath.close().catch(() => undefined);
-      await viaLegacyPath.close().catch(() => undefined);
     }
+
+    const initializeOnRetiredPath = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'stale-config', version: '0.0.0' },
+        },
+      }),
+    });
+    expect(initializeOnRetiredPath.status).toBe(410);
+    const payload = (await initializeOnRetiredPath.json()) as {
+      error?: { message?: string };
+    };
+    expect(payload.error?.message).toContain('/game/mcp');
   });
 
   it('reconnects to the same participant when the name repeats', async () => {
