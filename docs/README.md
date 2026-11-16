@@ -34,6 +34,7 @@
 | 起服务、双端口调试 | [`dev-workflow.md`](dev-workflow.md) |
 | 查某条硬约束的**来龙去脉**（谁在哪一轮踩的） | [`architecture/constraints.md`](architecture/constraints.md) |
 | 查某个设计**为什么这么定**、当时放弃了什么 | [`architecture/decisions.md`](architecture/decisions.md) |
+| 查看全局代码审查报告与缺陷排查清单 | [`code-review.md`](code-review.md) |
 | 看某一轮具体做了什么 | [`phases/`](phases/) 下的对应目录 |
 | 找围棋规则、数子、ko 的原始提案 | [`proposals/go-mcp.md`](proposals/go-mcp.md) |
 | 找聊天室为什么是独立领域对象 | [`proposals/agent-chat.md`](proposals/agent-chat.md) |
