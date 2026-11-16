@@ -408,4 +408,27 @@ describe('two agents in one room', () => {
     });
     expect(resume.status).toBe(400);
   });
+
+  it('S-03: HttpApi (stdio) resolves yourColor correctly for white agent in dual-agent room', async () => {
+    const { HttpApi } = await import('../src/mcp/stdio');
+    const api = new HttpApi(baseUrl);
+    const room = 'dual-stdio-test';
+
+    // Room starts with dual agents
+    await call(await connect('setup-stdio'), 'new_game', {
+      roomId: room,
+      black: { kind: 'agent' },
+      white: { kind: 'agent' },
+    });
+
+    // Join as white agent
+    await api.joinGame(room, {
+      name: 'AgentWhite',
+      seat: 'white',
+      kind: 'agent',
+    });
+
+    const stateResp = await api.getState(room);
+    expect(stateResp.yourColor).toBe('white');
+  });
 });

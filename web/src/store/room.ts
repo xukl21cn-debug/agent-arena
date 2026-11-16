@@ -167,14 +167,20 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   },
 
   applyState(state) {
-    const previousGame = get().state?.gameId;
-    set((current) => ({
-      state: mergeState(current.state, state),
-      // A new game starts with an empty commentary log and a fresh overlay.
-      ...(state.gameId === previousGame
-        ? {}
-        : { commentary: [], resultDismissed: false }),
-    }));
+    set((current) => {
+      const nextState = mergeState(current.state, state);
+      // If the incoming state is out of order, keep previous state and leave commentary untouched.
+      if (nextState === current.state) {
+        return current;
+      }
+      const isNewGame =
+        current.state !== null && nextState.gameId !== current.state.gameId;
+      return {
+        state: nextState,
+        // A new game starts with an empty commentary log and a fresh overlay.
+        ...(isNewGame ? { commentary: [], resultDismissed: false } : {}),
+      };
+    });
   },
 
   applyParticipants(participants) {
@@ -440,6 +446,7 @@ function subscribeToRoom(
             message?: string;
           };
           console.warn('[ws]', code, text);
+          set({ connection: 'offline', error: text ?? code ?? 'Room error' });
           break;
         }
         default:
@@ -447,8 +454,12 @@ function subscribeToRoom(
       }
     };
 
-    current.onclose = () => {
+    current.onclose = (event: CloseEvent) => {
       if (disposed) {
+        return;
+      }
+      if (event.code === 1008) {
+        set({ connection: 'offline', error: event.reason || 'ROOM_NOT_FOUND' });
         return;
       }
       set({ connection: 'reconnecting' });

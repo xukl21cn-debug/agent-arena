@@ -121,6 +121,7 @@ export function attachWebSocket(
     if (!room) {
       sendJson(socket, {
         type: 'error',
+        kind: 'chat',
         code: 'ROOM_NOT_FOUND',
         message: `Chat room "${roomId}" not found.`,
       });

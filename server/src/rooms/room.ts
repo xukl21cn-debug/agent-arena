@@ -226,7 +226,10 @@ export class GameRoom {
    * new_game without any ready call — lands directly in `playing`.
    */
   getPhase(): RoomPhase {
-    if (this.state.status === 'playing') {
+    if (
+      this.state.status === 'playing' ||
+      (this.state.game === 'go' && this.state.status === 'scoring')
+    ) {
       return 'playing';
     }
     if (this.state.status === 'finished') {
@@ -336,6 +339,8 @@ export class GameRoom {
     const participant = this.roster.join(request);
     if (participant.seat !== null) {
       this.syncSeat(participant.seat, participant);
+    } else {
+      this.clearParticipantSeat(participant.id);
     }
     // A join may carry ready=true, which is how an agent seats and arms the
     // start in one call instead of two.
@@ -389,20 +394,8 @@ export class GameRoom {
     if (!participant) {
       return false;
     }
-    const seat = participant.seat;
     this.roster.leave(participantId);
-    if (seat !== null) {
-      // The seat stays on the board but is no longer anyone's; keep the kind so
-      // the UI can still label it.
-      const current = this.gomoku();
-      this.state = {
-        ...current,
-        seats: {
-          ...current.seats,
-          [seat]: { kind: current.seats[seat].kind },
-        },
-      };
-    }
+    this.clearParticipantSeat(participantId);
     this.emitRoster();
     return true;
   }
@@ -1019,12 +1012,41 @@ export class GameRoom {
     }
   }
 
+  /** Clear a participant from any seat in `seats` while retaining the seat kind. */
+  private clearParticipantSeat(participantId: string): void {
+    let changed = false;
+    const seats = { ...this.state.seats };
+    for (const color of ['black', 'white'] as const) {
+      if (seats[color].id === participantId) {
+        seats[color] = { kind: seats[color].kind };
+        changed = true;
+      }
+    }
+    if (!changed) {
+      return;
+    }
+    if (this.state.game === 'go') {
+      this.state = { ...this.go(), seats };
+    } else {
+      this.state = { ...this.gomoku(), seats };
+    }
+  }
+
   /** Mirror a seated participant into `seats` so the board agrees. */
   private syncSeat(seat: StoneColor, participant: Participant): void {
+    // If the participant held the opposite seat, clear it so they don't occupy both.
+    const otherSeat: StoneColor = seat === 'black' ? 'white' : 'black';
+    const otherSpec = this.state.seats[otherSeat];
+    const cleanedOther =
+      otherSpec.id === participant.id
+        ? { kind: otherSpec.kind }
+        : otherSpec;
+
     // Either game: the seats record has the same shape on GameState and
     // GoState, and joining must work whatever the room currently runs.
     const seats = {
       ...this.state.seats,
+      [otherSeat]: cleanedOther,
       [seat]: {
         id: participant.id,
         kind: participant.kind,

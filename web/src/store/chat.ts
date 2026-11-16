@@ -224,13 +224,22 @@ function subscribeToChatRoom(
         case 'room':
           store.applyRoom((frame as { room: ChatRoomFrame }).room);
           break;
+        case 'error': {
+          const err = frame as { message?: string; code?: string };
+          set({ connection: 'offline', error: err.message ?? err.code ?? 'Chat error' });
+          break;
+        }
         default:
           break;
       }
     };
 
-    current.onclose = () => {
+    current.onclose = (event: CloseEvent) => {
       if (disposed) {
+        return;
+      }
+      if (event.code === 1008) {
+        set({ connection: 'offline', error: event.reason || 'ROOM_NOT_FOUND' });
         return;
       }
       set({ connection: 'reconnecting' });

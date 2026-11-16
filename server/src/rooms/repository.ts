@@ -125,7 +125,8 @@ export function summarize(persisted: PersistedRoom): RoomSummary {
   // A persisted snapshot carries the game but not the roster, so ready
   // flags are gone with it: an idle restored room is honestly a lobby.
   const phase =
-    state.status === 'playing'
+    state.status === 'playing' ||
+    (state.game === 'go' && state.status === 'scoring')
       ? 'playing'
       : state.status === 'finished'
         ? 'finished'

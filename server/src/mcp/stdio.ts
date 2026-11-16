@@ -100,6 +100,18 @@ export class HttpApi implements ArenaApi {
     return payload;
   }
 
+  private callerSeat(state: AnyGameState): StoneColor | null {
+    if (this.participantId !== undefined) {
+      if (state.seats.black.id === this.participantId) {
+        return 'black';
+      }
+      if (state.seats.white.id === this.participantId) {
+        return 'white';
+      }
+    }
+    return agentColorOf(state);
+  }
+
   async newGame(
     roomId: string,
     options: NewGameRequest = {},
@@ -112,7 +124,7 @@ export class HttpApi implements ArenaApi {
     const state = payload.state;
     return {
       state: toAnyAgentStateView(state, payload.history),
-      yourColor: agentColorOf(state),
+      yourColor: this.callerSeat(state),
     };
   }
 
@@ -123,7 +135,7 @@ export class HttpApi implements ArenaApi {
     );
     return {
       state: toAnyAgentStateView(view.state, view.history),
-      yourColor: agentColorOf(view.state),
+      yourColor: this.callerSeat(view.state),
     };
   }
 
