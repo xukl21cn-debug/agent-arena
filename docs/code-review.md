@@ -1,7 +1,7 @@
 # agent-arena 全局代码审查报告 (Code Review)
 
 > 审查时间：2026-11-16  
-> 代码基线：`9958c6d`（业务代码与 `3320238` 相同）。下列行号指向该基线；修复进度以缺陷清单及后续阶段评审为准。  
+> 代码基线：`9958c6d`（业务代码与 `3320238` 相同）。下列行号指向该基线；修复进度以缺陷清单及后续阶段评审为准。
 > 审查范围：`shared/`, `server/`, `web/`, 以及与 `docs/architecture/constraints.md` / `AGENTS.md` 的契约一致性  
 > 评审组织：Swarm 评审联合工作组（后端专家 @server-rev、前端专家 @web-rev、验证与文档负责人 @verifier）
 
@@ -28,6 +28,8 @@
 
 ## 2. 缺陷汇总清单
 
+2026-11-16 合并评审：修复分支的 S-03 未通过无座身份边界验证，暂未合入 main；具体证据与未完成验证见[阶段 20 评审](phases/20-code-review-fixes/review.md)。
+
 | 编号 | 严重度 | 模块 | 缺陷标题 | 影响面 |
 |---|---|---|---|---|
 | **S-01** | **P1** | `server/rooms` | `GameRoom.leave()` 在围棋房间中调用触发 `WRONG_GAME` 崩溃 | 围棋房间退出逻辑崩溃、席位状态脱节 |
@@ -37,7 +39,7 @@
 | **W-01** | **P1** | `web/App` | `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」 | 界面核心状态自相矛盾（标题「轮到你了」vs 状态栏「AI 正在思考」） |
 | **W-02** | **P1** | `web/store` | 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏 | 访问不存在/非法聊天室时前端死锁在重连中 |
 | **W-03** | **P1** | `web/store` | 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；乱序状态合并清空当前局解说 | 访问新房间死循环重连；解说记录被异常抹除 |
-| **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界破坏，聊天 MCP 错误码退化为 INTERNAL_ERROR |
+| **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界耦合，建房校验依赖棋类异常类型 |
 | **S-06** | **P2** | `server/chat` | `chatHint` 在暂停房间提示「继续 wait_for_messages」，但 `hasWakeup` 立即返回 | 导致 Agent 陷入 0ms 极速轮询死循环 |
 | **S-07** | **P2** | `server/mcp` | `SessionBindings` 在会话关闭/销毁时未执行 `clear` | MCP 长连接生命周期产生内存泄漏 |
 | **W-04** | **P2** | `web/chat` | `ChatComposer` 缺少中文输入法 `isComposing` 判断 | 中文拼音回车时误发送半截消息或误选点名候选人 |
@@ -284,20 +286,13 @@
 
 ## 4. P2 中危问题深度剖析与修复建议
 
-### [S-05] `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError`
-- **文件与行号**：[`server/src/chat/manager.ts:11, 52, 76`](../server/src/chat/manager.ts#L11), [`server/src/chat/mcp.ts:101-114`](../server/src/chat/mcp.ts#L101-L114)
-- **根本原因**：
-  `ChatManager` 引用了 `../rooms/room-manager.js` 的 `assertRoomId`。该断言在校验失败时抛出棋类领域的 `RoomError('INVALID_ROOM_ID')`。
-  但在 `/chat/mcp` 端点（`server/src/chat/mcp.ts`）的 `chatErrorResult` 异常处理器中，仅识别 `ChatError`：
-  ```ts
-  if (error instanceof ChatError) { ... }
-  // 非 ChatError 均落入：
-  return { isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'INTERNAL_ERROR', message }) }] };
-  ```
-- **影响**：
-  聊天 MCP 客户端传入不合法的 roomId 时，工具结果返回 `INTERNAL_ERROR` 而非 `INVALID_ROOM_ID`。REST 路径则由后续 `apiErrorHandler` 接住 `RoomError`，仍返回 HTTP 400；不能将 MCP 工具错误等同于 HTTP 500。严重破坏了 AGENTS.md §4.2 规定的「聊天室为独立领域对象，不依赖 rooms/」的设计约束。
-- **推荐修复**：
-  在 `server/src/chat/model.ts` 或 `manager.ts` 内使用 `@arena/shared` 的 `ROOM_ID_PATTERN` 自行校验，抛出 `ChatError('INVALID_ROOM_ID', ...)`。
+### [S-05] ChatManager 的建房校验依赖棋类异常类型
+
+- **基线位置**：[manager.ts](../server/src/chat/manager.ts) 的 create / fileFor，以及 [app.ts](../server/src/app.ts) 的错误处理链。
+- **确认的事实**：基线从 rooms/room-manager 导入 assertRoomId，非法建房参数抛出棋类 RoomError。聊天领域因此依赖棋类模块，违反领域分离约定。
+- **影响边界（2026-11-16 补充核验）**：REST 建房异常由后续 apiErrorHandler 处理，返回 HTTP 400 / INVALID_ROOM_ID。MCP join_room 走 getOrThrow，未调用 create 或 assertRoomId；非法且不存在的 id 返回 ROOM_NOT_FOUND。原报告所称 MCP INTERNAL_ERROR / REST 500 没有得到调用链或本次实测支持，撤回该结论。
+- **推荐修复**：在聊天领域内使用 shared 的 ROOM_ID_PATTERN 校验并抛 ChatError，解除模块依赖。不要为匹配原报告而顺带改变 MCP 查找行为。
+- **验收范围**：非法 REST 建房返回 400 且不残留房间；聊天校验不依赖 rooms 模块。此项保留原编号和 P2 分类以便追溯，实际影响按上述领域耦合理解。
 
 ---
 

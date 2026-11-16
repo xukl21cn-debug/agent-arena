@@ -347,7 +347,7 @@ worktree 只在**需要同时打开多个分支**时才有价值（比如一边�
 
 ## 11. 之后的可选项（无主线任务）
 
-2026-11-16 维护进度：文档精简已完成[阶段 19 评审](phases/19-docs-slim-review/review.md)；全局审查后的修复分支仍待独立验收，不能将报告中的修复标记等同于已合入 main。
+2026-11-16 维护进度：文档精简已合入 main，见[阶段 19 评审](phases/19-docs-slim-review/review.md)及[补充核验](phases/19-docs-slim-review/result.md)。`fix/code-review-p1` 已同步 main，但[阶段 20 独立验证](phases/20-code-review-fixes/review.md)发现 S-03 无座身份仍错误回退黑方，暂不合并；GLM 按[整改单](phases/20-code-review-fixes/handoff.md)继续，之后补前端交互验收。
 
 **P1 → P5 + `pass_turn` + 租约结算全部完成**，没有下一阶段。剩下三项都是可选，按性价比排：
 
