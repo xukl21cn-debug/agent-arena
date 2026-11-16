@@ -499,8 +499,19 @@ describe('two agents in one room', () => {
       code: 'NOT_SEATED',
     });
     const afterState = (await apiBlack.getState(room)).state;
-    expect(afterState.board).toEqual(beforeState.board);
-    expect(afterState.movesCount).toBe(beforeState.movesCount);
+    // AgentStateView has no `board`/`movesCount`; comparing them asserted
+    // undefined === undefined and always passed. Check the real fields exist
+    // with the right types before comparing values.
+    expect(typeof beforeState.boardText).toBe('string');
+    expect(typeof beforeState.moveCount).toBe('number');
+    expect(afterState.boardText).toEqual(beforeState.boardText);
+    expect(afterState.moveCount).toBe(beforeState.moveCount);
+
+    // Control: a legal move by the seated black player must change both
+    // fields, proving the assertions above can detect a real board change.
+    const legalState = await apiBlack.placeStone(room, 0, 0);
+    expect(legalState.moveCount).toBe(beforeState.moveCount + 1);
+    expect(legalState.boardText).not.toEqual(beforeState.boardText);
 
     // 4. Participant identity removed from room (leave / kicked)
     const apiRemoved = new HttpApi(baseUrl);

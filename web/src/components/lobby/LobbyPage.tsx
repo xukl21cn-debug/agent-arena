@@ -168,92 +168,94 @@ function Group({
   );
 }
 
+/**
+ * The archive surface answers "absent or failing" with null; the lobby words
+ * that as its own category error instead of an empty list, so it throws here
+ * and all three lists share one loader.
+ */
+async function fetchArchives(): Promise<ArchiveSummary[]> {
+  const list = await api.listArchives();
+  if (list === null) {
+    throw new Error('无法读取历史对局。');
+  }
+  return list;
+}
+
+/**
+ * One lobby list: data, loading, error, and its own race control.
+ *
+ * A response may apply only when it is newer than the last applied OUTCOME,
+ * not merely the newest request sent. When the API is slower than the poll
+ * interval, "newest request" invalidates every response on arrival and the
+ * list can never leave the loading state; comparing against applied outcomes
+ * lets slow responses land while a late older snapshot still cannot
+ * overwrite newer data. Failures count as outcomes too, so a fast 503 keeps
+ * a slower success behind it from silently clearing the error.
+ */
+function useLobbyList<T>(fetchList: () => Promise<T[]>) {
+  const [data, setData] = useState<T[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const seqRef = useRef(0);
+  const appliedRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  const load = useCallback(async (): Promise<void> => {
+    const seq = ++seqRef.current;
+    setLoading(true);
+    try {
+      const list = await fetchList();
+      if (!mountedRef.current || seq <= appliedRef.current) {
+        return;
+      }
+      appliedRef.current = seq;
+      setData(list);
+      setError(null);
+      setLoading(false);
+    } catch (caught) {
+      if (!mountedRef.current || seq <= appliedRef.current) {
+        return;
+      }
+      appliedRef.current = seq;
+      setError(errorMessage(caught));
+      setLoading(false);
+    }
+  }, [fetchList]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  return { data, loading, error, load };
+}
+
 export function LobbyPage() {
-  const [games, setGames] = useState<RoomSummary[] | null>(null);
-  const [gamesLoading, setGamesLoading] = useState(true);
-  const [gamesError, setGamesError] = useState<string | null>(null);
+  const {
+    data: games,
+    loading: gamesLoading,
+    error: gamesError,
+    load: loadRooms,
+  } = useLobbyList(api.listRooms);
 
-  const [chats, setChats] = useState<ChatRoomSummaryDto[] | null>(null);
-  const [chatsLoading, setChatsLoading] = useState(true);
-  const [chatsError, setChatsError] = useState<string | null>(null);
+  const {
+    data: chats,
+    loading: chatsLoading,
+    error: chatsError,
+    load: loadChats,
+  } = useLobbyList(api.listChatRooms);
 
-  const [archives, setArchives] = useState<ArchiveSummary[] | null>(null);
-  const [archivesLoading, setArchivesLoading] = useState(true);
-  const [archivesError, setArchivesError] = useState<string | null>(null);
+  const {
+    data: archives,
+    loading: archivesLoading,
+    error: archivesError,
+    load: loadArchives,
+  } = useLobbyList(fetchArchives);
 
   const [showAllHistory, setShowAllHistory] = useState(false);
-  const mountedRef = useRef(true);
-  const seqRef = useRef({ rooms: 0, chats: 0, archives: 0 });
-
-  const loadRooms = useCallback(async (): Promise<void> => {
-    const seq = ++seqRef.current.rooms;
-    setGamesLoading(true);
-    try {
-      const roomList = await api.listRooms();
-      if (!mountedRef.current || seq !== seqRef.current.rooms) {
-        return;
-      }
-      setGames(roomList);
-      setGamesError(null);
-    } catch (caught) {
-      if (!mountedRef.current || seq !== seqRef.current.rooms) {
-        return;
-      }
-      setGamesError(errorMessage(caught));
-    } finally {
-      if (mountedRef.current && seq === seqRef.current.rooms) {
-        setGamesLoading(false);
-      }
-    }
-  }, []);
-
-  const loadChats = useCallback(async (): Promise<void> => {
-    const seq = ++seqRef.current.chats;
-    setChatsLoading(true);
-    try {
-      const chatList = await api.listChatRooms();
-      if (!mountedRef.current || seq !== seqRef.current.chats) {
-        return;
-      }
-      setChats(chatList);
-      setChatsError(null);
-    } catch (caught) {
-      if (!mountedRef.current || seq !== seqRef.current.chats) {
-        return;
-      }
-      setChatsError(errorMessage(caught));
-    } finally {
-      if (mountedRef.current && seq === seqRef.current.chats) {
-        setChatsLoading(false);
-      }
-    }
-  }, []);
-
-  const loadArchives = useCallback(async (): Promise<void> => {
-    const seq = ++seqRef.current.archives;
-    setArchivesLoading(true);
-    try {
-      const archiveList = await api.listArchives();
-      if (!mountedRef.current || seq !== seqRef.current.archives) {
-        return;
-      }
-      if (archiveList === null) {
-        setArchivesError('无法读取历史对局。');
-      } else {
-        setArchives(archiveList);
-        setArchivesError(null);
-      }
-    } catch (caught) {
-      if (!mountedRef.current || seq !== seqRef.current.archives) {
-        return;
-      }
-      setArchivesError(errorMessage(caught));
-    } finally {
-      if (mountedRef.current && seq === seqRef.current.archives) {
-        setArchivesLoading(false);
-      }
-    }
-  }, []);
 
   const load = useCallback((): void => {
     void loadRooms();
@@ -262,11 +264,9 @@ export function LobbyPage() {
   }, [loadRooms, loadChats, loadArchives]);
 
   useEffect(() => {
-    mountedRef.current = true;
     load();
     const timer = setInterval(() => load(), POLL_MS);
     return () => {
-      mountedRef.current = false;
       clearInterval(timer);
     };
   }, [load]);
