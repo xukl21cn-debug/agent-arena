@@ -27,6 +27,7 @@
 | 我想… | 读 |
 |---|---|
 | 知道项目是什么、硬约束有哪些 | [`../AGENTS.md`](../AGENTS.md) |
+| 知道谁统筹、谁实现、如何调度 | [`../AGENTS.md`](../AGENTS.md) §2–3（现行分工）；[阶段 21](phases/21-agent-roles/handoff.md)（本轮变更与待办承接） |
 | 评审一轮工作、写审计脚本 | [`reviewing.md`](reviewing.md)（套路 + 坑表，评审前必读） |
 | 知道现在做到哪、之后能做什么 | [`roadmap.md`](roadmap.md) §11 |
 | 知道为什么按这个顺序做、P/M/G 编号怎么对 | [`roadmap.md`](roadmap.md) |
@@ -68,6 +69,7 @@
 | 18 | 10-27 | 租约结算 | 定时结算死轮次，房间不再卡死 | [工作单](phases/18-chat-lease/handoff.md) · [评审](phases/18-chat-lease/review.md) |
 | 19 | 11-16 | 文档精简评审 | AGENTS.md 迁移完整性、审查报告修订与合并 | [工作单](phases/19-docs-slim-review/handoff.md) · [评审](phases/19-docs-slim-review/review.md) · [补充核验](phases/19-docs-slim-review/result.md) |
 | 20 | 11-16 | 代码审查修复验收 | S-03 无座身份验证未通过，退回整改 | [工作单](phases/20-code-review-fixes/handoff.md) · [评审](phases/20-code-review-fixes/review.md) |
+| 21 | 11-16 | Agent 分工调整 | GPT-6 Astra 统筹，其余 harness / 模型作为可调度工作 agent | [工作单](phases/21-agent-roles/handoff.md) · [文档检查](phases/21-agent-roles/review.md) |
 
 **每轮的文件名是固定的四种**：
 
@@ -83,9 +85,9 @@
 ## 4. 新增一轮工作怎么做
 
 ```powershell
-mkdir docs/phases/21-<主题>
-# 写 docs/phases/21-<主题>/handoff.md      ← 开工前
-# 实现完，写 docs/phases/21-<主题>/review.md
+mkdir docs/phases/22-<主题>
+# 写 docs/phases/22-<主题>/handoff.md      ← 开工前
+# 实现完，写 docs/phases/22-<主题>/review.md
 # 有实测再补 observation.md / result.md
 ```
 
@@ -103,6 +105,7 @@ mkdir docs/phases/21-<主题>
 ## 5. 维护约定
 
 - **`phases/` 只增不改。** 结论错了就在新一轮的评审里纠正，别回头改旧档案。
+- **历史角色不代表现行分工。** 旧档案的 GLM / DSH 署名保留；新任务和未完成任务的执行安排以 [`AGENTS.md`](../AGENTS.md) §2–3 及最新补充工作单为准。
 - **`handoff.md` 是开工前的合同。** 它写的时候还不知道答案，所以允许和最终实现不一致——`review.md` 里会记差异。
 - **作废的工作单进 `archive/`**，顶部加醒目警告，实验结论保留。
 - **不设常驻交接文档**：当前状态与可选项看 [`roadmap.md`](roadmap.md) §11；有新工作就开新的 phase 目录。

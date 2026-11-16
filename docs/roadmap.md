@@ -90,7 +90,7 @@ P0 文档与决策
                   P5 大厅 / 房间列表
 ```
 
-`P3a`（`go.ts` + 规则测试）不依赖 P1，GLM 现在就能开工；`P3`（接进房间/REST/MCP）必须等 P1，否则又会造一套座位模型。
+按原阶段依赖，`P3a`（`go.ts` + 规则测试）不依赖 P1；`P3`（接进房间/REST/MCP）必须等 P1，否则又会造一套座位模型。以上阶段已完成，当前任务和承接安排见 §11。
 
 ---
 
@@ -314,7 +314,9 @@ worktree 只在**需要同时打开多个分支**时才有价值（比如一边�
 
 ---
 
-## 8. 本周行动
+## 8. 原始行动计划（历史记录）
+
+本节保留最初的阶段安排，不作为当前派工指令；现行分工见 [`AGENTS.md`](../AGENTS.md) §2–3，当前状态见 §11。
 
 1. 评审三份文档（本文件 + 两份 proposal）。
 2. 拍板下面的决策清单。
@@ -342,12 +344,15 @@ worktree 只在**需要同时打开多个分支**时才有价值（比如一边�
 |---|---|---|
 | 2026-10-24 | v0.1 | 初稿：依赖顺序、阶段拆分、分支策略、围棋提案三处修改 |
 | 2026-11-12 | v0.2 | P1 → P5 全部完成；补 §11 可选项（原交接文档的内容并入本文，该文件已删除） |
+| 2026-11-16 | v0.3 | 分工调整为 GPT-6 Astra 统筹、其余工作 agent 承接实现；阶段 20 待办改按阶段 21 安排调度 |
 
 ---
 
 ## 11. 之后的可选项（无主线任务）
 
-2026-11-16 维护进度：文档精简已合入 main，见[阶段 19 评审](phases/19-docs-slim-review/review.md)及[补充核验](phases/19-docs-slim-review/result.md)。`fix/code-review-p1` 已同步 main，但[阶段 20 独立验证](phases/20-code-review-fixes/review.md)发现 S-03 无座身份仍错误回退黑方，暂不合并；GLM 按[整改单](phases/20-code-review-fixes/handoff.md)继续，之后补前端交互验收。
+2026-11-16 维护进度：文档精简已合入 main，见[阶段 19 评审](phases/19-docs-slim-review/review.md)及[补充核验](phases/19-docs-slim-review/result.md)。`fix/code-review-p1` 已同步 main，但[阶段 20 独立验证](phases/20-code-review-fixes/review.md)发现 S-03 无座身份仍错误回退黑方，暂不合并。
+
+已按用户安排更新[阶段 21 分工文档](phases/21-agent-roles/review.md)：现行角色以 [`AGENTS.md`](../AGENTS.md) §2 为准，由 GPT-6 Astra 统筹调度工作 agent 承接[阶段 20 整改单](phases/20-code-review-fixes/handoff.md)，之后补前端交互验收并评审。本轮只改分工文档，尚未指定或启动实现者。
 
 **P1 → P5 + `pass_turn` + 租约结算全部完成**，没有下一阶段。剩下三项都是可选，按性价比排：
 
