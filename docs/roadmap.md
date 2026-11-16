@@ -354,7 +354,7 @@ worktree 只在**需要同时打开多个分支**时才有价值（比如一边�
 
 AGY / Gemini 随后提交 `34d8d35`，修正双 agent 建房和大厅分类解耦；[阶段 23](phases/23-r1-r2-recheck/review.md)发现的空断言与持续慢响应问题已在 `81ecc32` 修复。[阶段 24 最终复审](phases/24-final-fix-review/review.md)通过：全量 372 项测试、构建和类型检查通过，独立检查 120/120 通过。
 
-`fix/code-review-p1` 合并阻塞已解除，按原计划合入本地 main。main 的文档改动已包含于修复分支，无需重复同步。现行分工见 [`AGENTS.md`](../AGENTS.md) §2 与[阶段 21](phases/21-agent-roles/review.md)。剩余 P3 仍按[缺陷清单](code-review.md)跟踪。
+`fix/code-review-p1` 已按原计划合入本地 main，合并提交 `74f23fd`；合并后全量测试 372/372 通过，修复分支已删除，未推送远端，见[合并结果](phases/24-final-fix-review/result.md)。现行分工见 [`AGENTS.md`](../AGENTS.md) §2 与[阶段 21](phases/21-agent-roles/review.md)。剩余 P3 仍按[缺陷清单](code-review.md)跟踪。
 
 **P1 → P5 + `pass_turn` + 租约结算全部完成**，没有下一阶段。剩下三项都是可选，按性价比排：
 
