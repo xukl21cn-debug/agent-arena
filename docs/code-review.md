@@ -27,31 +27,31 @@
 
 ## 2. 缺陷汇总清单
 
-| 编号 | 严重度 | 模块 | 缺陷标题 | 影响面 |
-|---|---|---|---|---|
-| **S-01** | **P1** | `server/rooms` | `GameRoom.leave()` 在围棋房间中调用触发 `WRONG_GAME` 崩溃 | 围棋房间退出逻辑崩溃、席位状态脱节 |
-| **S-02** | **P1** | `server/rooms` | `GameRoom.join()` 换座/重连时未清理旧席位，导致 participantId 幽灵占双座 | 棋盘席位状态与 Roster 不一致 |
-| **S-03** | **P1** | `server/mcp` | stdio 桥接模式下双 Agent 对局 `newGame`/`getState` 恒返回 `yourColor: 'black'` | 执白 Agent 误判自身颜色，违反架构约束 |
-| **S-04** | **P1** | `server/rooms` | `GameRoom.getPhase()` 与 `summarize()` 遗漏围棋 `scoring` 状态，回退为 `lobby`/`waiting` | 数子阶段前端误展示准备中与准备按钮，大厅列表状态错误 |
-| **W-01** | **P1** | `web/App` | `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」 | 界面核心状态自相矛盾（标题「轮到你了」vs 状态栏「AI 正在思考」） |
-| **W-02** | **P1** | `web/store` | 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏 | 访问不存在/非法聊天室时前端死锁在重连中 |
-| **W-03** | **P1** | `web/store` | 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；乱序状态合并清空当前局解说 | 访问新房间死循环重连；解说记录被异常抹除 |
-| **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界破坏，聊天室报 500 而非 400 |
-| **S-06** | **P2** | `server/chat` | `chatHint` 在暂停房间提示「继续 wait_for_messages」，但 `hasWakeup` 立即返回 | 导致 Agent 陷入 0ms 极速轮询死循环 |
-| **S-07** | **P2** | `server/mcp` | `SessionBindings` 在会话关闭/销毁时未执行 `clear` | MCP 长连接生命周期产生内存泄漏 |
-| **W-04** | **P2** | `web/chat` | `ChatComposer` 缺少中文输入法 `isComposing` 判断 | 中文拼音回车时误发送半截消息或误选点名候选人 |
-| **W-05** | **P2** | `web/chat` | 聊天时间戳与复盘页使用 UTC `slice(11, 16)`，与解说面板本地时间存在 8 小时时差 | 中国时区下界面出现反直觉时间跳变 |
-| **W-06** | **P2** | `web/lobby` | `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合 | 离开页面后控制台报错；聊天接口异常拖垮游戏大厅 |
-| **W-07** | **P2** | `web/chat` | 聊天室暂停时 Web 界面过度禁用输入框，主持人无法发话 | 违反领域规则「暂停时人类可随时发言插话」 |
-| **S-08** | **P3** | `server/chat` | `ChatRoom.transcript` 在 `limit: 0` 时因 JS `-0` 机制返回全部历史 | 参数边界异常行为 |
-| **S-09** | **P3** | `server/rules` | `resolveRules` 校验失败抛出原生 `Error` 而非 `RoomError` | 规则不支持时报 500 而非 400 `UNSUPPORTED_RULE` |
-| **S-10** | **P3** | `server/routes` | REST 路由使用 `x-arena-participant` 请求头时绕过 `presence.touch` | 仅以 participantId 发起操作时活跃状态不被刷新 |
-| **W-08** | **P3** | `web/chat` | `ChatComposer` 点名候选列表在移动触屏设备上因 `blur` 提前触发而无法点击 | 触屏端无法完成点名选择 |
-| **W-09** | **P3** | `web/chat` | 聊天室暂停或关闭时轮次展示为「等待轮转」 | 状态指示不精准 |
-| **W-10** | **P3** | `web/store` | `seatColors` 仅认定双 Agent 房间为观战，误将远程玩家/第三方观众设为非观战 | 观众进入围棋数子时出现可点击的确认按钮 |
-| **W-11** | **P3** | `web/api` | API 错误处理直接吐出后端英文错误文案，未做本地化转换 | 违反 AGENTS.md 短句中文文案约束 |
-| **W-12** | **P3** | `web/replay` | `ReplayPage.tsx` 中局部常量 `endLabel` 遮蔽从 `labels` 导入的同名函数 | 变量命名遮蔽，降低代码可维护性 |
-| **W-13** | **P3** | `web/ui` | 子页面（对弈、复盘、聊天）缺失「返回大厅」的直接导航链接 | 用户体验断层 |
+| 编号 | 严重度 | 模块 | 缺陷标题 | 影响面 | 状态 |
+|---|---|---|---|---|---|
+| **S-01** | **P1** | `server/rooms` | `GameRoom.leave()` 在围棋房间中调用触发 `WRONG_GAME` 崩溃 | 围棋房间退出逻辑崩溃、席位状态脱节 | ✅ 已在 `fix/code-review-p1` 修复 |
+| **S-02** | **P1** | `server/rooms` | `GameRoom.join()` 换座/重连时未清理旧席位，导致 participantId 幽灵占双座 | 棋盘席位状态与 Roster 不一致 | ✅ 已在 `fix/code-review-p1` 修复 |
+| **S-03** | **P1** | `server/mcp` | stdio 桥接模式下双 Agent 对局 `newGame`/`getState` 恒返回 `yourColor: 'black'` | 执白 Agent 误判自身颜色，违反架构约束 | ✅ 已在 `fix/code-review-p1` 修复 |
+| **S-04** | **P1** | `server/rooms` | `GameRoom.getPhase()` 与 `summarize()` 遗漏围棋 `scoring` 状态，回退为 `lobby`/`waiting` | 数子阶段前端误展示准备中与准备按钮，大厅列表状态错误 | ✅ 已在 `fix/code-review-p1` 修复 |
+| **W-01** | **P1** | `web/App` | `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」 | 界面核心状态自相矛盾（标题「轮到你了」vs 状态栏「AI 正在思考」） | ✅ 已在 `fix/code-review-p1` 修复 |
+| **W-02** | **P1** | `web/store` | 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏 | 访问不存在/非法聊天室时前端死锁在重连中 | ✅ 已在 `fix/code-review-p1` 修复 |
+| **W-03** | **P1** | `web/store` | 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；乱序状态合并清空当前局解说 | 访问新房间死循环重连；解说记录被异常抹除 | ✅ 已在 `fix/code-review-p1` 修复 |
+| **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界破坏，聊天室报 500 而非 400 | 待处理 |
+| **S-06** | **P2** | `server/chat` | `chatHint` 在暂停房间提示「继续 wait_for_messages」，但 `hasWakeup` 立即返回 | 导致 Agent 陷入 0ms 极速轮询死循环 | 待处理 |
+| **S-07** | **P2** | `server/mcp` | `SessionBindings` 在会话关闭/销毁时未执行 `clear` | MCP 长连接生命周期产生内存泄漏 | 待处理 |
+| **W-04** | **P2** | `web/chat` | `ChatComposer` 缺少中文输入法 `isComposing` 判断 | 中文拼音回车时误发送半截消息或误选点名候选人 | 待处理 |
+| **W-05** | **P2** | `web/chat` | 聊天时间戳与复盘页使用 UTC `slice(11, 16)`，与解说面板本地时间存在 8 小时时差 | 中国时区下界面出现反直觉时间跳变 | 待处理 |
+| **W-06** | **P2** | `web/lobby` | `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合 | 离开页面后控制台报错；聊天接口异常拖垮游戏大厅 | 待处理 |
+| **W-07** | **P2** | `web/chat` | 聊天室暂停时 Web 界面过度禁用输入框，主持人无法发话 | 违反领域规则「暂停时人类可随时发言插话」 | 待处理 |
+| **S-08** | **P3** | `server/chat` | `ChatRoom.transcript` 在 `limit: 0` 时因 JS `-0` 机制返回全部历史 | 参数边界异常行为 | 待处理 |
+| **S-09** | **P3** | `server/rules` | `resolveRules` 校验失败抛出原生 `Error` 而非 `RoomError` | 规则不支持时报 500 而非 400 `UNSUPPORTED_RULE` | 待处理 |
+| **S-10** | **P3** | `server/routes` | REST 路由使用 `x-arena-participant` 请求头时绕过 `presence.touch` | 仅以 participantId 发起操作时活跃状态不被刷新 | 待处理 |
+| **W-08** | **P3** | `web/chat` | `ChatComposer` 点名候选列表在移动触屏设备上因 `blur` 提前触发而无法点击 | 触屏端无法完成点名选择 | 待处理 |
+| **W-09** | **P3** | `web/chat` | 聊天室暂停或关闭时轮次展示为「等待轮转」 | 状态指示不精准 | 待处理 |
+| **W-10** | **P3** | `web/store` | `seatColors` 仅认定双 Agent 房间为观战，误将远程玩家/第三方观众设为非观战 | 观众进入围棋数子时出现可点击的确认按钮 | 待处理 |
+| **W-11** | **P3** | `web/api` | API 错误处理直接吐出后端英文错误文案，未做本地化转换 | 违反 AGENTS.md 短句中文文案约束 | 待处理 |
+| **W-12** | **P3** | `web/replay` | `ReplayPage.tsx` 中局部常量 `endLabel` 遮蔽从 `labels` 导入的同名函数 | 变量命名遮蔽，降低代码可维护性 | 待处理 |
+| **W-13** | **P3** | `web/ui` | 子页面（对弈、复盘、聊天）缺失「返回大厅」的直接导航链接 | 用户体验断层 | 待处理 |
 
 ---
 
