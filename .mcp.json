@@ -1,9 +1,14 @@
 {
   "mcpServers": {
-    "arena": {
+    "arena-game": {
       "transport": "http",
       "enabled": true,
-      "url": "http://127.0.0.1:3000/mcp"
+      "url": "http://127.0.0.1:3000/game/mcp"
+    },
+    "arena-chat": {
+      "transport": "http",
+      "enabled": true,
+      "url": "http://127.0.0.1:3000/chat/mcp"
     }
   }
 }
