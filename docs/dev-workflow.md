@@ -203,7 +203,7 @@ Get-NetTCPConnection -LocalPort 3000 -State Listen | ForEach-Object { Stop-Proce
       config:
         serverName: arena-game
         transport: streamable-http
-        url: http://127.0.0.1:3000/mcp
+        url: http://127.0.0.1:3000/game/mcp
 ```
 
 **聊天室是另一个端点**，要用 DSH 聊就再加一条：

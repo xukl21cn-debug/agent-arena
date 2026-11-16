@@ -407,7 +407,9 @@ function clientName(session: McpSession): string | undefined {
 }
 
 /**
- * Mounts the MCP Streamable HTTP endpoint at POST/GET/DELETE /mcp.
+ * Mounts the games MCP Streamable HTTP endpoint at POST/GET/DELETE
+ * /game/mcp, with the bare /mcp kept as a legacy alias — one handler set,
+ * one session table, both paths.
  * One McpServer + transport per session, all sharing the same RoomManager.
  */
 export function mountMcpHttp(
@@ -431,7 +433,7 @@ export function mountMcpHttp(
     res.status(400).json(jsonRpcError(-32000, message));
   };
 
-  app.post('/mcp', async (req: Request, res: Response) => {
+  const handlePost = async (req: Request, res: Response): Promise<void> => {
     try {
       const sessionId = sessionIdOf(req);
 
@@ -486,15 +488,15 @@ export function mountMcpHttp(
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
-      console.error('[mcp] POST /mcp failed', error);
+      console.error(`[mcp] POST ${req.path} failed`, error);
       if (!res.headersSent) {
         res.status(500).json(jsonRpcError(-32603, 'Internal server error'));
       }
     }
-  });
+  };
 
   // Optional server-initiated SSE stream for notifications.
-  app.get('/mcp', async (req: Request, res: Response) => {
+  const handleGet = async (req: Request, res: Response): Promise<void> => {
     const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
     if (!session) {
@@ -505,14 +507,14 @@ export function mountMcpHttp(
     try {
       await session.transport.handleRequest(req, res);
     } catch (error) {
-      console.error('[mcp] GET /mcp failed', error);
+      console.error(`[mcp] GET ${req.path} failed`, error);
       if (!res.headersSent) {
         res.status(500).json(jsonRpcError(-32603, 'Internal server error'));
       }
     }
-  });
+  };
 
-  app.delete('/mcp', async (req: Request, res: Response) => {
+  const handleDelete = async (req: Request, res: Response): Promise<void> => {
     const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
     if (!session) {
@@ -529,10 +531,19 @@ export function mountMcpHttp(
       // departed agent must stop reading as connected.
       manager.presenceSource?.detachSession(sessionId!);
     } catch (error) {
-      console.error('[mcp] DELETE /mcp failed', error);
+      console.error(`[mcp] DELETE ${req.path} failed`, error);
       if (!res.headersSent) {
         res.status(500).json(jsonRpcError(-32603, 'Internal server error'));
       }
     }
-  });
+  };
+
+  // The canonical path pairs with the chat domain's /chat/mcp; the bare
+  // /mcp stays registered so clients configured before the split keep
+  // working against the same sessions.
+  for (const path of ['/game/mcp', '/mcp']) {
+    app.post(path, handlePost);
+    app.get(path, handleGet);
+    app.delete(path, handleDelete);
+  }
 }

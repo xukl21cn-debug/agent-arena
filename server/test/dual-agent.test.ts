@@ -30,10 +30,10 @@ async function call(
   return payloadOf(await client.callTool({ name, arguments: args }));
 }
 
-async function connect(name: string): Promise<Client> {
+async function connect(name: string, endpoint = '/mcp'): Promise<Client> {
   const client = new Client({ name, version: '0.0.1' });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`)),
+    new StreamableHTTPClientTransport(new URL(`${baseUrl}${endpoint}`)),
   );
   return client;
 }
@@ -135,6 +135,38 @@ describe('two agents in one room', () => {
     } finally {
       await black.close().catch(() => undefined);
       await white.close().catch(() => undefined);
+    }
+  });
+
+  it('serves the games MCP at /game/mcp with /mcp as a legacy alias', async () => {
+    // The canonical endpoint pairs with the chat domain's /chat/mcp; the
+    // bare /mcp must keep serving clients configured before the split.
+    const viaNewPath = await connect('new-path-agent', '/game/mcp');
+    const viaLegacyPath = await connect('legacy-path-agent');
+    try {
+      expect(viaNewPath.getServerVersion()?.name).toBe('arena-game');
+      expect(viaLegacyPath.getServerVersion()?.name).toBe('arena-game');
+
+      const join = await call(viaNewPath, 'join_game', {
+        roomId: 'game-path-room',
+        name: 'path-agent',
+        seat: 'black',
+      });
+      expect(join.seat).toBe('black');
+      await call(viaNewPath, 'new_game', {
+        roomId: 'game-path-room',
+        agentColor: 'black',
+      });
+      const move = await call(viaNewPath, 'place_stone', {
+        roomId: 'game-path-room',
+        row: 3,
+        col: 3,
+      });
+      expect(move.ok).toBe(true);
+      expect(move.state.moveCount).toBe(1);
+    } finally {
+      await viaNewPath.close().catch(() => undefined);
+      await viaLegacyPath.close().catch(() => undefined);
     }
   });
 
