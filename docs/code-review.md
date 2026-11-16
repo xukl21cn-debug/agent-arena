@@ -28,22 +28,24 @@
 
 ## 2. 缺陷汇总清单
 
+2026-11-16 合并评审：修复分支的 S-03 未通过无座身份边界验证，暂未合入 main；具体证据与未完成验证见[阶段 20 评审](phases/20-code-review-fixes/review.md)。
+
 | 编号 | 严重度 | 模块 | 缺陷标题 | 影响面 | 状态 |
 |---|---|---|---|---|---|
-| **S-01** | **P1** | `server/rooms` | `GameRoom.leave()` 在围棋房间中调用触发 `WRONG_GAME` 崩溃 | 围棋房间退出逻辑崩溃、席位状态脱节 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **S-02** | **P1** | `server/rooms` | `GameRoom.join()` 换座/重连时未清理旧席位，导致 participantId 幽灵占双座 | 棋盘席位状态与 Roster 不一致 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **S-03** | **P1** | `server/mcp` | stdio 桥接模式下双 Agent 对局 `newGame`/`getState` 恒返回 `yourColor: 'black'` | 执白 Agent 误判自身颜色，违反架构约束 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **S-04** | **P1** | `server/rooms` | `GameRoom.getPhase()` 与 `summarize()` 遗漏围棋 `scoring` 状态，回退为 `lobby`/`waiting` | 数子阶段前端误展示准备中与准备按钮，大厅列表状态错误 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **W-01** | **P1** | `web/App` | `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」 | 界面核心状态自相矛盾（标题「轮到你了」vs 状态栏「AI 正在思考」） | ✅ 已在 `fix/code-review-p1` 修复 |
-| **W-02** | **P1** | `web/store` | 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏 | 访问不存在/非法聊天室时前端死锁在重连中 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **W-03** | **P1** | `web/store` | 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；乱序状态合并清空当前局解说 | 访问新房间死循环重连；解说记录被异常抹除 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界破坏，聊天 MCP 错误码退化为 INTERNAL_ERROR | ✅ 已在 `fix/code-review-p1` 修复 |
-| **S-06** | **P2** | `server/chat` | `chatHint` 在暂停房间提示「继续 wait_for_messages」，但 `hasWakeup` 立即返回 | 导致 Agent 陷入 0ms 极速轮询死循环 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **S-07** | **P2** | `server/mcp` | `SessionBindings` 在会话关闭/销毁时未执行 `clear` | MCP 长连接生命周期产生内存泄漏 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **W-04** | **P2** | `web/chat` | `ChatComposer` 缺少中文输入法 `isComposing` 判断 | 中文拼音回车时误发送半截消息或误选点名候选人 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **W-05** | **P2** | `web/chat` | 聊天时间戳与复盘页使用 UTC `slice(11, 16)`，与解说面板本地时间存在 8 小时时差 | 中国时区下界面出现反直觉时间跳变 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **W-06** | **P2** | `web/lobby` | `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合 | 卸载后仍尝试更新状态；单类接口失败阻止另一类列表更新 | ✅ 已在 `fix/code-review-p1` 修复 |
-| **W-07** | **P2** | `web/chat` | 聊天室暂停时 Web 界面过度禁用输入框，主持人无法发话 | 违反领域规则「暂停时人类可随时发言插话」 | ✅ 已在 `fix/code-review-p1` 修复 |
+| **S-01** | **P1** | `server/rooms` | `GameRoom.leave()` 在围棋房间中调用触发 `WRONG_GAME` 崩溃 | 围棋房间退出逻辑崩溃、席位状态脱节 | 已提交修复，验收范围见阶段 20 |
+| **S-02** | **P1** | `server/rooms` | `GameRoom.join()` 换座/重连时未清理旧席位，导致 participantId 幽灵占双座 | 棋盘席位状态与 Roster 不一致 | 已提交修复，验收范围见阶段 20 |
+| **S-03** | **P1** | `server/mcp` | stdio 桥接模式下双 Agent 对局 `newGame`/`getState` 恒返回 `yourColor: 'black'` | 执白 Agent 误判自身颜色，违反架构约束 | 独立验证未通过，待整改（阶段 20） |
+| **S-04** | **P1** | `server/rooms` | `GameRoom.getPhase()` 与 `summarize()` 遗漏围棋 `scoring` 状态，回退为 `lobby`/`waiting` | 数子阶段前端误展示准备中与准备按钮，大厅列表状态错误 | 已提交修复，验收范围见阶段 20 |
+| **W-01** | **P1** | `web/App` | `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」 | 界面核心状态自相矛盾（标题「轮到你了」vs 状态栏「AI 正在思考」） | 已提交修复，验收范围见阶段 20 |
+| **W-02** | **P1** | `web/store` | 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏 | 访问不存在/非法聊天室时前端死锁在重连中 | 已提交修复，验收范围见阶段 20 |
+| **W-03** | **P1** | `web/store` | 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；乱序状态合并清空当前局解说 | 访问新房间死循环重连；解说记录被异常抹除 | 已提交修复，验收范围见阶段 20 |
+| **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界耦合，建房校验依赖棋类异常类型 | 已提交修复，验收范围见阶段 20 |
+| **S-06** | **P2** | `server/chat` | `chatHint` 在暂停房间提示「继续 wait_for_messages」，但 `hasWakeup` 立即返回 | 导致 Agent 陷入 0ms 极速轮询死循环 | 已提交修复，验收范围见阶段 20 |
+| **S-07** | **P2** | `server/mcp` | `SessionBindings` 在会话关闭/销毁时未执行 `clear` | MCP 长连接生命周期产生内存泄漏 | 已提交修复，验收范围见阶段 20 |
+| **W-04** | **P2** | `web/chat` | `ChatComposer` 缺少中文输入法 `isComposing` 判断 | 中文拼音回车时误发送半截消息或误选点名候选人 | 已提交修复，验收范围见阶段 20 |
+| **W-05** | **P2** | `web/chat` | 聊天时间戳与复盘页使用 UTC `slice(11, 16)`，与解说面板本地时间存在 8 小时时差 | 中国时区下界面出现反直觉时间跳变 | 已提交修复，验收范围见阶段 20 |
+| **W-06** | **P2** | `web/lobby` | `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合 | 卸载后仍尝试更新状态；单类接口失败阻止另一类列表更新 | 已提交修复，验收范围见阶段 20 |
+| **W-07** | **P2** | `web/chat` | 聊天室暂停时 Web 界面过度禁用输入框，主持人无法发话 | 违反领域规则「暂停时人类可随时发言插话」 | 已提交修复，验收范围见阶段 20 |
 | **S-08** | **P3** | `server/chat` | `ChatRoom.transcript` 在 `limit: 0` 时因 JS `-0` 机制返回全部历史 | 参数边界异常行为 | 待处理 |
 | **S-09** | **P3** | `server/rules` | `resolveRules` 校验失败抛出原生 `Error` 而非 `RoomError` | 规则不支持时报 500 而非 400 `UNSUPPORTED_RULE` | 待处理 |
 | **S-10** | **P3** | `server/routes` | REST 路由使用 `x-arena-participant` 请求头时绕过 `presence.touch` | 仅以 participantId 发起操作时活跃状态不被刷新 | 待处理 |
@@ -51,7 +53,7 @@
 | **W-09** | **P3** | `web/chat` | 聊天室暂停或关闭时轮次展示为「等待轮转」 | 状态指示不精准 | 待处理 |
 | **W-10** | **P3** | `web/store` | `seatColors` 仅认定双 Agent 房间为观战，误将远程玩家/第三方观众设为非观战 | 观众进入围棋数子时出现可点击的确认按钮 | 待处理 |
 | **W-11** | **P3** | `web/api` | API 错误处理直接吐出后端英文错误文案，未做本地化转换 | 违反 AGENTS.md 短句中文文案约束 | 待处理 |
-| **W-12** | **P3** | `web/replay` | `ReplayPage.tsx` 中局部常量 `endLabel` 遮蔽从 `labels` 导入的同名函数 | 变量命名遮蔽，降低代码可维护性 | ✅ 已在 `fix/code-review-p1` 修复 |
+| **W-12** | **P3** | `web/replay` | `ReplayPage.tsx` 中局部常量 `endLabel` 遮蔽从 `labels` 导入的同名函数 | 变量命名遮蔽，降低代码可维护性 | 已提交修复，验收范围见阶段 20 |
 | **W-13** | **P3** | `web/ui` | 子页面（对弈、复盘、聊天）缺失「返回大厅」的直接导航链接 | 用户体验断层 | 待处理 |
 
 ---
@@ -284,20 +286,13 @@
 
 ## 4. P2 中危问题深度剖析与修复建议
 
-### [S-05] `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError`
-- **文件与行号**：[`server/src/chat/manager.ts:11, 52, 76`](../server/src/chat/manager.ts#L11), [`server/src/chat/mcp.ts:101-114`](../server/src/chat/mcp.ts#L101-L114)
-- **根本原因**：
-  `ChatManager` 引用了 `../rooms/room-manager.js` 的 `assertRoomId`。该断言在校验失败时抛出棋类领域的 `RoomError('INVALID_ROOM_ID')`。
-  但在 `/chat/mcp` 端点（`server/src/chat/mcp.ts`）的 `chatErrorResult` 异常处理器中，仅识别 `ChatError`：
-  ```ts
-  if (error instanceof ChatError) { ... }
-  // 非 ChatError 均落入：
-  return { isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'INTERNAL_ERROR', message }) }] };
-  ```
-- **影响**：
-  聊天 MCP 客户端传入不合法的 roomId 时，工具结果返回 `INTERNAL_ERROR` 而非 `INVALID_ROOM_ID`。REST 路径则由后续 `apiErrorHandler` 接住 `RoomError`，仍返回 HTTP 400；不能将 MCP 工具错误等同于 HTTP 500。严重破坏了 AGENTS.md §4.2 规定的「聊天室为独立领域对象，不依赖 rooms/」的设计约束。
-- **推荐修复**：
-  在 `server/src/chat/model.ts` 或 `manager.ts` 内使用 `@arena/shared` 的 `ROOM_ID_PATTERN` 自行校验，抛出 `ChatError('INVALID_ROOM_ID', ...)`。
+### [S-05] ChatManager 的建房校验依赖棋类异常类型
+
+- **基线位置**：[manager.ts](../server/src/chat/manager.ts) 的 create / fileFor，以及 [app.ts](../server/src/app.ts) 的错误处理链。
+- **确认的事实**：基线从 rooms/room-manager 导入 assertRoomId，非法建房参数抛出棋类 RoomError。聊天领域因此依赖棋类模块，违反领域分离约定。
+- **影响边界（2026-11-16 补充核验）**：REST 建房异常由后续 apiErrorHandler 处理，返回 HTTP 400 / INVALID_ROOM_ID。MCP join_room 走 getOrThrow，未调用 create 或 assertRoomId；非法且不存在的 id 返回 ROOM_NOT_FOUND。原报告所称 MCP INTERNAL_ERROR / REST 500 没有得到调用链或本次实测支持，撤回该结论。
+- **推荐修复**：在聊天领域内使用 shared 的 ROOM_ID_PATTERN 校验并抛 ChatError，解除模块依赖。不要为匹配原报告而顺带改变 MCP 查找行为。
+- **验收范围**：非法 REST 建房返回 400 且不残留房间；聊天校验不依赖 rooms 模块。此项保留原编号和 P2 分类以便追溯，实际影响按上述领域耦合理解。
 
 ---
 
