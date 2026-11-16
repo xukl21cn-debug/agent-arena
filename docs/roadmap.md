@@ -356,7 +356,7 @@ AGY / Gemini 随后提交 `34d8d35`，修正双 agent 建房和大厅分类解�
 
 `fix/code-review-p1` 已按原计划合入本地 main，合并提交 `74f23fd`；合并后全量测试 372/372 通过，修复分支已删除，未推送远端，见[合并结果](phases/24-final-fix-review/result.md)。现行分工见 [`AGENTS.md`](../AGENTS.md) §2 与[阶段 21](phases/21-agent-roles/review.md)。剩余 P3 仍按[缺陷清单](code-review.md)跟踪。
 
-2026-11-17，`fix/mcp-naming` 的 `7c015b9` 已补齐 duel、启动日志和 README 的迁移遗漏；[阶段 26 复核](phases/26-mcp-naming-recheck/review.md)通过，独立检查 21/21、全量测试 373/373。可按流程合入本地 main。用户明确允许退役旧 `/mcp`，客户端配置（含 `.mcp.json`）由用户统一迁移；[阶段 25](phases/25-mcp-naming-review/review.md)保留原始失败证据。
+2026-11-17，`fix/mcp-naming` 的 `7c015b9` 已补齐 duel、启动日志和 README 的迁移遗漏；[阶段 26 复核](phases/26-mcp-naming-recheck/review.md)通过，独立检查 21/21。已通过 `324bb37` 合入本地 main，合并后全量测试 373/373，修复分支已删除，未推送，见[合并结果](phases/26-mcp-naming-recheck/result.md)。用户明确允许退役旧 `/mcp`，客户端配置（含 `.mcp.json`）由用户统一迁移；[阶段 25](phases/25-mcp-naming-review/review.md)保留原始失败证据。
 
 **P1 → P5 + `pass_turn` + 租约结算全部完成**，没有下一阶段。剩下三项都是可选，按性价比排：
 
