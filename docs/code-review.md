@@ -28,24 +28,24 @@
 
 ## 2. 缺陷汇总清单
 
-2026-11-16 合并评审：修复分支的 S-03 未通过无座身份边界验证，暂未合入 main；具体证据与未完成验证见[阶段 20 评审](phases/20-code-review-fixes/review.md)。
+2026-11-16 最新复审：S-03 的运行修复通过；双 agent 回归测试设置与 W-06 大厅加载仍需整改，整条分支暂不合并。证据与范围见[阶段 22 评审](phases/22-s03-recheck/review.md)，阶段 20 的失败记录保留为历史。
 
 | 编号 | 严重度 | 模块 | 缺陷标题 | 影响面 | 状态 |
 |---|---|---|---|---|---|
 | **S-01** | **P1** | `server/rooms` | `GameRoom.leave()` 在围棋房间中调用触发 `WRONG_GAME` 崩溃 | 围棋房间退出逻辑崩溃、席位状态脱节 | 已提交修复，验收范围见阶段 20 |
 | **S-02** | **P1** | `server/rooms` | `GameRoom.join()` 换座/重连时未清理旧席位，导致 participantId 幽灵占双座 | 棋盘席位状态与 Roster 不一致 | 已提交修复，验收范围见阶段 20 |
-| **S-03** | **P1** | `server/mcp` | stdio 桥接模式下双 Agent 对局 `newGame`/`getState` 恒返回 `yourColor: 'black'` | 执白 Agent 误判自身颜色，违反架构约束 | 独立验证未通过，待整改（阶段 20） |
+| **S-03** | **P1** | `server/mcp` | stdio 桥接模式下双 Agent 对局 `newGame`/`getState` 恒返回 `yourColor: 'black'` | 执白 Agent 误判自身颜色，违反架构约束 | 运行验证通过；回归测试设置待整改（阶段 22） |
 | **S-04** | **P1** | `server/rooms` | `GameRoom.getPhase()` 与 `summarize()` 遗漏围棋 `scoring` 状态，回退为 `lobby`/`waiting` | 数子阶段前端误展示准备中与准备按钮，大厅列表状态错误 | 已提交修复，验收范围见阶段 20 |
-| **W-01** | **P1** | `web/App` | `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」 | 界面核心状态自相矛盾（标题「轮到你了」vs 状态栏「AI 正在思考」） | 已提交修复，验收范围见阶段 20 |
-| **W-02** | **P1** | `web/store` | 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏 | 访问不存在/非法聊天室时前端死锁在重连中 | 已提交修复，验收范围见阶段 20 |
-| **W-03** | **P1** | `web/store` | 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；乱序状态合并清空当前局解说 | 访问新房间死循环重连；解说记录被异常抹除 | 已提交修复，验收范围见阶段 20 |
+| **W-01** | **P1** | `web/App` | `GamePage` 向 `opponentStatus` 传递错误的 `isOpponentTurn`，人类回合误显「AI 正在思考」 | 界面核心状态自相矛盾（标题「轮到你了」vs 状态栏「AI 正在思考」） | 浏览器验证通过（阶段 22） |
+| **W-02** | **P1** | `web/store` | 聊天室 WebSocket 错误帧缺失 `kind: 'chat'` 被直接抛弃，导致无限重连黑屏 | 访问不存在/非法聊天室时前端死锁在重连中 | 浏览器验证通过（阶段 22） |
+| **W-03** | **P1** | `web/store` | 游戏室 WebSocket 遇到 1008 拒绝无感知无限重连；乱序状态合并清空当前局解说 | 访问新房间死循环重连；解说记录被异常抹除 | 浏览器验证通过（阶段 22） |
 | **S-05** | **P2** | `server/chat` | `ChatManager` 引入 `room-manager` 的 `assertRoomId`，跨领域抛出 `RoomError` | 领域边界耦合，建房校验依赖棋类异常类型 | 已提交修复，验收范围见阶段 20 |
 | **S-06** | **P2** | `server/chat` | `chatHint` 在暂停房间提示「继续 wait_for_messages」，但 `hasWakeup` 立即返回 | 导致 Agent 陷入 0ms 极速轮询死循环 | 已提交修复，验收范围见阶段 20 |
 | **S-07** | **P2** | `server/mcp` | `SessionBindings` 在会话关闭/销毁时未执行 `clear` | MCP 长连接生命周期产生内存泄漏 | 已提交修复，验收范围见阶段 20 |
-| **W-04** | **P2** | `web/chat` | `ChatComposer` 缺少中文输入法 `isComposing` 判断 | 中文拼音回车时误发送半截消息或误选点名候选人 | 已提交修复，验收范围见阶段 20 |
-| **W-05** | **P2** | `web/chat` | 聊天时间戳与复盘页使用 UTC `slice(11, 16)`，与解说面板本地时间存在 8 小时时差 | 中国时区下界面出现反直觉时间跳变 | 已提交修复，验收范围见阶段 20 |
-| **W-06** | **P2** | `web/lobby` | `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合 | 卸载后仍尝试更新状态；单类接口失败阻止另一类列表更新 | 已提交修复，验收范围见阶段 20 |
-| **W-07** | **P2** | `web/chat` | 聊天室暂停时 Web 界面过度禁用输入框，主持人无法发话 | 违反领域规则「暂停时人类可随时发言插话」 | 已提交修复，验收范围见阶段 20 |
+| **W-04** | **P2** | `web/chat` | `ChatComposer` 缺少中文输入法 `isComposing` 判断 | 中文拼音回车时误发送半截消息或误选点名候选人 | 浏览器合成事件检查通过；真实输入法未测（阶段 22） |
+| **W-05** | **P2** | `web/chat` | 聊天时间戳与复盘页使用 UTC `slice(11, 16)`，与解说面板本地时间存在 8 小时时差 | 中国时区下界面出现反直觉时间跳变 | 浏览器本地时区检查通过（阶段 22） |
+| **W-06** | **P2** | `web/lobby` | `LobbyPage` 轮询缺少组件卸载清理，且使用 `Promise.all` 导致故障强耦合 | 卸载后仍尝试更新状态；单类接口失败阻止另一类列表更新 | 归档阻塞与加载状态未通过，待整改（阶段 22） |
+| **W-07** | **P2** | `web/chat` | 聊天室暂停时 Web 界面过度禁用输入框，主持人无法发话 | 违反领域规则「暂停时人类可随时发言插话」 | 浏览器暂停发言验证通过（阶段 22） |
 | **S-08** | **P3** | `server/chat` | `ChatRoom.transcript` 在 `limit: 0` 时因 JS `-0` 机制返回全部历史 | 参数边界异常行为 | 待处理 |
 | **S-09** | **P3** | `server/rules` | `resolveRules` 校验失败抛出原生 `Error` 而非 `RoomError` | 规则不支持时报 500 而非 400 `UNSUPPORTED_RULE` | 待处理 |
 | **S-10** | **P3** | `server/routes` | REST 路由使用 `x-arena-participant` 请求头时绕过 `presence.touch` | 仅以 participantId 发起操作时活跃状态不被刷新 | 待处理 |

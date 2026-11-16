@@ -350,9 +350,9 @@ worktree 只在**需要同时打开多个分支**时才有价值（比如一边�
 
 ## 11. 之后的可选项（无主线任务）
 
-2026-11-16 维护进度：文档精简已合入 main，见[阶段 19 评审](phases/19-docs-slim-review/review.md)及[补充核验](phases/19-docs-slim-review/result.md)。`fix/code-review-p1` 已同步 main，但[阶段 20 独立验证](phases/20-code-review-fixes/review.md)发现 S-03 无座身份仍错误回退黑方，暂不合并。
+2026-11-16 维护进度：文档精简已合入 main，见[阶段 19 评审](phases/19-docs-slim-review/review.md)及[补充核验](phases/19-docs-slim-review/result.md)。用户指定 AGY / Gemini 完成 S-03 整改，提交 `4e8c5e5`；[阶段 22 复审](phases/22-s03-recheck/review.md)独立协议检查 71/71 通过，解除[阶段 20](phases/20-code-review-fixes/review.md)的身份运行缺陷。
 
-已按用户安排更新[阶段 21 分工文档](phases/21-agent-roles/review.md)：现行角色以 [`AGENTS.md`](../AGENTS.md) §2 为准，由 GPT-6 Astra 统筹调度工作 agent 承接[阶段 20 整改单](phases/20-code-review-fixes/handoff.md)，之后补前端交互验收并评审。本轮只改分工文档，尚未指定或启动实现者。
+整条 `fix/code-review-p1` 仍暂不合并：新复审发现双 agent 回归测试实际建成单 agent 房间，以及 W-06 的归档请求阻塞大厅列表。按[阶段 22 整改单](phases/22-s03-recheck/handoff.md)修正后继续验收。现行分工见 [`AGENTS.md`](../AGENTS.md) §2 与[阶段 21](phases/21-agent-roles/review.md)。
 
 **P1 → P5 + `pass_turn` + 租约结算全部完成**，没有下一阶段。剩下三项都是可选，按性价比排：
 
