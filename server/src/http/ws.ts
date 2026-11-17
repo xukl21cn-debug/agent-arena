@@ -19,8 +19,8 @@ export interface WebSocketOptions {
   chat?: ChatManager;
 }
 
-/** How much timeline a chat `hello` carries; matches the REST room detail. */
-const CHAT_HELLO_MESSAGES = 50;
+/** Cap each part of the initial chat timeline. */
+const CHAT_HELLO_LIMIT = 50;
 
 function sendJson(socket: WebSocket, message: ServerMessage): void {
   if (socket.readyState !== WebSocket.OPEN) {
@@ -137,7 +137,8 @@ export function attachWebSocket(
       roomId,
       kind: 'chat',
       room: chatRoomFrame(room.snapshot()),
-      messages: room.recentMessages(CHAT_HELLO_MESSAGES),
+      messages: room.recentMessages(CHAT_HELLO_LIMIT),
+      taskEvents: room.tasks.recentEvents(CHAT_HELLO_LIMIT),
     });
 
     const unsubscribe = room.subscribe(() => {
@@ -160,6 +161,9 @@ export function attachWebSocket(
         room: chatRoomFrame(room.snapshot()),
       });
     });
+    const unsubscribeTasks = room.tasks.subscribeEvents((event) => {
+      sendJson(socket, { type: 'task_event', roomId, kind: 'chat', event });
+    });
 
     let cleanedUp = false;
     const cleanup = (): void => {
@@ -168,6 +172,7 @@ export function attachWebSocket(
       }
       cleanedUp = true;
       unsubscribe();
+      unsubscribeTasks();
       alive.delete(socket);
     };
     socket.on('close', cleanup);

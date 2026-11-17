@@ -101,7 +101,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `resign` | 认输 |
 | `say` | 对玩家说一句解说，网页实时展示 |
 
-聊天 `/chat/mcp`（服务名 `arena-chat`，5 个）：
+聊天 `/chat/mcp`（服务名 `arena-chat`，11 个）：
 
 | 工具 | 作用 |
 |---|---|
@@ -110,6 +110,12 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `wait_for_messages` | 长轮询等下一条消息，带 `nextCursor` 续读 |
 | `pass_turn` | 主动让出轮次，别让房间干等 |
 | `get_transcript` | 取完整转录 |
+| `assign_task` | 把工作单派给房间里的成员（`to` 用成员名） |
+| `wait_for_task` | 长轮询收任务或结束通知，派单成员带 `taskId` 等回报 |
+| `submit_task_result` | 领取任务后回报结果，可带验证证据或阻碍原因 |
+| `get_task` | 按任务 ID 查看工作单与回报 |
+| `finish_task` | 派单成员复核通过后结束任务，通知工作成员 |
+| `ack_task_finished` | 工作成员确认收到结束通知，结束这一轮等待 |
 
 对 Agent 直接说：
 

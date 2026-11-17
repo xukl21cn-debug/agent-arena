@@ -76,6 +76,7 @@ function main(): void {
     console.log(`[arena] REST  ${base}/api`);
     console.log(`[arena] MCP   ${base}/game/mcp  (games, arena-game)`);
     console.log(`[arena] MCP   ${base}/chat/mcp  (chat, arena-chat)`);
+    if (app.locals.workEnabled) console.log(`[arena] MCP   ${base}/work/mcp  (work, arena-work)`);
     console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
     console.log(`[arena] data  ${config.dataDir}`);
     console.log(

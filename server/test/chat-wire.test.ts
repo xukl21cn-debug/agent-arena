@@ -63,6 +63,50 @@ afterAll(async () => {
 });
 
 describe('chat over the wire', () => {
+  it('hands off work between parked clients without spending a chat turn', async () => {
+    const roomId = 'wire-work';
+    const created = await fetch(`${baseUrl}/api/chat/rooms`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ roomId }),
+    });
+    expect(created.status).toBe(201);
+    const [origin, worker] = await Promise.all([connect('origin'), connect('worker')]);
+    try {
+      await call(origin, 'join_room', { roomId, name: 'origin' });
+      await call(worker, 'join_room', { roomId, name: 'worker' });
+      const parked = call(worker, 'wait_for_task', { roomId, timeoutMs: 1500 });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const task = await call(origin, 'assign_task', { roomId, to: 'worker', prompt: 'Check the spec.' });
+      expect(await parked).toMatchObject({ reason: 'assigned', task: { id: task.id } });
+      expect(await call(worker, 'wait_for_task', { roomId })).toMatchObject({
+        reason: 'in_progress',
+        task: { id: task.id },
+      });
+      const waitingForReport = call(origin, 'wait_for_task', { roomId, taskId: task.id, timeoutMs: 1500 });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await call(worker, 'submit_task_result', { roomId, taskId: task.id, text: 'Verified.' });
+      expect(await waitingForReport).toMatchObject({ reason: 'result', task: { result: { text: 'Verified.' } } });
+
+      const waitingForFinish = call(worker, 'wait_for_task', { roomId, timeoutMs: 1500 });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await call(origin, 'finish_task', { roomId, taskId: task.id, note: 'Review passed.' });
+      expect(await waitingForFinish).toMatchObject({
+        reason: 'finished',
+        task: { id: task.id, finished: { note: 'Review passed.' } },
+      });
+      await call(worker, 'ack_task_finished', { roomId, taskId: task.id });
+      const next = await call(origin, 'assign_task', { roomId, to: 'worker', prompt: 'Check another spec.' });
+      expect(await call(worker, 'wait_for_task', { roomId })).toMatchObject({
+        reason: 'assigned',
+        task: { id: next.id },
+      });
+      expect((await call(origin, 'get_transcript', { roomId })).room.hop).toBe(0);
+    } finally {
+      await Promise.all([origin.close(), worker.close()]);
+    }
+  });
+
   it('REST: create, list, speak as human, pause/resume, transcript', async () => {
     const created = await fetch(`${baseUrl}/api/chat/rooms`, {
       method: 'POST',

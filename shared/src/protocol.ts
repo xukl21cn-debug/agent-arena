@@ -216,6 +216,28 @@ export interface ChatMessageFrame {
   replyTo?: string;
   hop: number;
   at: string;
+  /** Shared display order across chat and work events. Older records omit it. */
+  timelineOrder?: number;
+}
+
+export interface ChatTaskEventFrame {
+  taskId: string;
+  action: 'assigned' | 'claimed' | 'reported' | 'finished' | 'acknowledged';
+  fromName: string;
+  toName: string;
+  at: string;
+  text?: string;
+  timelineOrder?: number;
+}
+
+export function compareChatTimeline(
+  a: Pick<ChatMessageFrame, 'at' | 'timelineOrder'>,
+  b: Pick<ChatMessageFrame, 'at' | 'timelineOrder'>,
+): number {
+  if (a.timelineOrder === undefined && b.timelineOrder === undefined) return a.at.localeCompare(b.at);
+  if (a.timelineOrder === undefined) return -1;
+  if (b.timelineOrder === undefined) return 1;
+  return a.timelineOrder - b.timelineOrder;
 }
 
 export interface ChatMemberFrame {
@@ -283,6 +305,7 @@ export type ServerMessage =
       kind: 'chat';
       room: ChatRoomFrame;
       messages: ChatMessageFrame[];
+      taskEvents?: ChatTaskEventFrame[];
     }
   | {
       /** One new chat message. */
@@ -290,6 +313,12 @@ export type ServerMessage =
       roomId: string;
       kind: 'chat';
       message: ChatMessageFrame;
+    }
+  | {
+      type: 'task_event';
+      roomId: string;
+      kind: 'chat';
+      event: ChatTaskEventFrame;
     }
   | {
       /** Chat snapshot after membership, turn, hop or phase moved. */
