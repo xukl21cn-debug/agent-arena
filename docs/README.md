@@ -39,6 +39,7 @@
 | 看某一轮具体做了什么 | [`phases/`](phases/) 下的对应目录 |
 | 找围棋规则、数子、ko 的原始提案 | [`proposals/go-mcp.md`](proposals/go-mcp.md) |
 | 找聊天室为什么是独立领域对象 | [`proposals/agent-chat.md`](proposals/agent-chat.md) |
+| 看多 agent 如何通过 MCP 派单、返工和复审 | [开发协作提案](proposals/agent-collaboration.md) |
 | 找参与者 / presence / 准备态的模型 | [`proposals/participants.md`](proposals/participants.md) |
 
 ---
@@ -75,6 +76,7 @@
 | 24 | 11-16 | 最终修复验收 | R3 / R4 通过，独立检查 120/120，已合入本地 main | [工作单](phases/24-final-fix-review/handoff.md) · [评审](phases/24-final-fix-review/review.md) · [合并结果](phases/24-final-fix-review/result.md) |
 | 25 | 11-16 | MCP 命名迁移评审 | 新入口及名称通过；duel、启动提示与接入说明仍有遗漏 | [工作单](phases/25-mcp-naming-review/handoff.md) · [评审](phases/25-mcp-naming-review/review.md) |
 | 26 | 11-17 | MCP 命名迁移复核 | N1 / N2 通过；duel 完成 31 手，已合入本地 main | [工作单](phases/26-mcp-naming-recheck/handoff.md) · [评审](phases/26-mcp-naming-recheck/review.md) · [合并结果](phases/26-mcp-naming-recheck/result.md) |
+| 27 | 11-17 | MCP 开发接力 | 同会话 CLI 派单和回投通过，桌面待验 | [工作单](phases/27-mcp-work-handoff/handoff.md) · [运行说明](phases/27-mcp-work-handoff/run.md) · [核验](phases/27-mcp-work-handoff/review.md) |
 
 **每轮的文件名是固定的四种**：
 

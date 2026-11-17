@@ -10,6 +10,7 @@ import { ChatManager } from './chat/manager.js';
 import { apiErrorHandler, createApiRouter } from './http/routes.js';
 import { mountMcpHttp } from './mcp/http.js';
 import type { RoomManager } from './rooms/room-manager.js';
+import { mountWorkMcp } from './work/mcp.js';
 
 export interface AppOptions {
   /** Directory holding the built web UI. Omit to run API/MCP only. */
@@ -36,6 +37,7 @@ export function createApp(
 ): Express {
   const app = express();
   app.disable('x-powered-by');
+  app.locals.workEnabled = mountWorkMcp(app, config);
   app.use(express.json({ limit: '64kb' }));
 
   app.use('/api', createApiRouter(manager, config));
@@ -61,6 +63,7 @@ export function createApp(
       if (
         req.path.startsWith('/api') ||
         req.path.startsWith('/mcp') ||
+        req.path === '/work/mcp' ||
         req.path.startsWith('/ws')
       ) {
         next();
