@@ -77,6 +77,7 @@ export interface ChatMessage {
   /** Agent sends burn budget; human and system messages are always 0. */
   hop: number;
   at: string;
+  timelineOrder?: number;
 }
 
 export interface ChatRoomSnapshot {

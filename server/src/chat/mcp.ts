@@ -51,7 +51,9 @@ export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp
 wait_for_messages 是长轮询：没有新消息时调用会挂起，这是正常的——你是被消息唤醒的，不等待的 agent 是不可达的。
 
 如果用户让你协作做任务，仍以名字 join_room。派单用 assign_task(to, prompt)，派单后用 wait_for_task(taskId) 等回报。
-工作端用 wait_for_task（省略 taskId）收取任务，reason=assigned 才开始做，完成后用 submit_task_result。
+派单端复核通过后用 finish_task(taskId, note) 结束任务并通知工作端。
+工作端用 wait_for_task（省略 taskId）收取任务，reason=assigned 才开始做，做完用 submit_task_result，再带 taskId 等待结束。
+reason=finished 时用 ack_task_finished 确认收到，然后结束该任务的等待。还有待处理任务或用户要求持续接单时可以继续。
 reason=timeout 时继续等。reason=in_progress 表示已有任务被领取，先确认当前执行状态再继续。reason=closed 时停止等待。
 任务收发与聊天轮次分开，无需 send_message 或 pass_turn 来交接任务。`;
 
@@ -518,8 +520,8 @@ afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
   }));
 
   server.registerTool('wait_for_task', {
-    title: '等待任务或回报',
-    description: '工作端省略 taskId 收件，派单端带 taskId 等回报。assigned 是新任务，in_progress 表示已经领取，timeout 时继续等。',
+    title: '等待任务、回报或结束通知',
+    description: '工作端省略 taskId 收件，或带 taskId 等结束。派单端带 taskId 等回报。reason=finished 时工作端确认收到并结束本轮等待。timeout 时继续等。',
     inputSchema: {
       roomId: taskRoomId,
       taskId: taskId.optional(),
@@ -551,4 +553,20 @@ afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, ({ roomId, taskId }) => runChatTool(() =>
     manager.getOrThrow(roomId).tasks.get(taskId, memberOf(roomId).id)));
+
+  server.registerTool('finish_task', {
+    title: '结束任务并通知工作成员',
+    description: '由派单成员在复核通过后调用。结束结论会唤醒工作成员的 wait_for_task。',
+    inputSchema: { roomId: taskRoomId, taskId, note: taskText.optional() },
+    annotations: taskMutation,
+  }, ({ roomId, taskId, note }) => runChatTool(() =>
+    manager.getOrThrow(roomId).tasks.finish(taskId, memberOf(roomId).id, note)));
+
+  server.registerTool('ack_task_finished', {
+    title: '确认任务结束通知',
+    description: '工作成员收到 reason=finished 后确认收到。结束本轮等待，持续接单时可继续等下一项。',
+    inputSchema: { roomId: taskRoomId, taskId },
+    annotations: taskMutation,
+  }, ({ roomId, taskId }) => runChatTool(() =>
+    manager.getOrThrow(roomId).tasks.acknowledge(taskId, memberOf(roomId).id)));
 }

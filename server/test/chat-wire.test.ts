@@ -87,6 +87,20 @@ describe('chat over the wire', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
       await call(worker, 'submit_task_result', { roomId, taskId: task.id, text: 'Verified.' });
       expect(await waitingForReport).toMatchObject({ reason: 'result', task: { result: { text: 'Verified.' } } });
+
+      const waitingForFinish = call(worker, 'wait_for_task', { roomId, timeoutMs: 1500 });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await call(origin, 'finish_task', { roomId, taskId: task.id, note: 'Review passed.' });
+      expect(await waitingForFinish).toMatchObject({
+        reason: 'finished',
+        task: { id: task.id, finished: { note: 'Review passed.' } },
+      });
+      await call(worker, 'ack_task_finished', { roomId, taskId: task.id });
+      const next = await call(origin, 'assign_task', { roomId, to: 'worker', prompt: 'Check another spec.' });
+      expect(await call(worker, 'wait_for_task', { roomId })).toMatchObject({
+        reason: 'assigned',
+        task: { id: next.id },
+      });
       expect((await call(origin, 'get_transcript', { roomId })).room.hop).toBe(0);
     } finally {
       await Promise.all([origin.close(), worker.close()]);

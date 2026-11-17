@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
-import type { ServerMessage } from '@arena/shared';
+import { compareChatTimeline, type ChatMessageFrame, type ChatTaskEventFrame, type ServerMessage } from '@arena/shared';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
@@ -224,6 +224,53 @@ describe('chat over /ws?kind=chat', () => {
       handle.frames.findIndex((frame) => frame.type === 'message'),
     ).toBeLessThan(handle.frames.findIndex((frame) => frame.type === 'room'));
     await handle.close();
+  });
+
+  it('backfills saved task activity and broadcasts new events in the same order as chat', async () => {
+    const room = arena.chat.create('task-timeline');
+    const origin = room.join('codex', undefined, 0);
+    const worker = room.join('dsh', undefined, 0);
+    const legacyId = '00000000-0000-4000-8000-000000000001';
+    room.tasks.restore([{
+      id: legacyId, from: origin, to: worker, prompt: 'Old task',
+      assignedAt: new Date(0).toISOString(),
+      claimedAt: new Date(10).toISOString(),
+      result: { text: 'Old result', at: new Date(20).toISOString() },
+    }]);
+
+    const handle = await chatSocket(arena, room.id);
+    try {
+      await handle.waitUntil((frame) => frame.type === 'hello');
+      const hello = handle.frames.find((frame) => frame.type === 'hello');
+      if (!hello || !('kind' in hello)) throw new Error('Expected chat history.');
+      expect(hello.taskEvents).toMatchObject([
+        { taskId: legacyId, action: 'assigned', fromName: 'codex', toName: 'dsh', text: 'Old task' },
+        { taskId: legacyId, action: 'claimed', fromName: 'dsh', toName: 'codex' },
+        { taskId: legacyId, action: 'reported', text: 'Old result' },
+      ]);
+      expect(hello.room.messageCount).toBe(0);
+
+      const task = room.tasks.assign(origin, worker, 'New task', 'once');
+      // Deliberately timestamp the chat line earlier. Display order follows
+      // the accepted operations after the upgrade.
+      room.sendMessage(room.humanMember(), 'Interleaved chat', {}, 0);
+      await room.tasks.wait(() => ({ id: worker.id, closed: false }), 1000, new AbortController().signal);
+      room.tasks.submit(task.id, worker.id, 'New result');
+      room.tasks.finish(task.id, origin.id, 'Verified');
+      room.tasks.acknowledge(task.id, worker.id);
+      room.tasks.assign(origin, worker, 'New task', 'once');
+      await handle.waitUntil((frame) => frame.type === 'task_event' && frame.event.action === 'acknowledged');
+      const live = handle.frames.flatMap<ChatMessageFrame | ChatTaskEventFrame>((frame) =>
+        frame.type === 'task_event' ? [frame.event] : frame.type === 'message' ? [frame.message] : [],
+      );
+      expect(live).toEqual([...live].sort(compareChatTimeline));
+      expect(live.map((entry) => 'action' in entry ? entry.action : entry.text)).toEqual([
+        'assigned', 'Interleaved chat', 'claimed', 'reported', 'finished', 'acknowledged',
+      ]);
+      expect(room.snapshot()).toMatchObject({ seq: 1, hop: 0, messageCount: 1 });
+    } finally {
+      await handle.close();
+    }
   });
 
   it('W4: with a ws subscriber attached, messages still reach the disk (§2.1)', async () => {

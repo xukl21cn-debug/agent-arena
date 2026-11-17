@@ -177,6 +177,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   const connection = useChatStore((store) => store.connection);
   const room = useChatStore((store) => store.room);
   const messages = useChatStore((store) => store.messages);
+  const taskEvents = useChatStore((store) => store.taskEvents);
   const busy = useChatStore((store) => store.busy);
   const error = useChatStore((store) => store.error);
   const send = useChatStore((store) => store.send);
@@ -245,7 +246,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
               <h2 className="panel-title">时间线</h2>
               <p className="panel-meta">
                 {room
-                  ? `seq ${room.seq} · ${room.messageCount} 条`
+                  ? `${room.messageCount} 条消息${taskEvents.length ? ` · ${taskEvents.length} 条任务动态` : ''}`
                   : '等待连接'}
               </p>
             </div>
@@ -253,7 +254,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
               {room?.turn ? `轮到 ${room.turn.name}` : '等待轮转'}
             </div>
           </div>
-          <ChatTimeline messages={messages} members={room?.members ?? []} />
+          <ChatTimeline messages={messages} taskEvents={taskEvents} members={room?.members ?? []} />
           <ChatComposer
             agents={agents}
             disabled={composerDisabled}

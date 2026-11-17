@@ -49,6 +49,7 @@ export class ChatRoom {
   phase: ChatPhase = 'open';
   readonly policy: ChatPolicy;
   seq = 0;
+  private timelineOrder = 0;
   hop = 0;
   readonly createdAt: string;
   turn: ChatTurn | null = null;
@@ -56,7 +57,7 @@ export class ChatRoom {
   /** Insertion order is the rotation order. */
   readonly members = new Map<string, ChatMember>();
   readonly messages: ChatMessage[] = [];
-  readonly tasks = new ChatTasks(() => this.emitChange());
+  readonly tasks = new ChatTasks(() => this.emitChange(), () => ++this.timelineOrder);
   private readonly consecutiveTimeouts = new Map<string, number>();
   /** Last chat text per member, for the duplicate-message rule. */
   private readonly lastText = new Map<string, string>();
@@ -271,6 +272,7 @@ export class ChatRoom {
       ...(options.replyTo === undefined ? {} : { replyTo: options.replyTo }),
       hop: member.kind === 'agent' ? this.hop + 1 : 0,
       at: new Date(now).toISOString(),
+      timelineOrder: ++this.timelineOrder,
     };
     this.messages.push(message);
 
@@ -584,6 +586,7 @@ export class ChatRoom {
       text,
       hop: 0,
       at: new Date(now).toISOString(),
+      timelineOrder: ++this.timelineOrder,
     });
   }
 
@@ -689,12 +692,13 @@ export class ChatRoom {
     room.phase = file.phase;
     room.seq = file.seq;
     room.hop = file.hop;
-    if (file.tasks !== undefined) room.tasks.restore(file.tasks);
+    if (file.tasks !== undefined) room.timelineOrder = room.tasks.restore(file.tasks);
     for (const member of file.members) {
       room.members.set(member.id, { ...member });
     }
     for (const message of file.messages) {
       room.messages.push(cloneMessage(message));
+      room.timelineOrder = Math.max(room.timelineOrder, message.timelineOrder ?? 0);
       if (message.kind === 'chat') {
         room.lastText.set(message.from, message.text);
       }

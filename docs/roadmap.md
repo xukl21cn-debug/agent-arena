@@ -388,6 +388,10 @@ AGY / Gemini 随后提交 `34d8d35`，修正双 agent 建房和大厅分类解�
 
 阶段 28 增加了普通启动后的入口。两个 agent 用同一聊天室和原 `/chat/mcp`，按名字入房后就能派单、收件和回报。[试跑步骤](dev-workflow.md#61-用聊天室交接开发任务)
 
+阶段 29 补齐任务收尾。发起者复核通过后发送结束通知，执行者确认并结束该任务的等待。真实 DSH 已在隔离服务通过收件、确认和退出试跑。[核验记录](phases/29-task-finish-notification/review.md)
+
+阶段 30 把已有任务正文、回报和进度接到聊天室时间线，按顺序回填并实时更新。[浏览器核验](phases/30-chat-task-timeline/review.md)
+
 ### 11.3 `mentions` 模式
 
 `ChatMode` 契约里是 `relay | mentions | free`（`server/src/chat/model.ts:20`），**v1 只实现 `relay`**，另外两个留给 C3+。要做就得改 `ChatRoom` 的轮次语义——`relay` 是排队，`mentions` 是点名插队，`free` 是取消轮次。先确认 `relay` 真的不够用再说。
