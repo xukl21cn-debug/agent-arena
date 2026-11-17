@@ -81,6 +81,7 @@
 | 28 | 11-17 | 聊天室任务交接 | 复用房间、成员名和现有 MCP 入口 | [工作单](phases/28-chat-work-handoff/handoff.md) · [试跑](dev-workflow.md#61-用聊天室交接开发任务) · [核验](phases/28-chat-work-handoff/review.md) |
 | 29 | 11-17 | 任务结束通知 | 复核通过后通知执行者收工，确认前保留 | [工作单](phases/29-task-finish-notification/handoff.md) · [核验](phases/29-task-finish-notification/review.md) |
 | 30 | 11-17 | 聊天室任务时间线 | 在同一房间显示聊天与任务活动 | [工作单](phases/30-chat-task-timeline/handoff.md) · [核验](phases/30-chat-task-timeline/review.md) |
+| 31 | 11-18 | 开发协作基线合并 | 阶段 27–30 已合入本地 main | [工作单](phases/31-work-handoff-baseline/handoff.md) · [核验](phases/31-work-handoff-baseline/review.md) · [合并结果](phases/31-work-handoff-baseline/result.md) |
 
 **每轮的文件名是固定的四种**：
 

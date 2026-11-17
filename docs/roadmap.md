@@ -392,6 +392,8 @@ AGY / Gemini 随后提交 `34d8d35`，修正双 agent 建房和大厅分类解�
 
 阶段 30 把已有任务正文、回报和进度接到聊天室时间线，按顺序回填并实时更新。[浏览器核验](phases/30-chat-task-timeline/review.md)
 
+2026-11-18，阶段 27–30 通过 `b47e23f` 合入本地 main，合并后测试 377/377。该版本是后续重构与前端依赖调整的基线。[阶段 31 合并结果](phases/31-work-handoff-baseline/result.md)
+
 ### 11.3 `mentions` 模式
 
 `ChatMode` 契约里是 `relay | mentions | free`（`server/src/chat/model.ts:20`），**v1 只实现 `relay`**，另外两个留给 C3+。要做就得改 `ChatRoom` 的轮次语义——`relay` 是排队，`mentions` 是点名插队，`free` 是取消轮次。先确认 `relay` 真的不够用再说。
