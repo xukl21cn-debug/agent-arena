@@ -9,6 +9,7 @@ import {
   chatMessageId,
 } from './model.js';
 import { ChatError } from './model.js';
+import { ChatTasks } from './tasks.js';
 
 /** The reserved host identity humans speak through (REST posts as `human`). */
 export const HUMAN_MEMBER_ID = 'human';
@@ -55,6 +56,7 @@ export class ChatRoom {
   /** Insertion order is the rotation order. */
   readonly members = new Map<string, ChatMember>();
   readonly messages: ChatMessage[] = [];
+  readonly tasks = new ChatTasks(() => this.emitChange());
   private readonly consecutiveTimeouts = new Map<string, number>();
   /** Last chat text per member, for the duplicate-message rule. */
   private readonly lastText = new Map<string, string>();
@@ -415,6 +417,7 @@ export class ChatRoom {
     this.postSystemMessage('房间已关闭', now);
     this.emitChange();
     this.wakeAll();
+    this.tasks.wake();
   }
 
   // -- waiting (the long-poll) ----------------------------------------------
@@ -661,6 +664,7 @@ export class ChatRoom {
 
   toSnapshotFile(): ChatRoomSnapshotFile {
     const timeouts: Record<string, number> = {};
+    const tasks = this.tasks.serialize();
     for (const [id, count] of this.consecutiveTimeouts) {
       timeouts[id] = count;
     }
@@ -674,6 +678,7 @@ export class ChatRoom {
       createdAt: this.createdAt,
       members: [...this.members.values()].map((member) => ({ ...member })),
       messages: this.messages.map(cloneMessage),
+      ...(tasks.length ? { tasks } : {}),
       consecutiveTimeouts: timeouts,
     };
   }
@@ -684,6 +689,7 @@ export class ChatRoom {
     room.phase = file.phase;
     room.seq = file.seq;
     room.hop = file.hop;
+    if (file.tasks !== undefined) room.tasks.restore(file.tasks);
     for (const member of file.members) {
       room.members.set(member.id, { ...member });
     }

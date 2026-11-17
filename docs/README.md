@@ -33,6 +33,7 @@
 | 知道为什么按这个顺序做、P/M/G 编号怎么对 | [`roadmap.md`](roadmap.md) |
 | 看懂系统怎么搭的 | [`architecture/overview.md`](architecture/overview.md) |
 | 起服务、双端口调试 | [`dev-workflow.md`](dev-workflow.md) |
+| 使用现有聊天室给另一个 agent 派任务 | [聊天室任务交接](dev-workflow.md#61-用聊天室交接开发任务) |
 | 查某条硬约束的**来龙去脉**（谁在哪一轮踩的） | [`architecture/constraints.md`](architecture/constraints.md) |
 | 查某个设计**为什么这么定**、当时放弃了什么 | [`architecture/decisions.md`](architecture/decisions.md) |
 | 查看全局代码审查报告与缺陷排查清单 | [`code-review.md`](code-review.md) |
@@ -77,6 +78,7 @@
 | 25 | 11-16 | MCP 命名迁移评审 | 新入口及名称通过；duel、启动提示与接入说明仍有遗漏 | [工作单](phases/25-mcp-naming-review/handoff.md) · [评审](phases/25-mcp-naming-review/review.md) |
 | 26 | 11-17 | MCP 命名迁移复核 | N1 / N2 通过；duel 完成 31 手，已合入本地 main | [工作单](phases/26-mcp-naming-recheck/handoff.md) · [评审](phases/26-mcp-naming-recheck/review.md) · [合并结果](phases/26-mcp-naming-recheck/result.md) |
 | 27 | 11-17 | MCP 开发接力 | 同会话 CLI 派单和回投通过，桌面待验 | [工作单](phases/27-mcp-work-handoff/handoff.md) · [运行说明](phases/27-mcp-work-handoff/run.md) · [核验](phases/27-mcp-work-handoff/review.md) |
+| 28 | 11-17 | 聊天室任务交接 | 复用房间、成员名和现有 MCP 入口 | [工作单](phases/28-chat-work-handoff/handoff.md) · [试跑](dev-workflow.md#61-用聊天室交接开发任务) · [核验](phases/28-chat-work-handoff/review.md) |
 
 **每轮的文件名是固定的四种**：
 

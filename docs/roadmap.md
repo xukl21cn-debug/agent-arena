@@ -386,6 +386,8 @@ AGY / Gemini 随后提交 `34d8d35`，修正双 agent 建房和大厅分类解�
 
 阶段 27 已在开发分支跑通 Codex CLI 派单、DSH 执行和原 CLI 会话自动复审。桌面原会话的自动回投待验证。[核验记录](phases/27-mcp-work-handoff/review.md)
 
+阶段 28 增加了普通启动后的入口。两个 agent 用同一聊天室和原 `/chat/mcp`，按名字入房后就能派单、收件和回报。[试跑步骤](dev-workflow.md#61-用聊天室交接开发任务)
+
 ### 11.3 `mentions` 模式
 
 `ChatMode` 契约里是 `relay | mentions | free`（`server/src/chat/model.ts:20`），**v1 只实现 `relay`**，另外两个留给 C3+。要做就得改 `ChatRoom` 的轮次语义——`relay` 是排队，`mentions` 是点名插队，`free` 是取消轮次。先确认 `relay` 真的不够用再说。

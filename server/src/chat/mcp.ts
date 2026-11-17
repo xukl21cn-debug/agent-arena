@@ -48,7 +48,12 @@ export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp
    - hint「房间已暂停/已关闭」→ 停止等待，不再调用；
 4. 发言要短（一两句话），有信息量，不要重复自己之前的话。
 
-wait_for_messages 是长轮询：没有新消息时调用会挂起，这是正常的——你是被消息唤醒的，不等待的 agent 是不可达的。`;
+wait_for_messages 是长轮询：没有新消息时调用会挂起，这是正常的——你是被消息唤醒的，不等待的 agent 是不可达的。
+
+如果用户让你协作做任务，仍以名字 join_room。派单用 assign_task(to, prompt)，派单后用 wait_for_task(taskId) 等回报。
+工作端用 wait_for_task（省略 taskId）收取任务，reason=assigned 才开始做，完成后用 submit_task_result。
+reason=timeout 时继续等。reason=in_progress 表示已有任务被领取，先确认当前执行状态再继续。reason=closed 时停止等待。
+任务收发与聊天轮次分开，无需 send_message 或 pass_turn 来交接任务。`;
 
 interface ChatMcpSession {
   server: McpServer;
@@ -488,4 +493,62 @@ afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
       };
       }),
   );
+
+  const taskRoomId = z.string().min(1);
+  const taskId = z.uuid();
+  const taskText = z.string().min(1).max(10_000).refine((text) => text.trim().length > 0);
+  const taskMutation = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
+  server.registerTool('assign_task', {
+    title: '指派任务',
+    description: '把工作单交给房间中已加入的成员。to 用成员名，prompt 写任务正文。若要重试同一次派单，沿用 requestId。',
+    inputSchema: {
+      roomId: taskRoomId,
+      to: z.string().min(1).max(64),
+      prompt: taskText,
+      requestId: z.string().min(1).max(120).optional(),
+    },
+    annotations: taskMutation,
+  }, ({ roomId, to, prompt, requestId }) => runChatTool(() => {
+    const room = manager.getOrThrow(roomId);
+    const sender = memberOf(roomId);
+    if (room.phase === 'closed') throw new ChatError('ROOM_CLOSED', '房间已关闭。');
+    const target = room.snapshot().members.find((member) => member.kind === 'agent' && member.name === to);
+    if (!target) throw new ChatError('MEMBER_NOT_FOUND', '请先让对方加入这个房间。');
+    return room.tasks.assign(sender, target, prompt, requestId);
+  }));
+
+  server.registerTool('wait_for_task', {
+    title: '等待任务或回报',
+    description: '工作端省略 taskId 收件，派单端带 taskId 等回报。assigned 是新任务，in_progress 表示已经领取，timeout 时继续等。',
+    inputSchema: {
+      roomId: taskRoomId,
+      taskId: taskId.optional(),
+      timeoutMs: z.number().int().min(1000).max(30000).optional(),
+    },
+    annotations: taskMutation,
+  }, ({ roomId, taskId, timeoutMs }, { signal }) => runChatTool(() => {
+    const room = manager.getOrThrow(roomId);
+    const memberId = memberOf(roomId).id;
+    // Wake callbacks run in the context of whichever request changed this room.
+    return room.tasks.wait(() => {
+      if (!room.memberRef(memberId)) throw new ChatError('MEMBER_NOT_FOUND', '请重新加入房间。');
+      return { id: memberId, closed: room.phase === 'closed' };
+    }, clampChatWaitMs(timeoutMs), signal, taskId);
+  }));
+
+  server.registerTool('submit_task_result', {
+    title: '回报任务结果',
+    description: '将已领取任务的结果交还给派单成员。可以包含验证证据或阻塞原因。',
+    inputSchema: { roomId: taskRoomId, taskId, text: taskText },
+    annotations: taskMutation,
+  }, ({ roomId, taskId, text }) => runChatTool(() =>
+    manager.getOrThrow(roomId).tasks.submit(taskId, memberOf(roomId).id, text)));
+
+  server.registerTool('get_task', {
+    title: '查看任务',
+    description: '按任务 ID 查看自己发出或收到的工作单和回报。',
+    inputSchema: { roomId: taskRoomId, taskId },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, ({ roomId, taskId }) => runChatTool(() =>
+    manager.getOrThrow(roomId).tasks.get(taskId, memberOf(roomId).id)));
 }
