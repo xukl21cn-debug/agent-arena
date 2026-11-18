@@ -193,7 +193,7 @@ Get-NetTCPConnection -LocalPort 3000 -State Listen | ForEach-Object { Stop-Proce
 
 ## 6. 接入 DSH（MCP 客户端）
 
-配置在 `C:\Users\<你>\.dsh\profiles\web\cordis.patch.yml`。两个 MCP 服务名与端点一一对应：棋类 `arena-game`，聊天 `arena-chat`：
+配置在 `C:\Users\<你>\.dsh\profiles\web\cordis.patch.yml`。棋类用 `arena-game`，聊天用 `arena-chat`，开发任务用 `arena-work`。
 
 ```yaml
 # 新增插件必须用 insert:
@@ -219,32 +219,11 @@ Get-NetTCPConnection -LocalPort 3000 -State Listen | ForEach-Object { Stop-Proce
 
 ⚠️ **改完配置必须新开会话**——MCP 工具在会话启动时注入，旧会话看不到新端点（见 §4）。
 
-### 6.1 用聊天室交接开发任务
+### 6.1 用工作域交接开发任务
 
-按平时方式启动 Arena。两个客户端都使用 `arena-chat`，端点还是 `http://127.0.0.1:3000/chat/mcp`。服务更新后，在两边新开聊天，让客户端重新读取工具清单。
+普通启动后，两个客户端连接 `arena-work`，分别加入为统筹和执行者。大厅的「开发任务」看板显示返工轮次、复审和合并放行。工具清单更新后，两边重新打开 MCP 会话。[试跑步骤](phases/32-work-relay/run.md)
 
-用一个现有聊天室即可。要从空房试起，在 PowerShell 建一个名为 `dev-work` 的房间。
-
-```powershell
-Invoke-RestMethod 'http://127.0.0.1:3000/api/chat/rooms' -Method Post `
-  -ContentType 'application/json' -Body '{"roomId":"dev-work","title":"开发接力"}'
-```
-
-先发给 DSH。
-
-> 用 arena-chat 加入 dev-work，名字叫 dsh。用 wait_for_task 收任务，超时就继续等。完成后用 submit_task_result 回报，再带任务 ID 等结束通知。收到 finished 后用 ack_task_finished 确认并结束本轮等待。
-
-再发给 Codex。
-
-> 用 arena-chat 加入 dev-work，名字叫 codex。用 assign_task 交给 dsh 一个任务：只读 README.md，告诉我项目是做什么的。派单后用 wait_for_task 等回报。复核通过后用 finish_task 通知 dsh 收工。
-
-两边用房间名和成员名交接。任务和回报随房间保存，聊天发言轮次和发言预算只用于聊天。重连后用原名进房。工作端看到 `in_progress` 表示任务已领取，可以核对当前进度再继续或回报。任务任一方也可按 ID 用 `get_task` 查看结果。
-
-结束通知只送给执行者，收到确认前会保留。按同名重连后，普通收件也会收到未确认的 `finished`。用户安排持续接单时，可以在确认后继续等下一件。
-
-房间网页的「时间线」会显示派单正文、领取、任务回报、复核结论和收工确认，和聊天按发生顺序排列。打开房间时回显最近 50 条聊天和 50 条任务动态，后续实时追加。
-
-这种方式由已经在等待的会话收件。两边各发送一次提示后，可由 MCP 自动传递任务和回报。已结束的桌面聊天自动续轮仍按 [阶段 27](phases/27-mcp-work-handoff/review.md) 跟踪。
+阶段 28–30 的聊天室试跑留在[历史评审](phases/28-chat-work-handoff/review.md)。阶段 27 的 runner 试验使用当时的协议。[历史核验](phases/27-mcp-work-handoff/review.md)
 
 ---
 

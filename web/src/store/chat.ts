@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChatMessageFrame, ChatRoomFrame, ChatTaskEventFrame } from '@arena/shared';
+import type { ChatMessageFrame, ChatRoomFrame } from '@arena/shared';
 import { api, errorMessage } from '../api';
 
 /** This browser's own socket, same meaning as the game store's status. */
@@ -21,7 +21,6 @@ export interface ChatStore {
   /** Latest room snapshot; `seq` decides who wins when frames race. */
   room: ChatRoomFrame | null;
   messages: ChatMessageFrame[];
-  taskEvents: ChatTaskEventFrame[];
   /** A REST mutation is in flight. */
   busy: boolean;
   /** Last user-facing error, already formatted. */
@@ -30,9 +29,8 @@ export interface ChatStore {
   /** Wire the socket for a room; returns the teardown. */
   connect(roomId: string): () => void;
   /** Full replace, used by `hello` on connect and reconnect. */
-  applyHello(room: ChatRoomFrame, messages: ChatMessageFrame[], taskEvents?: ChatTaskEventFrame[]): void;
+  applyHello(room: ChatRoomFrame, messages: ChatMessageFrame[]): void;
   applyMessage(message: ChatMessageFrame): void;
-  applyTaskEvent(event: ChatTaskEventFrame): void;
   applyRoom(room: ChatRoomFrame): void;
   /** Post as the host; resolves false when the server refused. */
   send(text: string, to?: string): Promise<boolean>;
@@ -47,7 +45,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   connection: 'connecting',
   room: null,
   messages: [],
-  taskEvents: [],
   busy: false,
   error: null,
 
@@ -57,20 +54,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       connection: 'connecting',
       room: null,
       messages: [],
-      taskEvents: [],
       error: null,
     });
     return subscribeToChatRoom(roomId, set, get);
   },
 
-  applyHello(room, messages, taskEvents = []) {
-    set({ room, messages, taskEvents });
-  },
-
-  applyTaskEvent(event) {
-    set((current) => current.taskEvents.some(
-      (item) => item.taskId === event.taskId && item.action === event.action,
-    ) ? {} : { taskEvents: [...current.taskEvents, event] });
+  applyHello(room, messages) {
+    set({ room, messages });
   },
 
   applyMessage(message) {
@@ -203,9 +193,7 @@ function subscribeToChatRoom(
     };
 
     current.onmessage = (event: MessageEvent<string>) => {
-      if (disposed || socket !== current) {
-        return;
-      }
+      if (disposed || socket !== current) return;
       let frame: unknown;
       try {
         frame = JSON.parse(event.data);
@@ -227,16 +215,12 @@ function subscribeToChatRoom(
           const hello = frame as {
             room: ChatRoomFrame;
             messages: ChatMessageFrame[];
-            taskEvents?: ChatTaskEventFrame[];
           };
-          store.applyHello(hello.room, hello.messages, hello.taskEvents);
+          store.applyHello(hello.room, hello.messages);
           break;
         }
         case 'message':
           store.applyMessage((frame as { message: ChatMessageFrame }).message);
-          break;
-        case 'task_event':
-          store.applyTaskEvent((frame as { event: ChatTaskEventFrame }).event);
           break;
         case 'room':
           store.applyRoom((frame as { room: ChatRoomFrame }).room);

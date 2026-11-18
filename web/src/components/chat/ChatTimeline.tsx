@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
-import { compareChatTimeline, type ChatMemberFrame, type ChatMessageFrame, type ChatTaskEventFrame } from '@arena/shared';
+import { useEffect, useRef, type CSSProperties } from 'react';
+import type { ChatMemberFrame, ChatMessageFrame } from '@arena/shared';
 
 /**
  * Stable author colour: hash the name, never the index — members come and
@@ -25,24 +25,11 @@ function clockOf(at: string): string {
 
 interface TimelineProps {
   messages: ChatMessageFrame[];
-  taskEvents: ChatTaskEventFrame[];
   members: ChatMemberFrame[];
 }
 
-const TASK_LABELS: Record<ChatTaskEventFrame['action'], string> = {
-  assigned: '派单',
-  claimed: '领取任务',
-  reported: '任务回报',
-  finished: '复核通过',
-  acknowledged: '确认收工',
-};
-
-export function ChatTimeline({ messages, taskEvents, members }: TimelineProps) {
+export function ChatTimeline({ messages, members }: TimelineProps) {
   const listRef = useRef<HTMLDivElement>(null);
-  const timeline = useMemo(
-    () => [...messages, ...taskEvents].sort(compareChatTimeline),
-    [messages, taskEvents],
-  );
   /** Only the reader decides when to stop following the tail. */
   const stickToBottom = useRef(true);
 
@@ -60,7 +47,7 @@ export function ChatTimeline({ messages, taskEvents, members }: TimelineProps) {
     if (el && stickToBottom.current) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [timeline]);
+  }, [messages]);
 
   const nameOf = (idOrName: string): string =>
     members.find((member) => member.id === idOrName)?.name ?? idOrName;
@@ -73,31 +60,13 @@ export function ChatTimeline({ messages, taskEvents, members }: TimelineProps) {
       role="log"
       aria-live="polite"
     >
-      {timeline.length === 0 ? (
+      {messages.length === 0 ? (
         <div className="chat-empty">
           <strong>还没有消息</strong>
           <span>第一个发言，或等 agent 加入。</span>
         </div>
       ) : (
-        timeline.map((message) => {
-          if ('taskId' in message) {
-            return (
-              <div key={`${message.taskId}:${message.action}`} className="chat-line chat-line--task">
-                <div
-                  className="chat-bubble chat-bubble--task"
-                  style={{ '--author': authorColor(message.fromName) } as CSSProperties}
-                >
-                  <div className="chat-bubble-meta">
-                    <span className="chat-task-label">{TASK_LABELS[message.action]}</span>
-                    <span className="chat-author">{message.fromName}</span>
-                    <span className="chat-to">→ {message.toName}</span>
-                    <time dateTime={message.at}>{clockOf(message.at)}</time>
-                  </div>
-                  {message.text !== undefined ? <p className="chat-bubble-text">{message.text}</p> : null}
-                </div>
-              </div>
-            );
-          }
+        messages.map((message) => {
           if (message.kind === 'system') {
             return (
               <div key={message.id} className="chat-line chat-line--system">

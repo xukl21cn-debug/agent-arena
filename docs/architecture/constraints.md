@@ -40,6 +40,7 @@
 |---|---|---|
 | 聊天不碰 `rooms/room.ts`、`rooms/room-manager.ts`、`mcp/tools.ts`、`core/presence.ts`、`shared/src/game.ts` | 复用棋类对象会把两套契约绑死。棋类侧只允许在 `app.ts` 挂路由、`index.ts` 初始化 | [C1 评审 §2](../phases/11-p4-c1-chat-server/review.md) |
 | `/chat/mcp` 与 `/game/mcp` 双向不可见，聊天工具不挂到棋类端点 | 共享端点会让两边 instructions 互相污染，只下棋的 agent 也会看到聊天工具 | [C1 评审 §3](../phases/11-p4-c1-chat-server/review.md) |
+| 开发任务走 `/work/mcp` | 任务独立记录返工轮次、收工确认和用户放行 | [阶段 32 需求确认](../phases/32-work-relay/brief.md) |
 | 不复用 `PresenceRegistry`；聊天界面**不得显示**「在线 / 离线」 | 它全部按 seat 索引，聊天成员没有座位。伪造 seat 会污染棋类 presence，大改又违反禁改；没有 presence 却显示在线就是编造 | [C1 工作单 §2.2](../phases/11-p4-c1-chat-server/handoff.md) · [C4 评审 §2](../phases/14-p4-c4-chat-web/review.md) |
 | `ready` 只能放房间层，不得塞进 `GameState.seats` | 座位是游戏状态，ready 是房间状态 | [P1c 工作单 §4.3](../phases/03-p1c-lobby/handoff.md) |
 | presence 信号键保持**按座位**，不得整体改成按 `participantId` | 会牵动 `rebindSeats` 等一堆逻辑，收益为零；只在 `ParticipantView` 加可选 `participantId` | [P1b 工作单 §3](../phases/02-p1b-participants/handoff.md) |

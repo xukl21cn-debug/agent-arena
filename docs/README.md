@@ -33,7 +33,7 @@
 | 知道为什么按这个顺序做、P/M/G 编号怎么对 | [`roadmap.md`](roadmap.md) |
 | 看懂系统怎么搭的 | [`architecture/overview.md`](architecture/overview.md) |
 | 起服务、双端口调试 | [`dev-workflow.md`](dev-workflow.md) |
-| 使用现有聊天室给另一个 agent 派任务 | [聊天室任务交接](dev-workflow.md#61-用聊天室交接开发任务) |
+| 给另一个 agent 派开发任务 | [工作域接力](dev-workflow.md#61-用工作域交接开发任务) |
 | 查某条硬约束的**来龙去脉**（谁在哪一轮踩的） | [`architecture/constraints.md`](architecture/constraints.md) |
 | 查某个设计**为什么这么定**、当时放弃了什么 | [`architecture/decisions.md`](architecture/decisions.md) |
 | 查看全局代码审查报告与缺陷排查清单 | [`code-review.md`](code-review.md) |
@@ -82,29 +82,34 @@
 | 29 | 11-17 | 任务结束通知 | 复核通过后通知执行者收工，确认前保留 | [工作单](phases/29-task-finish-notification/handoff.md) · [核验](phases/29-task-finish-notification/review.md) |
 | 30 | 11-17 | 聊天室任务时间线 | 在同一房间显示聊天与任务活动 | [工作单](phases/30-chat-task-timeline/handoff.md) · [核验](phases/30-chat-task-timeline/review.md) |
 | 31 | 11-18 | 开发协作基线合并 | 阶段 27–30 已合入本地 main | [工作单](phases/31-work-handoff-baseline/handoff.md) · [核验](phases/31-work-handoff-baseline/review.md) · [合并结果](phases/31-work-handoff-baseline/result.md) |
+| 32 | 11-18 | **开发任务接力** | 单一任务域、停车派单、多轮返工、看板与合并放行 | [需求确认](phases/32-work-relay/brief.md) · [工作单](phases/32-work-relay/handoff.md) · [核验](phases/32-work-relay/review.md) · [试跑](phases/32-work-relay/run.md) |
 
-**每轮的文件名是固定的四种**：
+**阶段文档按下表命名。**
 
 | 文件 | 什么时候有 |
 |---|---|
-| `handoff.md` | 一定有。开工前写，边界写死 |
+| `brief.md` | 一定有。开工前写，**用户签字后**才写 handoff；写需求、范围、验收场景和不做的部分 |
+| `handoff.md` | 一定有。brief 签字后写，边界写死 |
 | `review.md` | 一定有。做完后写，记录独立验证过程 |
 | `observation.md` | 有实测才写（真实模型行为、缺陷证据） |
 | `result.md` | 有验收结论才写（如 P2 的一盘完整对局） |
+| `run.md` | 有运行步骤或清理命令才写 |
 
 ---
 
 ## 4. 新增一轮工作怎么做
 
 ```powershell
-mkdir docs/phases/27-<主题>
-# 写 docs/phases/27-<主题>/handoff.md      ← 开工前
-# 实现完，写 docs/phases/27-<主题>/review.md
-# 有实测再补 observation.md / result.md
+mkdir docs/phases/32-<主题>
+# 写 docs/phases/32-<主题>/brief.md        ← 开工前，用户签字
+# 写 docs/phases/32-<主题>/handoff.md      ← brief 签字后
+# 实现完，写 docs/phases/32-<主题>/review.md
+# 有实测再补 observation.md / result.md；有运行步骤补 run.md
 ```
 
 然后：
 
+0. 先写 `brief.md`，确认需求、范围、验收场景和明确不做的事；**用户签字前不写 handoff、不改代码**。
 1. 在 §3 的表格末尾加一行；
 2. 到 [`roadmap.md`](roadmap.md) 标记该阶段状态；
 3. 如果这轮定下了**新的硬约束**，加进 [`architecture/constraints.md`](architecture/constraints.md)；

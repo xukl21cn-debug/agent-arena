@@ -1,108 +1,238 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-import { realpathSync } from 'node:fs';
-import path from 'node:path';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { randomUUID } from 'node:crypto';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import express, { type Express } from 'express';
+import { CallToolRequestSchema, ListToolsRequestSchema, isInitializeRequest, type CallToolResult, type Tool } from '@modelcontextprotocol/sdk/types.js';
+import { WORK_STATUSES, type WorkStatus } from '@arena/shared';
+import type { Express } from 'express';
 import { z } from 'zod';
-import type { ServerConfig } from '../config.js';
-import { deliveryResultSchema, WorkError, WorkStore, workRequestSchema } from './store.js';
+import { sessionContext, type SessionBindings } from '../core/session-context.js';
+import { claimInput, createInput, id, mergeInput, name, reason, resultInput, reviewInput, role, WorkError } from './model.js';
+import type { WorkStore } from './store.js';
 
 const endpoint = '/work/mcp';
-const taskId = z.uuid();
-const claimId = z.uuid();
-type Role = 'coordinator' | 'runner';
+const bindingKey = 'work';
 
-function digest(value: string): Buffer {
-  return createHash('sha256').update(value).digest();
+export const WORK_INSTRUCTIONS = [
+  '开发任务接力。会话通过 join_work 声明统筹或执行角色，角色由工作职责决定。',
+  '统筹先复述并等待用户确认需求，再写 brief、设计与实现提示，最后派单。',
+  '工作端用 wait_for_work 收件，执行后提交文件、提交号、测试及文档引用，再等复审。',
+  '统筹用 wait_for_work 领取复审，独立验证并写 review 文档。同一任务可以按复审意见返工。',
+  '长时间工作或复审要在租约到期前调用 renew_claim。timeout 后可以继续等待。',
+  '收到 finished 后，执行端确认收工。统筹等待网页放行后再执行合并和验证，推送前另等用户放行。',
+  '任务阶段由领取、回报、复审和用户操作推进，本域不设聊天发言轮次、hop 或发言预算。',
+].join('\n');
+
+export function isWorkLoopback(host: string): boolean {
+  return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host.toLowerCase());
 }
 
-function execute(action: () => unknown): CallToolResult {
+const nextByStatus: Record<WorkStatus, string> = {
+  queued: '等待执行者领取。',
+  working: '执行者完成后回报，必要时续租。',
+  pending_review: '统筹调用 wait_for_work 领取复审。',
+  reviewing: '核对结果并提交复审。',
+  rework_requested: '执行者领取下一轮返工。',
+  pending_ack: '执行者收到结束通知后确认收工。',
+  pending_merge_approval: '等待用户在网页放行。可带 afterStatus 继续等待。',
+  merge_approved: '按用户放行执行合并和验证，再记录合并证据。',
+  done: '任务已完成。',
+  needs_attention: '核对工作区和实际执行状态，由用户接管。',
+  cancelled: '任务已取消。',
+};
+
+function taskResult(task: { status: WorkStatus }) {
+  return { ...task, hint: nextByStatus[task.status] };
+}
+
+async function run(action: () => unknown): Promise<CallToolResult> {
   try {
-    return { content: [{ type: 'text', text: JSON.stringify(action()) }] };
+    return { content: [{ type: 'text', text: JSON.stringify(await action()) }] };
   } catch (error) {
-    if (!(error instanceof WorkError)) console.error('[work-mcp] tool failed', error);
-    const value = error instanceof WorkError
-      ? { code: error.code, message: error.message }
-      : { code: 'INTERNAL_ERROR', message: '无法保存或读取接力任务。' };
-    return { isError: true, content: [{ type: 'text', text: JSON.stringify(value) }] };
+    if (!(error instanceof WorkError)) console.error('[work-mcp] 工具调用失败', error);
+    return {
+      isError: true,
+      content: [{ type: 'text', text: JSON.stringify(error instanceof WorkError
+        ? { code: error.code, message: error.message, hint: error.hint }
+        : { code: 'INVALID_REQUEST', message: '工作任务请求失败。', hint: '查看服务端日志后重试。' }) }],
+    };
   }
 }
 
-function workServer(store: WorkStore, role: Role): McpServer {
-  const server = new McpServer({ name: 'arena-work', version: '0.1.0' });
-  if (role === 'coordinator') {
-    server.registerTool('create_task', {
-      description: '把工作单交给本项目绑定的 DSH 会话。等待原轮次结束后，runner 会把结果投回本 Codex 会话。',
-      inputSchema: workRequestSchema,
-    }, (request) => execute(() => ({ taskId: store.create(request).id })));
-    server.registerTool('get_task', {
-      description: '读取工作任务、执行结果和复审回报。',
-      inputSchema: { taskId },
-    }, ({ taskId }) => execute(() => store.get(taskId)));
-    server.registerTool('cancel_task', {
-      description: '取消排队中的任务。取消待接管任务前，先确认原执行已停止。',
-      inputSchema: { taskId, stoppedExecutionConfirmed: z.literal(true) },
-    }, ({ taskId }) => execute(() => store.cancel(taskId)));
-  } else {
-    server.registerTool('claim_delivery', {
-      description: '串行领取当前项目绑定的下一次执行或复审。',
-      inputSchema: { requestId: workRequestSchema.shape.requestId.optional() },
-    }, ({ requestId }) => execute(() => store.claimNext(requestId)));
-    server.registerTool('renew_delivery', {
-      description: '延长当前领取的执行租约。',
-      inputSchema: { taskId, claimId },
-    }, ({ taskId, claimId }) => execute(() => store.renew(taskId, claimId)));
-    server.registerTool('complete_delivery', {
-      description: '保存已绑定会话的最终回复，推进到下一阶段。',
-      inputSchema: { taskId, claimId, result: deliveryResultSchema },
-    }, ({ taskId, claimId, result }) => execute(() => store.complete(taskId, claimId, result)));
-    server.registerTool('flag_delivery', {
-      description: '登记失败或不明的投递结果，等待接管。',
-      inputSchema: { taskId, claimId, reason: z.string().min(1).max(1000) },
-    }, ({ taskId, claimId, reason }) => execute(() => store.flag(taskId, claimId, reason)));
+function registerTools(server: Server, store: WorkStore, bindings: SessionBindings): void {
+  const tools = new Map<string, { definition: Tool; call: (args: unknown, signal: AbortSignal) => Promise<CallToolResult> }>();
+  function registerTool<Schema extends z.ZodRawShape>(
+    name: string,
+    config: { description: string; inputSchema: Schema | z.ZodObject<Schema> },
+    callback: (input: z.output<z.ZodObject<Schema>>, extra: { signal: AbortSignal }) => Promise<CallToolResult>,
+  ): void {
+    const schema = config.inputSchema instanceof z.ZodObject ? config.inputSchema : z.object(config.inputSchema);
+    tools.set(name, {
+      definition: {
+        name, description: config.description,
+        inputSchema: z.toJSONSchema(schema, { io: 'input' }) as Tool['inputSchema'],
+        annotations: { readOnlyHint: name === 'get_task', destructiveHint: false, openWorldHint: false },
+      },
+      call: (args, signal) => {
+        const parsed = schema.safeParse(args);
+        if (parsed.success) return callback(parsed.data, { signal });
+        return run(() => {
+          const field = parsed.error.issues[0]?.path.join('.');
+          throw new WorkError('INVALID_REQUEST', field ? `参数无效：${field}。` : '工作请求参数无效。');
+        });
+      },
+    });
   }
-  return server;
+  server.setRequestHandler(ListToolsRequestSchema, () => ({
+    tools: [...tools.values()].map((tool) => tool.definition),
+  }));
+  server.setRequestHandler(CallToolRequestSchema, ({ params }, extra) => {
+    const tool = tools.get(params.name);
+    if (tool) return tool.call(params.arguments ?? {}, extra.signal);
+    return run(() => { throw new WorkError('INVALID_REQUEST', '找不到工作工具。', '重新获取工具清单。'); });
+  });
+  const sessionId = () => {
+    const current = sessionContext.getStore()?.sessionId;
+    if (!current) throw new WorkError('IDENTITY_REQUIRED', '工作操作需要 MCP 会话。');
+    return current;
+  };
+  const actorFor = (session: string) => {
+    const actor = store.actorFor(session);
+    if (!actor || actor.id !== bindings.participantOf(session, bindingKey)) {
+      throw new WorkError('IDENTITY_REQUIRED', '请先调用 join_work。', '声明统筹或执行角色后重试。');
+    }
+    return actor;
+  };
+  const actor = () => actorFor(sessionId());
+
+  registerTool('join_work', {
+    description: '加入单项目工作域，声明统筹或执行角色。同名重连使用原身份。',
+    inputSchema: { role, name: name.optional() },
+  }, (input) => run(() => {
+    const session = sessionId();
+    const displayName = input.name ?? name.parse((sessionContext.getStore()?.client?.trim() || input.role).slice(0, 64));
+    const member = store.join(input.role, displayName, session);
+    bindings.bind(session, bindingKey, member.id);
+    return { participantId: member.id, role: member.role, name: member.name, workspace: store.workspace,
+      hint: member.role === 'worker' ? '调用 wait_for_work 收件。' : '用户确认需求后写文档并派单。' };
+  }));
+  registerTool('leave_work', {
+    description: '离开工作域。当前会话持有活跃执行、复审或合并时先完成操作。',
+    inputSchema: {},
+  }, () => run(() => {
+    const session = sessionId();
+    store.leave(actorFor(session), session);
+    bindings.unbind(session, bindingKey);
+    return { hint: '已离开工作域。' };
+  }));
+  registerTool('create_task', {
+    description: '统筹派单，附分支、基线、验收标准和用户确认的 brief 等文档引用。',
+    inputSchema: createInput,
+  }, (input) => run(() => taskResult(store.create(actor(), input))));
+  registerTool('get_task', {
+    description: '查看自己参与的任务、轮次和证据。',
+    inputSchema: { taskId: id },
+  }, ({ taskId }) => run(() => taskResult(store.get(taskId, actor()))));
+  registerTool('wait_for_work', {
+    description: '长轮询。省略 taskId 才领取执行或复审。等待已见状态发生变化时，带 taskId 和 afterStatus。timeout 后继续等待。',
+    inputSchema: {
+      taskId: id.optional(),
+      timeoutMs: z.number().int().min(1000).max(30000).optional(),
+      afterStatus: z.enum(WORK_STATUSES).optional(),
+    },
+  }, (input, extra) => run(async () => {
+    const session = sessionId();
+    const member = actorFor(session);
+    const value = await store.wait(member, {
+      ...input, timeoutMs: input.timeoutMs ?? 20_000, signal: extra.signal,
+      connected: () => bindings.participantOf(session, bindingKey) === member.id,
+    });
+    return { ...value, hint: value.task ? nextByStatus[value.task.status]
+      : value.reason === 'timeout' ? '等待超时，可以继续等待。' : '会话已离开工作域。' };
+  }));
+  registerTool('submit_work_result', {
+    description: '执行者提交当前轮次的执行回报。填写文件、提交、测试和文档。受阻时填写未解决项。',
+    inputSchema: claimInput.extend({ result: resultInput }),
+  }, ({ result, ...claim }) => run(() => taskResult(store.submitWork(actor(), claim, result))));
+  registerTool('submit_review', {
+    description: '统筹提交独立复审与 review 文档。返工时提供具体意见并开启下一轮。',
+    inputSchema: reviewInput,
+  }, (input) => run(() => taskResult(store.submitReview(actor(), input))));
+  registerTool('ack_task_finished', {
+    description: '执行者确认已收工，统筹随后等待用户在网页放行。',
+    inputSchema: { taskId: id, round: claimInput.shape.round },
+  }, ({ taskId, round }) => run(() => taskResult(store.acknowledge(actor(), taskId, round))));
+  registerTool('renew_claim', {
+    description: '续领当前执行或复审的租约。',
+    inputSchema: claimInput,
+  }, (input) => run(() => ({ ...store.renew(actor(), input), hint: '已续租。' })));
+  registerTool('record_merge', {
+    description: '统筹记录用户放行后的合并、测试与推送结果。失败或推送失败请如实记录。',
+    inputSchema: mergeInput.extend({ taskId: id }),
+  }, ({ taskId, ...input }) => run(() => taskResult(store.recordMerge(actor(), taskId, input))));
+  registerTool('cancel_task', {
+    description: '统筹取消任务。执行状态不明时先确认现场，再强制取消并说明原因。',
+    inputSchema: { taskId: id, reason, force: z.boolean().optional() },
+  }, (input) => run(() => taskResult(store.cancel(actor(), input.taskId, input.reason, input.force))));
 }
 
-/** Work mode has one explicitly configured project and session pair. */
-export function mountWorkMcp(app: Express, config: ServerConfig, env = process.env): boolean {
-  const coordinatorToken = env.ARENA_WORK_CODEX_TOKEN;
-  const runnerToken = env.ARENA_WORK_RUNNER_TOKEN;
-  const codexSession = env.ARENA_WORK_CODEX_SESSION;
-  const workerSession = env.ARENA_WORK_DSH_SESSION;
-  const workspace = env.ARENA_WORK_WORKSPACE;
-  if (![coordinatorToken, runnerToken, codexSession, workerSession, workspace].some(Boolean)) return false;
-  if (!coordinatorToken || coordinatorToken.length < 32 || !runnerToken || runnerToken.length < 32
-      || runnerToken === coordinatorToken || !codexSession || !workerSession || !workspace
-      || !path.isAbsolute(workspace) || !['127.0.0.1', '::1'].includes(config.host)) {
-    throw new Error('Work MCP requires a local listener, two distinct tokens, two session IDs and an absolute workspace.');
-  }
-
-  const store = new WorkStore(config.dataDir, { codexSession, workerSession, workspace: realpathSync(workspace) });
-  const coordinator = digest(`Bearer ${coordinatorToken}`);
-  const runner = digest(`Bearer ${runnerToken}`);
-  app.all(endpoint, express.json({ limit: '256kb' }), async (req, res) => {
-    if (req.headers.origin !== undefined) {
-      res.status(403).json({ error: 'Browser origins are not accepted by this local endpoint.' });
+export function mountWorkMcp(app: Express, store: WorkStore, bindings: SessionBindings): void {
+  const sessions = new Map<string, { server: Server; transport: StreamableHTTPServerTransport }>();
+  app.all(endpoint, async (req, res) => {
+    const fail = (status: number, code: number, message: string) => {
+      res.status(status).json({ jsonrpc: '2.0', id: null, error: { code, message } });
+    };
+    if (req.headers.origin !== undefined || !isWorkLoopback(req.hostname)) {
+      fail(403, -32000, '工作 MCP 仅接收本机客户端连接。');
       return;
     }
-    const supplied = digest(req.headers.authorization ?? '');
-    const role = timingSafeEqual(supplied, coordinator) ? 'coordinator'
-      : timingSafeEqual(supplied, runner) ? 'runner' : null;
-    if (role === null) {
-      res.set('WWW-Authenticate', 'Bearer').status(401).json({ error: 'Work MCP requires a binding token.' });
+    if (!['POST', 'GET', 'DELETE'].includes(req.method)) {
+      res.set('Allow', 'POST, GET, DELETE');
+      fail(405, -32000, 'Method not allowed');
       return;
     }
-    const server = workServer(store, role);
-    const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
     try {
+      const supplied = req.headers['mcp-session-id'];
+      const id = typeof supplied === 'string' ? supplied : undefined;
+      if (id) {
+        const session = sessions.get(id);
+        if (!session) {
+          fail(404, -32001, 'Session not found. 请重新连接并按原名 join_work。');
+          return;
+        }
+        await sessionContext.run(
+          { sessionId: id, client: session.server.getClientVersion()?.name },
+          () => session.transport.handleRequest(req, res, req.body),
+        );
+        return;
+      }
+      if (req.method !== 'POST' || !isInitializeRequest(req.body)) {
+        fail(400, -32000, 'Missing MCP session. 请先初始化。');
+        return;
+      }
+      const server = new Server({ name: 'arena-work', version: '0.2.0' }, {
+        capabilities: { tools: {} }, instructions: WORK_INSTRUCTIONS,
+      });
+      registerTools(server, store, bindings);
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: randomUUID,
+        onsessioninitialized: (sessionId) => { sessions.set(sessionId, { server, transport }); },
+      });
+      transport.onclose = () => {
+        const sessionId = transport.sessionId;
+        if (!sessionId) return;
+        sessions.delete(sessionId);
+        bindings.clear(sessionId);
+        const actor = store.actorFor(sessionId);
+        if (actor) {
+          try { store.leave(actor, sessionId, true); }
+          catch (error) { console.error('[work-mcp] 关闭会话失败', error); }
+        }
+      };
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
-    } finally {
-      await server.close();
+    } catch (error) {
+      console.error('[work-mcp] 请求失败', error);
+      if (!res.headersSent) fail(500, -32603, 'Internal server error');
     }
   });
-  return true;
 }

@@ -310,6 +310,7 @@ export function LobbyPage() {
           <p className="subtitle">三类房间与历史对局，点卡片进入。</p>
         </div>
         <div className="topbar-meta">
+          <a className="btn btn--ghost" href="/?view=work">开发任务</a>
           <span className="room-chip">每 {POLL_MS / 1000} 秒自动刷新</span>
         </div>
       </header>

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { realpathSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_ROOM_ID,
@@ -43,6 +44,8 @@ export interface ServerConfig {
   dataDir: string;
   /** Archived games kept per room, newest first, under <dataDir>/archive. */
   archiveLimit: number;
+  workWorkspace: string;
+  workClaimTtlMs: number;
 }
 
 function readInteger(
@@ -66,6 +69,10 @@ function readInteger(
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  const workspace = env.ARENA_WORK_WORKSPACE?.trim() || projectRoot;
+  if (!path.isAbsolute(workspace) || !statSync(workspace, { throwIfNoEntry: false })?.isDirectory()) {
+    throw new Error('ARENA_WORK_WORKSPACE must be an existing absolute directory.');
+  }
   const waitDefaultMs = readInteger(
     env,
     'WAIT_DEFAULT_MS',
@@ -90,6 +97,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     serverUrl: env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL,
     dataDir: env.ARENA_DATA_DIR?.trim() || DEFAULT_DATA_DIR,
     archiveLimit: readInteger(env, 'ARENA_ARCHIVE_LIMIT', 20, 1, 500),
+    workWorkspace: realpathSync(workspace),
+    workClaimTtlMs: readInteger(env, 'ARENA_WORK_CLAIM_TTL_MS', 1_800_000, 60_000, 14_400_000),
   };
 }
 

@@ -386,13 +386,15 @@ AGY / Gemini 随后提交 `34d8d35`，修正双 agent 建房和大厅分类解�
 
 阶段 27 已在开发分支跑通 Codex CLI 派单、DSH 执行和原 CLI 会话自动复审。桌面原会话的自动回投待验证。[核验记录](phases/27-mcp-work-handoff/review.md)
 
-阶段 28 增加了普通启动后的入口。两个 agent 用同一聊天室和原 `/chat/mcp`，按名字入房后就能派单、收件和回报。[试跑步骤](dev-workflow.md#61-用聊天室交接开发任务)
+阶段 28 曾在聊天室验证按名入房后派单、收件和回报。[历史核验](phases/28-chat-work-handoff/review.md)
 
 阶段 29 补齐任务收尾。发起者复核通过后发送结束通知，执行者确认并结束该任务的等待。真实 DSH 已在隔离服务通过收件、确认和退出试跑。[核验记录](phases/29-task-finish-notification/review.md)
 
 阶段 30 把已有任务正文、回报和进度接到聊天室时间线，按顺序回填并实时更新。[浏览器核验](phases/30-chat-task-timeline/review.md)
 
 2026-11-18，阶段 27–30 通过 `b47e23f` 合入本地 main，合并后测试 377/377。该版本是后续重构与前端依赖调整的基线。[阶段 31 合并结果](phases/31-work-handoff-baseline/result.md)
+
+阶段 32 已在重构分支实现 `/work/mcp`、返工轮次、合并放行和工作看板，等待验收。聊天室继续提供群聊。[需求确认](phases/32-work-relay/brief.md) · [核验](phases/32-work-relay/review.md) · [试跑](phases/32-work-relay/run.md)
 
 ### 11.3 `mentions` 模式
 

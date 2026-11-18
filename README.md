@@ -77,12 +77,12 @@ pnpm duel --room duel2 --keep
 
 | 方式 | 配置 |
 |---|---|
-| Streamable HTTP | 棋类 `http://127.0.0.1:3000/game/mcp` · 聊天 `http://127.0.0.1:3000/chat/mcp` |
+| Streamable HTTP | 棋类 `http://127.0.0.1:3000/game/mcp` · 聊天 `http://127.0.0.1:3000/chat/mcp` · 开发任务 `http://127.0.0.1:3000/work/mcp` |
 | stdio 桥接 | `node <项目目录>/server/dist/mcp/stdio.js` |
 
 stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的后端；可用 `ARENA_SERVER_URL` 指定后端地址（默认 `http://127.0.0.1:3000`）。后端未启动时工具会返回明确的连接错误。
 
-仓库根目录的 `.mcp.json` 是项目级 MCP 配置，随各客户端配置一起迁移：棋类改为 `arena-game` → `http://127.0.0.1:3000/game/mcp`，聊天加一条 `arena-chat` → `http://127.0.0.1:3000/chat/mcp`（旧 `/mcp` 已退役，返回 410 和新地址）。**两个端点，工具双向不可见**——只下棋的 agent 永远看不到聊天工具，反之亦然。
+仓库根目录的 `.mcp.json` 配置了 `arena-game`、`arena-chat` 和 `arena-work`。各端点提供自己的工具。工具清单变更后重新打开客户端会话。
 
 棋类 `/game/mcp`（服务名 `arena-game`，12 个）：
 
@@ -101,7 +101,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `resign` | 认输 |
 | `say` | 对玩家说一句解说，网页实时展示 |
 
-聊天 `/chat/mcp`（服务名 `arena-chat`，11 个）：
+聊天 `/chat/mcp` 提供 5 个 `arena-chat` 工具。
 
 | 工具 | 作用 |
 |---|---|
@@ -110,16 +110,27 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `wait_for_messages` | 长轮询等下一条消息，带 `nextCursor` 续读 |
 | `pass_turn` | 主动让出轮次，别让房间干等 |
 | `get_transcript` | 取完整转录 |
-| `assign_task` | 把工作单派给房间里的成员（`to` 用成员名） |
-| `wait_for_task` | 长轮询收任务或结束通知，派单成员带 `taskId` 等回报 |
-| `submit_task_result` | 领取任务后回报结果，可带验证证据或阻碍原因 |
-| `get_task` | 按任务 ID 查看工作单与回报 |
-| `finish_task` | 派单成员复核通过后结束任务，通知工作成员 |
-| `ack_task_finished` | 工作成员确认收到结束通知，结束这一轮等待 |
 
 对 Agent 直接说：
 
 > 用 arena-game 工具和我下一局五子棋。每步先用 say 评价我的落子，落子后再评论一下局势，输赢时给点反应。
+
+## 开发任务接力
+
+在两个客户端分别以统筹和执行角色调用 `join_work`。统筹确认需求后提交工作单，执行者长轮询接单并回报。复审可以要求同一任务继续返工。通过后，执行者确认收工，用户在大厅的「开发任务」看板点击「确认合并」。统筹收到放行后执行合并和验证，再记录证据。推送另经用户放行。
+
+`/work/mcp` 提供 11 个 `arena-work` 工具。
+
+| 工具 | 用途 |
+|---|---|
+| `join_work` / `leave_work` | 声明角色或离开 |
+| `create_task` / `get_task` | 派单或查看参与的任务 |
+| `wait_for_work` / `renew_claim` | 等待通知、领取或续租 |
+| `submit_work_result` / `submit_review` | 执行回报、复审通过或返工 |
+| `ack_task_finished` | 确认收工 |
+| `record_merge` / `cancel_task` | 记录合并证据或取消任务 |
+
+接入与旧测试数据清理见[试跑说明](docs/phases/32-work-relay/run.md)。
 
 ## 对局流程
 
@@ -141,7 +152,9 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `WAIT_MAX_MS` | 60000 | `wait_for_turn` 上限 |
 | `ARENA_SERVER_URL` | `http://127.0.0.1:3000` | stdio 桥接访问的后端地址，也用于 Vite 代理 |
 | `DEFAULT_ROOM_ID` | default | 默认房间 |
-| `ARENA_DATA_DIR` | `<repo>/data` | 落盘根目录，下分 `rooms/` `chat/` `archive/` |
+| `ARENA_DATA_DIR` | `<repo>/data` | 落盘根目录，下分 `rooms/` `chat/` `archive/` `work/` |
+| `ARENA_WORK_WORKSPACE` | 仓库根目录 | 工作域的绝对路径 |
+| `ARENA_WORK_CLAIM_TTL_MS` | 1800000 | 领取租约，范围 60000–14400000 毫秒 |
 | `ARENA_ARCHIVE_LIMIT` | 20 | 每个房间保留多少局归档对局 |
 
 ## 架构
@@ -150,6 +163,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 core/       纯规则与纯函数，零 I/O（五子棋 / 围棋引擎、威胁雷达）
 rooms/      棋类房间编排：状态、waiters、互动日志、历史、持久化
 chat/       聊天室：成员、消息、轮次租约、长轮询
+work/       开发任务：回报、复审、返工、收工、合并放行
 http/       REST + WebSocket
 mcp/        ArenaApi 接口、工具定义、HTTP 入口、stdio 桥接
 web/        Vite + React，只依赖 shared 类型与 REST/WS 协议
@@ -169,4 +183,5 @@ web/        Vite + React，只依赖 shared 类型与 REST/WS 协议
 - 围棋只支持 9 路 + simple ko，其他配置返回 `UNSUPPORTED_RULE`；
 - 无账号与鉴权，仅监听回环地址；
 - 聊天室不显示「在线 / 离线」（没有 presence，只有最后活动时间）；
+- 工作域在回环地址提供单项目流程看板，采用本机信任。同名会话可恢复角色，换执行者需建新任务。阶段 27 的 token 和会话环境变量属于保留的 runner 实验。
 - 解说出自模型主动调用 `say`，服务端不会生成假解说。
