@@ -43,7 +43,7 @@ pwsh -File scripts/dev-isolated.ps1 -Only dev
 1. 执行会话连接 `arena-work`，以 `worker` 和固定名字调用 `join_work`，再调用 `wait_for_work` 等待。统筹会话以 `coordinator` 加入。用用户确认的 Proposal 或架构文档派单。协议要求建单附件标为 `brief`、每轮复审附件标为 `review`，两者都取自同一主文档。[四步流程](workflow.md#复杂架构重构)
 2. 领取执行或复审时省略 `taskId`。等已知任务状态变化时带上 `taskId` 与已见的 `afterStatus`。默认领取租约 30 分钟，长任务调用 `renew_claim`。
 3. 复审退回后执行者在同一任务接下一轮。通过后收到 `finished` 时调用 `ack_task_finished`。用户在看板点「确认合并」，统筹执行 Git 与验证后用 `record_merge` 登记实际结果。
-4. 服务重启后以原名重新加入。若租约过期或登记合并失败，看板显示「待接管」，根据保留的错误和工作区实际状态处理。
+4. 服务重启后以原名重新加入。若租约过期、登记合并失败，或服务重启前已放行但未登记合并结果，看板显示「待接管」。先核对保留的记录与 Git 状态，再决定如何处理。
 
 ### 登记主文档的版本
 

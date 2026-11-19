@@ -75,18 +75,48 @@ describe('work relay persistence', () => {
     expect(() => store.approveMerge(taskId)).toThrow('收工确认');
     store.acknowledge(worker, taskId, 2);
     expect(() => store.recordMerge(coordinator, taskId, { outcome: 'failed', pushed: false })).toThrow('放行');
+    store = new WorkStore(dir, dir, lease, () => clock);
+    const resumed = join();
+    expect(store.get(taskId).status).toBe('pending_merge_approval');
     clock += 1;
     const approval = store.approveMerge(taskId);
     expect(store.approveMerge(taskId).approvedAt).toBe(approval.approvedAt);
-    store = new WorkStore(dir, dir, lease, () => clock);
-    const resumed = join();
     const merged = store.recordMerge(resumed.coordinator, taskId, {
       outcome: 'success', mergeCommit: 'b'.repeat(40), postMergeTests: [{ command: 'pnpm test', outcome: 'passed' }], pushed: false,
     });
     expect(merged.status).toBe('done');
     expect(merged.rounds.map((round) => round.review?.decision)).toEqual(['rework', 'approve']);
     expect(merged.merge?.approvedAt).toBe(approval.approvedAt);
-    expect((await store.wait(resumed.worker, options)).task?.id).toBe(second.id);
+    store = new WorkStore(dir, dir, lease, () => clock);
+    expect(store.get(taskId)).toEqual(merged);
+    expect((await store.wait(join().worker, options)).task?.id).toBe(second.id);
+  });
+
+  it('requires takeover when a restart interrupts an approved merge with no evidence', async () => {
+    const { coordinator, worker } = join();
+    const { id: taskId } = store.create(coordinator, request);
+    const assigned = await store.wait(worker, options);
+    store.submitWork(worker, { taskId, round: 1, claimId: assigned.claim!.id }, result);
+    const reviewing = await store.wait(coordinator, options);
+    store.submitReview(coordinator, { ...review, taskId, round: 1, claimId: reviewing.claim!.id, decision: 'approve' });
+    store.acknowledge(worker, taskId, 1);
+    const approval = store.approveMerge(taskId);
+
+    store = new WorkStore(dir, dir, lease, () => clock);
+    const resumed = join();
+    const observed = await store.wait(resumed.coordinator, { taskId, afterStatus: 'merge_approved', ...options });
+    expect(observed.reason).toBe('needs_attention');
+    expect(observed.task).toMatchObject({
+      status: 'needs_attention',
+      issue: expect.stringContaining('未登记合并结果'),
+      approvedAt: approval.approvedAt,
+      acknowledgedAt: approval.acknowledgedAt,
+      rounds: approval.rounds,
+    });
+    expect(observed.task?.merge).toBeUndefined();
+    expect(store.approveMerge(taskId).status).toBe('needs_attention');
+    expect(() => store.recordMerge(resumed.coordinator, taskId, { outcome: 'failed', pushed: false })).toThrow('放行');
+    expect(JSON.parse(readFileSync(path.join(dir, 'work', taskId + '.json'), 'utf8')).status).toBe('needs_attention');
   });
 
   it('recovers claims by name, renews and reconciles an expired claim without reclaiming it', async () => {

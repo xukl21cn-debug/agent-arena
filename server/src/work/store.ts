@@ -46,6 +46,11 @@ export class WorkStore {
         console.warn('[work] 跳过旧版或无效任务文件', file);
       }
     }
+    for (const task of this.tasks.values()) {
+      if (task.status === 'merge_approved') {
+        this.attention(task, '服务重启前未登记合并结果。请核对 Git 状态后处理。');
+      }
+    }
   }
 
   subscribe(listener: (task: WorkTask) => void): () => void {
