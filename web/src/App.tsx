@@ -16,6 +16,7 @@ import { ReplayPage } from './components/replay/ReplayPage';
 import { ResultOverlay } from './components/ResultOverlay';
 import { ScoringPanel } from './components/ScoringPanel';
 import { StatusBar } from './components/StatusBar';
+import { WorkPage } from './components/work/WorkPage';
 import {
   seatColors,
   useRoomStore,
@@ -62,6 +63,9 @@ export default function App() {
   }
   if (chatMode) {
     return <ChatRoomPage roomId={roomId} />;
+  }
+  if (params.get('view') === 'work') {
+    return <WorkPage />;
   }
   if (!params.has('room')) {
     return <LobbyPage />;

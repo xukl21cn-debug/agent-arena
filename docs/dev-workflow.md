@@ -1,257 +1,62 @@
-# 开发流程
+# 本地开发与接入
 
-> 结论先放这里：**日常用 `pnpm dev`**。双端口脚本只在「改后端同时要保住 DSH 会话」时才用。
->
-> 最后更新：2026-10-26（实测后修正，此前文档夸大了双端口的必要性）
+## 启动和隔离
 
----
+在仓库根运行 `pnpm install`、`pnpm dev`。打开 [Vite 大厅](http://127.0.0.1:5173/)。后端默认在 3000，Vite 把 `/api` 和 `/ws` 代理到后端。MCP 客户端直接连后端。生产模式先 `pnpm build` 再 `pnpm start`，后端同时提供 `web/dist`。[脚本](../package.json) · [Vite 配置](../web/vite.config.ts)
 
-## 1. 日常开发：`pnpm dev`
+| 修改 | 运行时影响 |
+|---|---|
+| 网页 | Vite 热更新，后端会话可继续用。 |
+| 服务端 | `tsx watch` 重启服务。已保存的棋局和转录可以恢复，该进程的 MCP 会话失效。 |
+| shared | 等待增量编译完成。若后端随之重启，客户端同样要重连。 |
 
-```powershell
-cd E:\code\fun\agent-arena
-pnpm dev
-```
-
-它起三个进程：
-
-| 进程 | 端口 | 作用 |
-|---|---|---|
-| `shared` | — | `tsc --watch`，改 `shared/` 自动重编译 |
-| `server` | **3000** | `tsx watch`，改 `server/` 自动重启 |
-| `web` | **5173** | Vite dev server，proxy 到 3000 |
-
-**网页打开 http://127.0.0.1:5173**（不是 3000）。
-
-### 1.1 改不同类型代码的影响（实测）
-
-| 你改了什么 | 会发生什么 | 对局 | DSH 会话 |
-|---|---|---|---|
-| **`web/`** | Vite HMR，浏览器自动更新 | ✅ 不受影响 | ✅ 不受影响 |
-| **`shared/`** | 重编译，server 可能重启 | ✅ 持久化恢复 | ⚠️ 可能断 |
-| **`server/`** | `tsx` 重启进程 | ✅ **持久化恢复** | ❌ **断** |
-
-**关键：P3.5 的持久化让对局在 server 重启后自动恢复。** 实测：
-
-```text
-1. 开围棋局，落一子（moves=1，黑子在 (4,4)）
-2. 改 server/src/config.ts 一行
-3. tsx watch 重启进程
-4. 查询对局 → moves=1，黑子还在 (4,4)   ✅ 没丢
-```
-
-**所以 `pnpm dev` 下改后端，丢的只是 MCP 会话，不是对局。**
-
----
-
-## 2. 什么时候需要双端口
-
-只有一种情况：**改后端，同时要保住 DSH 的 MCP 会话**。
-
-因为 MCP 客户端在**连接那一刻**抓取工具清单，之后不会自己更新（见 §4）。
-`tsx watch` 一重启，会话就没了，DSH 必须新开会话。
-
-如果此时你正在用 DSH 下棋/聊天，重开会话会打断它。
-
-**双端口就是为这个场景准备的：**
+改后端时若有人正在对局，可保留对局服务，在另一端口验证构建。两个实例分别读仓库的 `data/` 与 `data-dev/`。脚本启动的是构建产物，3100 上的网页也来自 `web/dist`。[双端口脚本](../scripts/dev-isolated.ps1)
 
 ```powershell
-# 对局服务（3000）不动
-pwsh -File scripts/dev-isolated.ps1 -Only live
-
-# 开发服务（3100）随便重启
 pnpm build
+pwsh -File scripts/dev-isolated.ps1 -Only live
 pwsh -File scripts/dev-isolated.ps1 -Only dev
 ```
 
-| 端口 | 用途 | 数据目录 |
-|---|---|---|
-| 3000 | 对局（**改代码期间不碰**） | `data/` |
-| 3100 | 开发（随便重启） | `data-dev/` |
+数据位置由启动日志列出，默认根目录随代码位置确定。临时验证可在启动服务前把 `ARENA_DATA_DIR` 指向独立绝对目录。端口、等待时长、棋谱保留数等见[配置表](../README.md#配置)。
 
-其他用法：
+## 客户端和会话
 
-```powershell
-pwsh -File scripts/dev-isolated.ps1            # 两个都起
-pwsh -File scripts/dev-isolated.ps1 -Stop      # 都停
-pwsh -File scripts/dev-isolated.ps1 -DevPort 3200
-```
-
-⚠️ **双端口模式下没有 Vite**——3100 服务的是 `web/dist/` 的构建产物。
-改前端还是用 `pnpm dev`。
-
----
-
-## 3. 怎么选
-
-```text
-改前端？                    → pnpm dev（HMR 无可替代）
-改后端 + 不用 DSH 对局？     → pnpm dev（对局会恢复）
-改后端 + 正在用 DSH 对局？   → 双端口
-改工具清单？                → 都要重开会话，见 §4
-```
-
----
-
-## 4. MCP 会话为什么必须重开
-
-这是 MCP SDK 的硬事实，不是我们的实现问题。
-
-### 4.1 实测证据
-
-```text
-1. 客户端连上，拿到 tools=[tool_one]
-2. 杀掉服务端
-   → transport.onerror: SSE stream disconnected
-   → transport.onclose 从未触发        ← 关键
-3. 用 tools=[tool_one,tool_two,tool_three] 重启服务端
-   → 客户端仍在用旧 sessionId 重试
-   → 拿到 404，无限重试
-   → FINAL tools=[tool_one]            ← 永远看不到新工具
-```
-
-### 4.2 三个查证过的死路
-
-| 方案 | 为什么不行 |
-|---|---|
-| 会话存盘 | SDK 明说 `State is maintained in-memory (connections, message history)` |
-| 服务端接受旧 sessionId | 客户端拿旧 id 发的是 `tools/call`，不是 `initialize`，没会话处理不了 |
-| `tools/list_changed` 通知 | ✅ **确实有效**（实测通过），但只在**同一进程内**加工具时有用；重启进程就没意义 |
-
-### 4.3 所以
-
-| 你改了什么 | 重开 DSH？ |
-|---|---|
-| **工具清单**（加/删工具、改参数、改描述） | ✅ **必须** |
-| 业务逻辑（工具签名不变） | ❌ 不用 |
-| 前端 / 数据模型 / 持久化 | ❌ 不用 |
-
-**判断方法：看 `server/src/mcp/tools.ts` 有没有变。**
-
----
-
-## 5. 常见问题
-
-### 5.1 `pnpm dev` 起来了但网页打不开
-
-网页在 **5173**，不是 3000。3000 是 API/MCP。
-
-### 5.2 改了 server 代码但行为没变
-
-`tsx watch` 只监听 `server/src/`。如果改的是 `shared/`，要等 `tsc --watch` 编译完
-（日志会有 `Found 0 errors`）。
-
-### 5.3 `pnpm start` 和 `pnpm dev` 的区别
-
-| | `pnpm start` | `pnpm dev` |
-|---|---|---|
-| 读什么 | `dist/`（构建产物） | `src/`（直接跑 TS） |
-| 改代码后 | **必须 `pnpm build` 再重启** | 自动 |
-| 前端 | 3000 服务 `web/dist/` | 5173 Vite |
-| 适合 | 长期跑、给 DSH 用 | 开发 |
-
-### 5.4 端口被占
-
-```powershell
-pwsh -File scripts/dev-isolated.ps1 -Stop    # 停 3000/3100
-# 或手动
-Get-NetTCPConnection -LocalPort 3000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
-```
-
-### 5.5 数据在哪
-
-**一个根目录，按领域分子目录**：
-
-| 子目录 | 内容 |
-|---|---|
-| `data/rooms/` | 棋类对局，一房一个 JSON |
-| `data/chat/` | 聊天室转录，一房一个 JSON |
-| `data/archive/` | 归档的历史对局（按房间保留最近 N 局） |
-
-路径锚在**代码文件位置**（`server/src/config.ts`），**不是 `process.cwd()`**。所以怎么启动都落在同一处：
-
-| 启动方式 | 数据目录 |
-|---|---|
-| `pnpm dev` / `pnpm start` | `<repo>/data/` |
-| `dev-isolated.ps1` live | `<repo>/data/`（与默认一致） |
-| `dev-isolated.ps1` dev | `<repo>/data-dev/`（显式覆盖） |
-| 直接 `node server/dist/index.js` | `<repo>/data/` |
-
-要换位置就设 `ARENA_DATA_DIR`——**这是唯一的覆盖方式**，别靠切 cwd。
-
-服务启动时会打印实际路径，找不着数据先看这行：
-
-```text
-[arena] data  E:\code\fun\agent-arena\data
-[arena] rooms  2 restored from E:\code\fun\agent-arena\data\rooms
-[arena] chats  24 restored from E:\code\fun\agent-arena\data\chat
-```
-
-都在 `.gitignore` 里。
-
----
-
-## 6. 接入 DSH（MCP 客户端）
-
-配置在 `C:\Users\<你>\.dsh\profiles\web\cordis.patch.yml`。两个 MCP 服务名与端点一一对应：棋类 `arena-game`，聊天 `arena-chat`：
+项目的 [.mcp.json](../.mcp.json) 列出三个 Streamable HTTP 地址。DSH 可在所用 profile 的 `cordis.patch.yml` 加入对应插件，例如下面的工作域配置。接棋类或聊天时使用配置表中的对应名称和 URL。
 
 ```yaml
-# 新增插件必须用 insert:
 - insert:
-    - id: mcp-arena-game
+    - id: mcp-arena-work
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: arena-game
+        serverName: arena-work
         transport: streamable-http
-        url: http://127.0.0.1:3000/game/mcp
+        url: http://127.0.0.1:3000/work/mcp
 ```
 
-**聊天室是另一个端点**，要用 DSH 聊就再加一条：
+服务重启后，若 DSH 用旧会话号收到 404，重开客户端会话，再按原名加入。改工具清单、参数、描述或客户端端点配置后也应重开会话并检查工具列表。项目以往实测的客户端会重试旧 ID；同进程的工具变更通知无法恢复已经结束的进程。
 
-```yaml
-    - id: mcp-arena-chat
-      name: "@deepseek-ai/dsh-mcp-client"
-      config:
-        serverName: arena-chat
-        transport: streamable-http
-        url: http://127.0.0.1:3000/chat/mcp
-```
+## 工作看板
 
-⚠️ **改完配置必须新开会话**——MCP 工具在会话启动时注入，旧会话看不到新端点（见 §4）。
+从大厅进入「开发任务」或打开[本地看板](http://127.0.0.1:5173/?view=work)。后端需监听回环地址。默认工作区是本仓库，另用 checkout 时在启动前设置 `ARENA_WORK_WORKSPACE` 为该目录的绝对路径。
 
-### 6.1 用聊天室交接开发任务
+1. 执行会话连接 `arena-work`，以 `worker` 和固定名字调用 `join_work`，再调用 `wait_for_work` 等待。统筹会话以 `coordinator` 加入。用用户确认的 Proposal 或架构文档派单。协议要求建单附件标为 `brief`、每轮复审附件标为 `review`，两者都取自同一主文档。[四步流程](workflow.md#复杂架构重构)
+2. 领取执行或复审时省略 `taskId`。等已知任务状态变化时带上 `taskId` 与已见的 `afterStatus`。默认领取租约 30 分钟，长任务调用 `renew_claim`。
+3. 复审退回后执行者在同一任务接下一轮。通过后收到 `finished` 时调用 `ack_task_finished`。用户在看板点「确认合并」，统筹执行 Git 与验证后用 `record_merge` 登记实际结果。
+4. 服务重启后以原名重新加入。若租约过期、登记合并失败，或服务重启前已放行但未登记合并结果，看板显示「待接管」。先核对保留的记录与 Git 状态，再决定如何处理。
 
-按平时方式启动 Arena。两个客户端都使用 `arena-chat`，端点还是 `http://127.0.0.1:3000/chat/mcp`。服务更新后，在两边新开聊天，让客户端重新读取工具清单。
+### 登记主文档的版本
 
-用一个现有聊天室即可。要从空房试起，在 PowerShell 建一个名为 `dev-work` 的房间。
+看板保存附件的相对路径和 SHA-256，下载时会重新读文件。直接登记一份持续编辑的文件，第二轮修改后首轮下载就会失效。派单和每次提交审核前，在看板配置的工作区根目录用 PowerShell 7 运行以下片段，将当前版按内容保存一次。把示例路径换成本次主文档。
 
 ```powershell
-Invoke-RestMethod 'http://127.0.0.1:3000/api/chat/rooms' -Method Post `
-  -ContentType 'application/json' -Body '{"roomId":"dev-work","title":"开发接力"}'
+$proposal = (Resolve-Path -LiteralPath 'docs/proposals/任务接力.md').Path
+$bytes = [IO.File]::ReadAllBytes($proposal)
+$digest = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+$versions = (New-Item -ItemType Directory -Force -Path 'data/proposal-revisions').FullName
+$copy = Join-Path $versions "$digest.md"
+if (!(Test-Path -LiteralPath $copy)) { [IO.File]::WriteAllBytes($copy, $bytes) }
+[pscustomobject]@{ path = "data/proposal-revisions/$digest.md"; hash = $digest }
 ```
 
-先发给 DSH。
-
-> 用 arena-chat 加入 dev-work，名字叫 dsh。用 wait_for_task 收任务，超时就继续等。完成后用 submit_task_result 回报，再带任务 ID 等结束通知。收到 finished 后用 ack_task_finished 确认并结束本轮等待。
-
-再发给 Codex。
-
-> 用 arena-chat 加入 dev-work，名字叫 codex。用 assign_task 交给 dsh 一个任务：只读 README.md，告诉我项目是做什么的。派单后用 wait_for_task 等回报。复核通过后用 finish_task 通知 dsh 收工。
-
-两边用房间名和成员名交接。任务和回报随房间保存，聊天发言轮次和发言预算只用于聊天。重连后用原名进房。工作端看到 `in_progress` 表示任务已领取，可以核对当前进度再继续或回报。任务任一方也可按 ID 用 `get_task` 查看结果。
-
-结束通知只送给执行者，收到确认前会保留。按同名重连后，普通收件也会收到未确认的 `finished`。用户安排持续接单时，可以在确认后继续等下一件。
-
-房间网页的「时间线」会显示派单正文、领取、任务回报、复核结论和收工确认，和聊天按发生顺序排列。打开房间时回显最近 50 条聊天和 50 条任务动态，后续实时追加。
-
-这种方式由已经在等待的会话收件。两边各发送一次提示后，可由 MCP 自动传递任务和回报。已结束的桌面聊天自动续轮仍按 [阶段 27](phases/27-mcp-work-handoff/review.md) 跟踪。
-
----
-
-## 7. 相关文件
-
-| 文件 | 内容 |
-|---|---|
-| `scripts/dev-isolated.ps1` | 双端口启停（备选方案） |
-| `AGENTS.md` §5 | 开发环境速查 |
-| `AGENTS.md` §8 | MCP 的硬事实 |
+将输出的 `path` 和 `hash` 填入工具的附件字段，并填写相应的 `kind` 和本轮 `summary`。只编辑主文档。版本副本位于 Git 已忽略的工作区 `data/` 下，保留到看板无需回查为止。迁移工作区时一并复制该目录。各版本有独立的下载地址，移动主文档后仍可查证。

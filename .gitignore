@@ -31,3 +31,5 @@ data-dev/
 .dev-isolated.json
 *.sqlite
 *.db
+.commandcode
+docs/archive

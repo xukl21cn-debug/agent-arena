@@ -9,6 +9,9 @@ import type { ChatManager } from '../chat/manager.js';
 import type { ChatRoomSnapshot } from '../chat/model.js';
 import type { PresenceRegistry } from '../core/presence.js';
 import type { RoomManager } from '../rooms/room-manager.js';
+import { isLocalWorkOrigin } from '../work/http.js';
+import { isWorkLoopback } from '../work/mcp.js';
+import type { WorkStore } from '../work/store.js';
 
 export interface WebSocketOptions {
   path?: string;
@@ -17,10 +20,11 @@ export interface WebSocketOptions {
   presence?: PresenceRegistry;
   /** Chat rooms; when passed, sockets asking `?kind=chat` subscribe to them. */
   chat?: ChatManager;
+  work?: WorkStore;
 }
 
-/** Cap each part of the initial chat timeline. */
-const CHAT_HELLO_LIMIT = 50;
+/** How much timeline a chat hello carries. */
+const CHAT_HELLO_MESSAGES = 50;
 
 function sendJson(socket: WebSocket, message: ServerMessage): void {
   if (socket.readyState !== WebSocket.OPEN) {
@@ -137,8 +141,7 @@ export function attachWebSocket(
       roomId,
       kind: 'chat',
       room: chatRoomFrame(room.snapshot()),
-      messages: room.recentMessages(CHAT_HELLO_LIMIT),
-      taskEvents: room.tasks.recentEvents(CHAT_HELLO_LIMIT),
+      messages: room.recentMessages(CHAT_HELLO_MESSAGES),
     });
 
     const unsubscribe = room.subscribe(() => {
@@ -161,9 +164,6 @@ export function attachWebSocket(
         room: chatRoomFrame(room.snapshot()),
       });
     });
-    const unsubscribeTasks = room.tasks.subscribeEvents((event) => {
-      sendJson(socket, { type: 'task_event', roomId, kind: 'chat', event });
-    });
 
     let cleanedUp = false;
     const cleanup = (): void => {
@@ -172,7 +172,6 @@ export function attachWebSocket(
       }
       cleanedUp = true;
       unsubscribe();
-      unsubscribeTasks();
       alive.delete(socket);
     };
     socket.on('close', cleanup);
@@ -235,6 +234,21 @@ export function attachWebSocket(
         return;
       }
       chatConnection(socket, chat, url.searchParams.get('roomId') ?? '');
+      return;
+    }
+
+    if (url.searchParams.get('kind') === 'work') {
+      const work = options.work;
+      const host = request.headers.host?.replace(/:\d+$/u, '') ?? '';
+      if (!work || !isWorkLoopback(host) || !isLocalWorkOrigin(request.headers.origin)) {
+        sendJson(socket, { type: 'error', kind: 'work', code: 'INVALID_REQUEST', message: '工作看板仅在本机开放。' });
+        socket.close(1008);
+        return;
+      }
+      sendJson(socket, { type: 'hello', kind: 'work', tasks: work.list() });
+      const unsubscribe = work.subscribe((task) => sendJson(socket, { type: 'task', kind: 'work', task }));
+      socket.once('close', unsubscribe);
+      socket.once('error', unsubscribe);
       return;
     }
 

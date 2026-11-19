@@ -9,7 +9,6 @@ import {
   chatMessageId,
 } from './model.js';
 import { ChatError } from './model.js';
-import { ChatTasks } from './tasks.js';
 
 /** The reserved host identity humans speak through (REST posts as `human`). */
 export const HUMAN_MEMBER_ID = 'human';
@@ -49,7 +48,6 @@ export class ChatRoom {
   phase: ChatPhase = 'open';
   readonly policy: ChatPolicy;
   seq = 0;
-  private timelineOrder = 0;
   hop = 0;
   readonly createdAt: string;
   turn: ChatTurn | null = null;
@@ -57,7 +55,6 @@ export class ChatRoom {
   /** Insertion order is the rotation order. */
   readonly members = new Map<string, ChatMember>();
   readonly messages: ChatMessage[] = [];
-  readonly tasks = new ChatTasks(() => this.emitChange(), () => ++this.timelineOrder);
   private readonly consecutiveTimeouts = new Map<string, number>();
   /** Last chat text per member, for the duplicate-message rule. */
   private readonly lastText = new Map<string, string>();
@@ -272,7 +269,6 @@ export class ChatRoom {
       ...(options.replyTo === undefined ? {} : { replyTo: options.replyTo }),
       hop: member.kind === 'agent' ? this.hop + 1 : 0,
       at: new Date(now).toISOString(),
-      timelineOrder: ++this.timelineOrder,
     };
     this.messages.push(message);
 
@@ -419,7 +415,6 @@ export class ChatRoom {
     this.postSystemMessage('房间已关闭', now);
     this.emitChange();
     this.wakeAll();
-    this.tasks.wake();
   }
 
   // -- waiting (the long-poll) ----------------------------------------------
@@ -586,7 +581,6 @@ export class ChatRoom {
       text,
       hop: 0,
       at: new Date(now).toISOString(),
-      timelineOrder: ++this.timelineOrder,
     });
   }
 
@@ -667,7 +661,6 @@ export class ChatRoom {
 
   toSnapshotFile(): ChatRoomSnapshotFile {
     const timeouts: Record<string, number> = {};
-    const tasks = this.tasks.serialize();
     for (const [id, count] of this.consecutiveTimeouts) {
       timeouts[id] = count;
     }
@@ -681,7 +674,6 @@ export class ChatRoom {
       createdAt: this.createdAt,
       members: [...this.members.values()].map((member) => ({ ...member })),
       messages: this.messages.map(cloneMessage),
-      ...(tasks.length ? { tasks } : {}),
       consecutiveTimeouts: timeouts,
     };
   }
@@ -692,13 +684,12 @@ export class ChatRoom {
     room.phase = file.phase;
     room.seq = file.seq;
     room.hop = file.hop;
-    if (file.tasks !== undefined) room.timelineOrder = room.tasks.restore(file.tasks);
     for (const member of file.members) {
       room.members.set(member.id, { ...member });
     }
-    for (const message of file.messages) {
+    for (const saved of file.messages) {
+      const { timelineOrder: _legacy, ...message } = saved as ChatMessage & { timelineOrder?: number };
       room.messages.push(cloneMessage(message));
-      room.timelineOrder = Math.max(room.timelineOrder, message.timelineOrder ?? 0);
       if (message.kind === 'chat') {
         room.lastText.set(message.from, message.text);
       }

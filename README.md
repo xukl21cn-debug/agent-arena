@@ -1,27 +1,8 @@
 # agent-arena
 
-给 AI Agent 玩的本地竞技场：房间里有棋盘、参与者和在线状态，通过 MCP 把同一局棋暴露给任意标准 MCP 客户端。
+一个给 AI agent 使用的本地竞技场。人从网页大厅开一局五子棋或九路围棋，与 agent 对弈或观战，也可以主持多 agent 轮流发言的聊天室。大厅的「开发任务」看板用于查看派单、返工与合并放行。
 
-三类房间，一个大厅：
-
-- **五子棋**（15×15）、**围棋**（9 路，中国规则面积法）—— 人类 vs AI，或两个 AI 对弈、人类观战；
-- **聊天室** —— 多个 agent 轮流发言，人类观战。
-
-## 状态
-
-P1 → P5 全部完成：参与者模型（稳定 id、同名重连、会话绑定身份）、双 AI 对弈、围棋全链路（落子 / 提子 / 数子）、聊天室、棋谱持久化与回放、大厅。**362 个测试全绿**。
-
-之后的可选项见 [`docs/roadmap.md`](docs/roadmap.md) §11，文档全貌见 [`docs/README.md`](docs/README.md)。
-
-## Agent 视图：LLM 友好的棋盘表达
-
-实测发现 LLM 逐格数 15×15 嵌套数组会出错（漏看斜线跳四）。因此 MCP 响应不再返回 `state.board` 数组，改为三件套：
-
-- `state.boardText`：等宽棋盘图（`X`=黑 `O`=白 `.`=空，小写=最新一手，`#`/`@`=五连），行号两位补零、列号空白分隔，任何数字都不会黏连；
-- `state.moves`：走子记录。`wait_for_turn` / `place_stone` / `resign` / 错误只带最近 8 手并用 `movesOmitted` 标注省略了多少（`get_state` 永远全量）；历史不可得时 `movesOmitted = moveCount`，不伪装成空历史；
-- `state.hotPoints`：双方所有"落子即成威胁"的点，分级 `win`（落子成五）> `open4`（落子成开四双杀）> `four`（冲四，`fiveAt` 即成五/必挡点）> `open3`（活三，参考级，有数量上限）。`win` 与 `fiveAt` 均经规则引擎 `findWinLine` 校验，`overlineWin` / `winLength` 变体语义一致。`double` 表示同一手制造两个独立必应威胁（`four+open3` 或双活三），`open3At` 给出活三拆点；同方向的 four+three 不合并。
-
-payload 实测（100 手中盘）：热路径 2470 字符（全量历史版本为 6600，旧裸 `GameState` 为 1732）。防守纪律已写入 SERVER_INSTRUCTIONS 与工具描述：对手 open4 候选点必须本手直接占掉该点本身；对手 double 本手优先占点（four+open3 可拆，双活三必须占点）；对手 four 本手挡 `fiveAt`。演示：`node scripts/demo-agent-view.mjs`（第一局决定胜负的那一步）与 `node scripts/replay-game2.mjs`（第二局 25 手，含 `(4,7)` 四三杀）。
+第一次使用可以先开一局五子棋：启动服务，进大厅选房间，点「执黑开局」，让连接了 `arena-game` 的 agent 等你落第一手。参与项目开发从 [AGENTS.md](AGENTS.md) 开始；不同分支的功能与待验事项见[路线图](docs/roadmap.md)。
 
 ## 界面预览
 
@@ -29,7 +10,7 @@ payload 实测（100 手中盘）：热路径 2470 字符（全量历史版本�
 
 ## 快速开始
 
-要求 Node.js ≥ 20、pnpm ≥ 10。
+本仓库的开发与测试使用 Node.js 24.x、pnpm 10.29.2。根包声明的 Node 下限是 20，实际开发工具还受锁定的 Vite、Vitest 和 concurrently 版本约束。[包配置](package.json) · [依赖锁文件](pnpm-lock.yaml)
 
 ### 开发模式
 
@@ -38,7 +19,7 @@ pnpm install
 pnpm dev
 ```
 
-- 网页：<http://localhost:5173/?room=default>
+- [打开大厅](http://127.0.0.1:5173/) · [直达默认棋局](http://127.0.0.1:5173/?room=default)
 - 后端 REST / MCP：<http://127.0.0.1:3000>
 - `pnpm dev` 会同时启动 `shared` 增量编译、后端 `tsx watch` 与 Vite（`/api`、`/ws` 已代理到 3000）
 
@@ -60,7 +41,7 @@ pnpm typecheck   # server + web 类型检查
 
 ### 双 AI 自测
 
-不用模型也能验证双 agent 协议：两个 MCP 客户端各占一色，自动下完一盘。
+保持后端运行，在仓库根的另一个终端启动协议自测。两个 MCP 客户端各占一色，自动下完一盘。
 
 ```bash
 pnpm duel                    # 两个机器人对弈，约 31 手
@@ -77,12 +58,12 @@ pnpm duel --room duel2 --keep
 
 | 方式 | 配置 |
 |---|---|
-| Streamable HTTP | 棋类 `http://127.0.0.1:3000/game/mcp` · 聊天 `http://127.0.0.1:3000/chat/mcp` |
-| stdio 桥接 | `node <项目目录>/server/dist/mcp/stdio.js` |
+| Streamable HTTP | 棋类 `http://127.0.0.1:3000/game/mcp` · 聊天 `http://127.0.0.1:3000/chat/mcp` · 开发任务 `http://127.0.0.1:3000/work/mcp` |
+| stdio 桥接（棋类） | 先在仓库根运行 `pnpm build`，再配置 `node <项目目录>/server/dist/mcp/stdio.js` |
 
-stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的后端；可用 `ARENA_SERVER_URL` 指定后端地址（默认 `http://127.0.0.1:3000`）。后端未启动时工具会返回明确的连接错误。
+stdio 桥接仅提供棋类工具，本身不保存棋局，所有操作通过 REST 转给已启动的后端；可用 `ARENA_SERVER_URL` 指定后端地址（默认 `http://127.0.0.1:3000`）。后端未启动时工具会返回明确的连接错误。
 
-仓库根目录的 `.mcp.json` 是项目级 MCP 配置，随各客户端配置一起迁移：棋类改为 `arena-game` → `http://127.0.0.1:3000/game/mcp`，聊天加一条 `arena-chat` → `http://127.0.0.1:3000/chat/mcp`（旧 `/mcp` 已退役，返回 410 和新地址）。**两个端点，工具双向不可见**——只下棋的 agent 永远看不到聊天工具，反之亦然。
+仓库根目录的 `.mcp.json` 配置了 `arena-game`、`arena-chat` 和 `arena-work`。各端点提供自己的工具。工具清单变更后重新打开客户端会话。
 
 棋类 `/game/mcp`（服务名 `arena-game`，12 个）：
 
@@ -101,7 +82,7 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `resign` | 认输 |
 | `say` | 对玩家说一句解说，网页实时展示 |
 
-聊天 `/chat/mcp`（服务名 `arena-chat`，11 个）：
+聊天 `/chat/mcp` 提供 5 个 `arena-chat` 工具。
 
 | 工具 | 作用 |
 |---|---|
@@ -110,16 +91,27 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `wait_for_messages` | 长轮询等下一条消息，带 `nextCursor` 续读 |
 | `pass_turn` | 主动让出轮次，别让房间干等 |
 | `get_transcript` | 取完整转录 |
-| `assign_task` | 把工作单派给房间里的成员（`to` 用成员名） |
-| `wait_for_task` | 长轮询收任务或结束通知，派单成员带 `taskId` 等回报 |
-| `submit_task_result` | 领取任务后回报结果，可带验证证据或阻碍原因 |
-| `get_task` | 按任务 ID 查看工作单与回报 |
-| `finish_task` | 派单成员复核通过后结束任务，通知工作成员 |
-| `ack_task_finished` | 工作成员确认收到结束通知，结束这一轮等待 |
 
 对 Agent 直接说：
 
 > 用 arena-game 工具和我下一局五子棋。每步先用 say 评价我的落子，落子后再评论一下局势，输赢时给点反应。
+
+## 开发任务接力
+
+需要跨客户端交接复杂重构时，在两个客户端分别以统筹和执行角色调用 `join_work`。统筹确认需求后用同一份 Proposal 或架构文档派单，执行者长轮询接单并回报。复审可以要求同一任务继续返工。通过后，执行者确认收工，用户在大厅的「开发任务」看板点击「确认合并」。统筹收到放行后执行合并和验证，再记录证据。推送另经用户放行。
+
+`/work/mcp` 提供 11 个 `arena-work` 工具。
+
+| 工具 | 用途 |
+|---|---|
+| `join_work` / `leave_work` | 声明角色或离开 |
+| `create_task` / `get_task` | 派单或查看参与的任务 |
+| `wait_for_work` / `renew_claim` | 等待通知、领取或续租 |
+| `submit_work_result` / `submit_review` | 执行回报、复审通过或返工 |
+| `ack_task_finished` | 确认收工 |
+| `record_merge` / `cancel_task` | 记录合并证据或取消任务 |
+
+两个客户端如何接单、续租和重连，见[工作看板操作步骤](docs/dev-workflow.md#工作看板)。
 
 ## 对局流程
 
@@ -131,6 +123,10 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 
 `wait_for_turn` 默认等待 20s（1s–60s 可调）。超时不是错误：Agent 会拿到 `reason=timeout` 并再次调用，等待成本留在服务端。
 
+### Agent 怎样读盘
+
+棋类工具用 `boardText` 表示棋盘。五子棋还提供 `hotPoints` 的成五、开四、冲四、活三候选；模型自己判断落点。五子棋热路径只带最近 8 手，`movesOmitted` 表示省略的数量，`get_state` 可取完整记录。要看具体局面，可运行 `node scripts/demo-agent-view.mjs` 或 `node scripts/replay-game2.mjs`。[设计依据和实战证据](docs/architecture/decisions.md)
+
 ## 配置
 
 | 变量 | 默认 | 说明 |
@@ -141,32 +137,20 @@ stdio 桥接本身不保存棋局，所有操作通过 REST 转给已启动的�
 | `WAIT_MAX_MS` | 60000 | `wait_for_turn` 上限 |
 | `ARENA_SERVER_URL` | `http://127.0.0.1:3000` | stdio 桥接访问的后端地址，也用于 Vite 代理 |
 | `DEFAULT_ROOM_ID` | default | 默认房间 |
-| `ARENA_DATA_DIR` | `<repo>/data` | 落盘根目录，下分 `rooms/` `chat/` `archive/` |
+| `ARENA_DATA_DIR` | `<repo>/data` | 落盘根目录，下分 `rooms/` `chat/` `archive/` `work/` |
+| `ARENA_WORK_WORKSPACE` | 仓库根目录 | 工作域的绝对路径 |
+| `ARENA_WORK_CLAIM_TTL_MS` | 1800000 | 领取租约，范围 60000–14400000 毫秒 |
 | `ARENA_ARCHIVE_LIMIT` | 20 | 每个房间保留多少局归档对局 |
 
-## 架构
+## 开发与文档
 
-```
-core/       纯规则与纯函数，零 I/O（五子棋 / 围棋引擎、威胁雷达）
-rooms/      棋类房间编排：状态、waiters、互动日志、历史、持久化
-chat/       聊天室：成员、消息、轮次租约、长轮询
-http/       REST + WebSocket
-mcp/        ArenaApi 接口、工具定义、HTTP 入口、stdio 桥接
-web/        Vite + React，只依赖 shared 类型与 REST/WS 协议
-```
-
-- 棋局状态只有一份，在提供 Web 服务的后端进程里；
-- HTTP MCP 与 REST/WS 同进程直接共享 `RoomManager`，stdio 桥接是独立进程但只做 REST 转发；
-- 互动解说走独立 WS 事件，不改变棋局 `version`；
-- 对局落盘到 `server/data/`（一房一 JSON、原子写），重启后自动恢复；**MCP 会话不持久化**，重连靠同名 `join_game` 拿回座位；
-- 聊天是独立领域对象：独立 `/chat/mcp` 端点、自己的成员与在线状态，不碰棋类房间。
-
-完整设计见 [docs/architecture/overview.md](docs/architecture/overview.md)。
+[架构地图](docs/architecture/overview.md)说明棋类、聊天和工作域如何共用后端。日常协作读[开发工作流](docs/workflow.md)，其他资料按问题查[文档导航](docs/README.md)。
 
 ## 已知限制
 
 - 五子棋无禁手、悔棋、计时器；15×15 黑先，五连（含长连）获胜；
 - 围棋只支持 9 路 + simple ko，其他配置返回 `UNSUPPORTED_RULE`；
-- 无账号与鉴权，仅监听回环地址；
+- 默认监听回环地址，无账号与鉴权；工作域只在回环监听时开放；
 - 聊天室不显示「在线 / 离线」（没有 presence，只有最后活动时间）；
+- 工作域在回环地址提供单项目流程看板，采用本机信任。同名会话可恢复角色，换执行者需建新任务。
 - 解说出自模型主动调用 `say`，服务端不会生成假解说。

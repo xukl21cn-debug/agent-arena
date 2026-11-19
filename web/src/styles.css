@@ -1494,21 +1494,6 @@ button {
   background: rgba(217, 166, 75, 0.07);
 }
 
-.chat-bubble--task {
-  min-width: 0;
-  max-width: min(96%, 680px);
-}
-
-.chat-bubble--task .chat-bubble-meta {
-  flex-wrap: wrap;
-  overflow-wrap: anywhere;
-}
-
-.chat-task-label {
-  color: var(--gold);
-  font-size: 11px;
-}
-
 .chat-bubble-meta {
   display: flex;
   align-items: baseline;
@@ -2094,4 +2079,74 @@ button {
     flex-direction: column;
     gap: 4px;
   }
+}
+.work-board {
+  display: grid;
+  grid-template-columns: minmax(190px, 280px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.work-list, .work-detail {
+  position: static;
+  height: auto;
+  padding: 20px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.work-list {
+  display: grid;
+  gap: 10px;
+}
+
+.work-list .btn {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  text-align: left;
+  white-space: normal;
+}
+
+.work-list button[aria-pressed="true"] {
+  border-color: var(--gold);
+}
+
+.work-list time, .work-docs code {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.work-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.work-approve {
+  align-self: flex-start;
+  margin-top: 12px;
+}
+
+.work-fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+}
+
+.work-fields dd { margin: 0; }
+.work-docs span, .work-docs code { display: block; }
+.work-docs a { color: var(--gold); }
+.work-round {
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+  padding: 12px 0;
+}
+.work-round p { white-space: pre-wrap; }
+.work-takeover { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.work-takeover input { max-width: 100%; }
+
+@media (max-width: 760px) {
+  .work-board { grid-template-columns: minmax(0, 1fr); }
 }

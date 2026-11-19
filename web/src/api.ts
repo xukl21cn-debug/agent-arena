@@ -10,6 +10,7 @@ import type {
   RoomSummary,
   RoomView,
   StoneColor,
+  WorkTask,
 } from '@arena/shared';
 
 /**
@@ -73,7 +74,7 @@ async function request<T>(
   } catch {
     throw new ApiError(
       'NETWORK_ERROR',
-      '连不上棋局服务，请确认后端已经启动。',
+      path.startsWith('/api/work/') ? '连不上工作服务。' : '连不上棋局服务，请确认后端已经启动。',
     );
   }
 
@@ -139,6 +140,13 @@ function chatRoomFrameOf(rest: ChatRoomRestSnapshot): ChatRoomFrame {
 }
 
 export const api = {
+  workTask: (id: string) => request<WorkTask>('/api/work/tasks/' + encodeURIComponent(id)),
+  approveWorkMerge: (id: string) => request<WorkTask>('/api/work/tasks/' + encodeURIComponent(id) + '/approve-merge', {
+    method: 'POST', body: '{}',
+  }),
+  takeOverWork: (id: string, reason: string) => request<WorkTask>('/api/work/tasks/' + encodeURIComponent(id) + '/takeover', {
+    method: 'POST', body: JSON.stringify({ reason }),
+  }),
   getRoom(roomId: string): Promise<RoomView> {
     return request<RoomView>(roomPath(roomId));
   },

@@ -199,6 +199,7 @@ export class ChatManager {
     }
     try {
       const parsed = JSON.parse(raw) as ChatRoomSnapshotFile;
+      if (Object.hasOwn(parsed, 'tasks')) console.warn('[chat] 忽略旧任务字段', roomId);
       // The file's own id wins as the identity — a renamed file must not
       // resurrect a room under the wrong name.
       const room = ChatRoom.fromSnapshotFile(parsed);

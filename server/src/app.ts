@@ -10,13 +10,16 @@ import { ChatManager } from './chat/manager.js';
 import { apiErrorHandler, createApiRouter } from './http/routes.js';
 import { mountMcpHttp } from './mcp/http.js';
 import type { RoomManager } from './rooms/room-manager.js';
-import { mountWorkMcp } from './work/mcp.js';
+import { isWorkLoopback, mountWorkMcp } from './work/mcp.js';
+import { createWorkRouter } from './work/http.js';
+import { WorkStore } from './work/store.js';
 
 export interface AppOptions {
   /** Directory holding the built web UI. Omit to run API/MCP only. */
   webDist?: string | null;
   /** The chat domain's rooms; created here when the caller does not pass one. */
   chat?: ChatManager;
+  work?: WorkStore;
 }
 
 function sendNotFound(res: express.Response): void {
@@ -37,9 +40,16 @@ export function createApp(
 ): Express {
   const app = express();
   app.disable('x-powered-by');
-  app.locals.workEnabled = mountWorkMcp(app, config);
+  const work = isWorkLoopback(config.host)
+    ? options.work ?? new WorkStore(config.dataDir, config.workWorkspace, config.workClaimTtlMs)
+    : null;
+  if (work) {
+    app.use('/work/mcp', express.json({ limit: '3mb' }));
+    mountWorkMcp(app, work, new SessionBindings());
+  }
   app.use(express.json({ limit: '64kb' }));
 
+  if (work) app.use('/api/work', createWorkRouter(work));
   app.use('/api', createApiRouter(manager, config));
   mountMcpHttp(app, manager, config);
 

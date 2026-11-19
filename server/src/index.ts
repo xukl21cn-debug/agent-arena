@@ -10,6 +10,9 @@ import { PresenceRegistry } from './core/presence.js';
 import { attachWebSocket } from './http/ws.js';
 import { FileRoomRepository } from './rooms/repository.js';
 import { RoomManager } from './rooms/room-manager.js';
+import { isWorkLoopback } from './work/mcp.js';
+import { WorkStore } from './work/store.js';
+import { startWorkSweep } from './work/sweep.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDist = path.resolve(here, '../../web/dist');
@@ -55,9 +58,13 @@ function main(): void {
   chat.restoreAll();
   const restoredChats = chat.list().length;
 
-  const app = createApp(manager, config, { webDist, chat });
+  const work = isWorkLoopback(config.host)
+    ? new WorkStore(config.dataDir, config.workWorkspace, config.workClaimTtlMs)
+    : undefined;
+  const app = createApp(manager, config, { webDist, chat, work });
   const server = createServer(app);
-  const wss = attachWebSocket(server, manager, { presence, chat });
+  const wss = attachWebSocket(server, manager, { presence, chat, work });
+  const workSweepTimer = work ? startWorkSweep(work) : undefined;
 
   // Seats with no session, viewer, or parked wait flip to `disconnected` once
   // their last call ages out. This only refreshes what the UI shows.
@@ -76,7 +83,12 @@ function main(): void {
     console.log(`[arena] REST  ${base}/api`);
     console.log(`[arena] MCP   ${base}/game/mcp  (games, arena-game)`);
     console.log(`[arena] MCP   ${base}/chat/mcp  (chat, arena-chat)`);
-    if (app.locals.workEnabled) console.log(`[arena] MCP   ${base}/work/mcp  (work, arena-work)`);
+    if (work) {
+      console.log(`[arena] MCP   ${base}/work/mcp  (work, arena-work)`);
+      console.log(`[arena] work workspace  ${work.workspace}`);
+    } else {
+      console.log('[arena] 工作域仅在回环地址开放，本次启动已跳过。');
+    }
     console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
     console.log(`[arena] data  ${config.dataDir}`);
     console.log(
@@ -101,6 +113,7 @@ function main(): void {
     console.log(`[arena] ${signal} received, shutting down`);
     clearInterval(sweepTimer);
     clearInterval(chatSweepTimer);
+    clearInterval(workSweepTimer);
     wss.close();
     server.close(() => {
       process.exit(0);

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import type { ChatTask } from './tasks.js';
 
 /**
  * Chat is a third kind of room beside gomoku and go: members, messages, a
@@ -77,7 +76,6 @@ export interface ChatMessage {
   /** Agent sends burn budget; human and system messages are always 0. */
   hop: number;
   at: string;
-  timelineOrder?: number;
 }
 
 export interface ChatRoomSnapshot {
@@ -96,7 +94,6 @@ export interface ChatRoomSnapshot {
 
 /** What the room persists — the unit saved under <dataDir>/chat/<id>.json. */
 export interface ChatRoomSnapshotFile {
-  tasks?: ChatTask[];
   id: string;
   title: string;
   phase: ChatPhase;
@@ -124,7 +121,6 @@ export type ChatErrorCode =
   | 'ROOM_PAUSED'
   | 'NOT_YOUR_TURN'
   | 'MEMBER_NOT_FOUND'
-  | 'TASK_NOT_FOUND'
   | 'MEMBER_LIMIT_REACHED'
   | 'DUPLICATE_MESSAGE'
   | 'MESSAGE_TOO_LONG'
