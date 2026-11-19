@@ -59,6 +59,4 @@ if (!(Test-Path -LiteralPath $copy)) { [IO.File]::WriteAllBytes($copy, $bytes) }
 [pscustomobject]@{ path = "data/proposal-revisions/$digest.md"; hash = $digest }
 ```
 
-将输出的 `path` 和 `hash` 填入工具的附件字段，并填写相应的 `kind` 和本轮 `summary`。只编辑主文档。版本副本位于 Git 已忽略的工作区 `data/` 下，保留到看板无需回查为止；工作区迁移时一起复制该目录。旧版与新版各有自己的下载地址，主文档收尾归档后仍可查证。
-
-阶段 32 两种试跑的证据及一次性旧测试数据清理说明保存在[试跑记录](archive/phases/32-work-relay/run.md)。
+将输出的 `path` 和 `hash` 填入工具的附件字段，并填写相应的 `kind` 和本轮 `summary`。只编辑主文档。版本副本位于 Git 已忽略的工作区 `data/` 下，保留到看板无需回查为止。迁移工作区时一并复制该目录。各版本有独立的下载地址，移动主文档后仍可查证。

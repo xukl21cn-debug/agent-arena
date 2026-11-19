@@ -10,10 +10,9 @@ import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
 import { RoomManager } from '../src/rooms/room-manager';
 
-// Both defects here were found by letting two real models converse (see
-// docs/archive/phases/13-p4-c25-chat-fix/observation.md §3): the domain layer was right and the
-// MCP layer was wrong, so every test below drives real MCP sessions — the
-// unit layer alone would stay green while the wire stays broken.
+// Two models conversing through MCP exposed both defects in these tests.
+// Every test below drives a real MCP session because unit tests alone
+// would miss the wire behavior.
 //
 //   A3–A5  maxMessagesPerMember never fired because memberOf() handed
 //          sendMessage a snapshot clone; the live counter stayed at 0.

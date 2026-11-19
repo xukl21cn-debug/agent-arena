@@ -19,5 +19,3 @@ agent-arena 是一个本机运行的 TypeScript 模块化单体。浏览器和 M
 默认数据根锚定仓库，`rooms/` 存棋局、`archive/` 存历史棋谱、`chat/` 存聊天快照、`work/` 存任务与轮次。服务重启可恢复落盘记录。MCP transport 和会话绑定存在内存里，恢复任务或座位时需建立新会话并按原名加入。[配置](../../server/src/config.ts) · [棋谱存储](../../server/src/rooms/repository.ts)
 
 共享 wire 类型在 `shared/src/`。页面路由在 `web/src/App.tsx`，无参数进大厅，已有 `?room=` 链接继续打开棋局。变更持久化格式、身份或跨域契约前先查相应条目。[页面入口](../../web/src/App.tsx) · [兼容与领域约束](constraints.md) · [决策理由](decisions.md)
-
-早期五子棋的工具草案、时序图与版本演进见[原始设计](../archive/gomoku-design.md)。
