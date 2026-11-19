@@ -49,6 +49,11 @@ function TaskDetail({ task }: { task: WorkTask }) {
       <div className="work-title">
         <h2 className="panel-title">{task.title}</h2><span>{labels[task.status]}</span>
       </div>
+      {task.status === 'pending_merge_approval' && (
+        <button className="btn btn--primary work-approve" type="button" disabled={busy} onClick={() => void approve()}>
+          确认合并
+        </button>
+      )}
       <dl className="work-fields">
         <dt>分支</dt><dd><code>{task.branch}</code></dd>
         <dt>基线</dt><dd><code>{task.base}</code></dd>
@@ -74,11 +79,6 @@ function TaskDetail({ task }: { task: WorkTask }) {
           </>}
         </section>
       ))}
-      {task.status === 'pending_merge_approval' && (
-        <button className="btn btn--primary" type="button" disabled={busy} onClick={() => void approve()}>
-          确认合并
-        </button>
-      )}
       {task.status === 'merge_approved' && <p>已放行，等待统筹合并。</p>}
       {task.issue && <p role="status">{task.issue}</p>}
       {(task.status === 'needs_attention' || task.status === 'pending_ack') && (

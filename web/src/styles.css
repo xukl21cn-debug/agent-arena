@@ -2088,6 +2088,8 @@ button {
 }
 
 .work-list, .work-detail {
+  position: static;
+  height: auto;
   padding: 20px;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -2120,6 +2122,11 @@ button {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
+}
+
+.work-approve {
+  align-self: flex-start;
+  margin-top: 12px;
 }
 
 .work-fields {
