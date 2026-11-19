@@ -1,129 +1,14 @@
-# 文档索引
+# 文档导航
 
-> 项目是什么、怎么干活 → [`../AGENTS.md`](../AGENTS.md)（先读那个）。
-> 这份文件只回答一件事：**文档放在哪、现在该读哪份。**
+第一次使用从[项目首页](../README.md)启动并进入大厅。接手开发从 [AGENTS.md](../AGENTS.md) 看分工，再按眼前的问题往下读。
 
----
-
-## 1. 怎么组织的
-
-文档分五类，**不要混**：
-
-| 位置 | 是什么 | 会变吗 |
-|---|---|---|
-| 本层（`docs/*.md`） | **现行文档**：路线图、开发流程 | 持续更新 |
-| `architecture/` | **系统设计与长期约束**：长什么样、为什么这么定 | 慢。结构变了才改 |
-| `proposals/` | **提案**：还没变成代码的想法 | 采纳后沉进 roadmap / architecture |
-| `phases/` | **过程档案**：每一轮工作的原始记录 | **只增不改** |
-| `archive/` | **作废**但有实验结论的文档 | 冻结 |
-| `assets/` | 被现行文档引用的图片 | 按需 |
-
-一条规则贯穿全部：**能改的放上面，不能改的放下面。** `phases/` 和 `archive/` 是证据，不是草稿——发现了错误就在评审里写，别回头改历史。
-
----
-
-## 2. 我想干什么 → 读哪份
-
-| 我想… | 读 |
+| 我想知道 | 去哪里 |
 |---|---|
-| 知道项目是什么、硬约束有哪些 | [`../AGENTS.md`](../AGENTS.md) |
-| 知道谁统筹、谁实现、如何调度 | [`../AGENTS.md`](../AGENTS.md) §2–3（现行分工）；[阶段 21](phases/21-agent-roles/handoff.md)（本轮变更与待办承接） |
-| 评审一轮工作、写审计脚本 | [`reviewing.md`](reviewing.md)（套路 + 坑表，评审前必读） |
-| 知道现在做到哪、之后能做什么 | [`roadmap.md`](roadmap.md) §11 |
-| 知道为什么按这个顺序做、P/M/G 编号怎么对 | [`roadmap.md`](roadmap.md) |
-| 看懂系统怎么搭的 | [`architecture/overview.md`](architecture/overview.md) |
-| 起服务、双端口调试 | [`dev-workflow.md`](dev-workflow.md) |
-| 给另一个 agent 派开发任务 | [工作域接力](dev-workflow.md#61-用工作域交接开发任务) |
-| 查某条硬约束的**来龙去脉**（谁在哪一轮踩的） | [`architecture/constraints.md`](architecture/constraints.md) |
-| 查某个设计**为什么这么定**、当时放弃了什么 | [`architecture/decisions.md`](architecture/decisions.md) |
-| 查看全局代码审查报告与缺陷排查清单 | [`code-review.md`](code-review.md) |
-| 看某一轮具体做了什么 | [`phases/`](phases/) 下的对应目录 |
-| 找围棋规则、数子、ko 的原始提案 | [`proposals/go-mcp.md`](proposals/go-mcp.md) |
-| 找聊天室为什么是独立领域对象 | [`proposals/agent-chat.md`](proposals/agent-chat.md) |
-| 看多 agent 如何通过 MCP 派单、返工和复审 | [开发协作提案](proposals/agent-collaboration.md) |
-| 找参与者 / presence / 准备态的模型 | [`proposals/participants.md`](proposals/participants.md) |
+| 一个需求怎样确认、实现、体验、交接和收尾 | [开发工作流](workflow.md) |
+| 当前有什么待验、哪些想法还没排期 | [路线图](roadmap.md) |
+| 系统分几块、请求经过哪里、从哪个源文件改起 | [架构地图](architecture/overview.md) |
+| 哪些行为必须兼容、当时为何这样选 | [硬约束](architecture/constraints.md) · [设计决策](architecture/decisions.md) |
+| 怎么启动隔离服务、接入 DSH、恢复会话或使用看板 | [本地开发与接入](dev-workflow.md) |
+| 怎样从需求独立验证自己的判断 | [评审方法](reviewing.md) |
 
----
-
-## 3. 阶段档案（按顺序）
-
-编号 = 真实工作顺序。**P1c 排在 P3a 前面**是因为它确实先做完，不是笔误——`roadmap.md` 里 P1c 本来是"可以延后"的那一项。
-
-| # | 日期 | 阶段 | 内容 | 产出 |
-|---|---|---|---|---|
-| 01 | 10-23 | Agent 视图 | 威胁雷达、`boardText`、payload 瘦身（M1–M6） | [评审](phases/01-agent-view/review.md) · [整改回执](phases/01-agent-view/review-result.md) · [实战棋谱](phases/01-agent-view/game-record.md) |
-| 02 | 10-25 | **P1b** | 参与者模型：稳定 id、同名重连、会话绑定身份 | [工作单](phases/02-p1b-participants/handoff.md) |
-| 03 | 10-25 | **P1c** | 大厅 / 准备 / 房间阶段 | [工作单](phases/03-p1c-lobby/handoff.md) · [评审](phases/03-p1c-lobby/review.md) |
-| 04 | 10-25 | **P2** | 双真实模型对弈验证 | [工作单](phases/04-p2-real-models/handoff.md) · [结果](phases/04-p2-real-models/result.md) |
-| 05 | 10-25 | **P3a** | 围棋规则引擎（M1） | [工作单](phases/05-p3a-go-rules/handoff.md) · [评审](phases/05-p3a-go-rules/review.md) |
-| 06 | 10-25 | **P3b-1** | 围棋类型契约（M0） | [工作单](phases/06-p3b-1-go-types/handoff.md) · [评审](phases/06-p3b-1-go-types/review.md) |
-| 07 | 10-25 | **P3b-2** | 接入 room / REST / MCP（M2） | [工作单](phases/07-p3b-2-go-integration/handoff.md) · [评审](phases/07-p3b-2-go-integration/review.md) |
-| 08 | 10-25 | **P3b-3** | 数子全流程（M3） | [工作单](phases/08-p3b-3-go-scoring/handoff.md) · [评审](phases/08-p3b-3-go-scoring/review.md) |
-| 09 | 10-26 | **P3b-4** | 网页围棋盘 + 人机端到端（M4） | [工作单](phases/09-p3b-4-go-web/handoff.md) · [评审](phases/09-p3b-4-go-web/review.md) |
-| 10 | 10-26 | **P3.5** | 棋谱持久化（`FileRoomRepository`） | [工作单](phases/10-p35-persistence/handoff.md) · [评审](phases/10-p35-persistence/review.md) |
-| 11 | 10-26 | **P4-C1/C2** | 聊天室服务端 + `/chat/mcp` + 长轮询 | [工作单](phases/11-p4-c1-chat-server/handoff.md) · [评审](phases/11-p4-c1-chat-server/review.md) |
-| 12 | 10-26 | 修 policy | `POST /api/chat/rooms` 的 `policy` 参数被静默丢弃 | [工作单](phases/12-chat-policy/handoff.md) · [评审](phases/12-chat-policy/review.md) |
-| 13 | 10-26 | **P4-C2.5** | 真实模型聊一轮，挖出两个服务端缺陷并修 | [观察](phases/13-p4-c25-chat-fix/observation.md) · [工作单](phases/13-p4-c25-chat-fix/handoff.md) · [评审](phases/13-p4-c25-chat-fix/review.md) |
-| 14 | 10-26 | **P4-C4** | 网页聊天页（复用 `/ws`，不引入 SSE） | [工作单](phases/14-p4-c4-chat-web/handoff.md) · [评审](phases/14-p4-c4-chat-web/review.md) |
-| 15 | 10-26 | **P5A** | 棋谱归档 + 回放（可单步前进/后退） | [工作单](phases/15-p5a-replay/handoff.md) · [评审](phases/15-p5a-replay/review.md) |
-| 16 | 10-27 | **P5B** | 大厅：三类房间统一入口 | [工作单](phases/16-p5b-lobby/handoff.md) · [评审](phases/16-p5b-lobby/review.md) |
-| 17 | 10-27 | `pass_turn` | agent 主动让出轮次 | [观察](phases/17-chat-pass-turn/observation.md) · [工作单](phases/17-chat-pass-turn/handoff.md) · [评审](phases/17-chat-pass-turn/review.md) |
-| 18 | 10-27 | 租约结算 | 定时结算死轮次，房间不再卡死 | [工作单](phases/18-chat-lease/handoff.md) · [评审](phases/18-chat-lease/review.md) |
-| 19 | 11-16 | 文档精简评审 | AGENTS.md 迁移完整性、审查报告修订与合并 | [工作单](phases/19-docs-slim-review/handoff.md) · [评审](phases/19-docs-slim-review/review.md) · [补充核验](phases/19-docs-slim-review/result.md) |
-| 20 | 11-16 | 代码审查修复验收 | S-03 无座身份验证未通过，退回整改 | [工作单](phases/20-code-review-fixes/handoff.md) · [评审](phases/20-code-review-fixes/review.md) |
-| 21 | 11-16 | Agent 分工调整 | GPT-6 Astra 统筹，其余 harness / 模型作为可调度工作 agent | [工作单](phases/21-agent-roles/handoff.md) · [文档检查](phases/21-agent-roles/review.md) |
-| 22 | 11-16 | S-03 复审与浏览器验收 | 身份运行修复通过；测试设置与 W-06 大厅加载仍需整改 | [工作单](phases/22-s03-recheck/handoff.md) · [评审](phases/22-s03-recheck/review.md) |
-| 23 | 11-16 | R1 / R2 整改复审 | 双 agent 设置与分类解耦通过；空断言和持续慢响应仍需整改 | [工作单](phases/23-r1-r2-recheck/handoff.md) · [评审](phases/23-r1-r2-recheck/review.md) |
-| 24 | 11-16 | 最终修复验收 | R3 / R4 通过，独立检查 120/120，已合入本地 main | [工作单](phases/24-final-fix-review/handoff.md) · [评审](phases/24-final-fix-review/review.md) · [合并结果](phases/24-final-fix-review/result.md) |
-| 25 | 11-16 | MCP 命名迁移评审 | 新入口及名称通过；duel、启动提示与接入说明仍有遗漏 | [工作单](phases/25-mcp-naming-review/handoff.md) · [评审](phases/25-mcp-naming-review/review.md) |
-| 26 | 11-17 | MCP 命名迁移复核 | N1 / N2 通过；duel 完成 31 手，已合入本地 main | [工作单](phases/26-mcp-naming-recheck/handoff.md) · [评审](phases/26-mcp-naming-recheck/review.md) · [合并结果](phases/26-mcp-naming-recheck/result.md) |
-| 27 | 11-17 | MCP 开发接力 | 同会话 CLI 派单和回投通过，桌面待验 | [工作单](phases/27-mcp-work-handoff/handoff.md) · [运行说明](phases/27-mcp-work-handoff/run.md) · [核验](phases/27-mcp-work-handoff/review.md) |
-| 28 | 11-17 | 聊天室任务交接 | 复用房间、成员名和现有 MCP 入口 | [工作单](phases/28-chat-work-handoff/handoff.md) · [试跑](dev-workflow.md#61-用聊天室交接开发任务) · [核验](phases/28-chat-work-handoff/review.md) |
-| 29 | 11-17 | 任务结束通知 | 复核通过后通知执行者收工，确认前保留 | [工作单](phases/29-task-finish-notification/handoff.md) · [核验](phases/29-task-finish-notification/review.md) |
-| 30 | 11-17 | 聊天室任务时间线 | 在同一房间显示聊天与任务活动 | [工作单](phases/30-chat-task-timeline/handoff.md) · [核验](phases/30-chat-task-timeline/review.md) |
-| 31 | 11-18 | 开发协作基线合并 | 阶段 27–30 已合入本地 main | [工作单](phases/31-work-handoff-baseline/handoff.md) · [核验](phases/31-work-handoff-baseline/review.md) · [合并结果](phases/31-work-handoff-baseline/result.md) |
-| 32 | 11-18 | **开发任务接力** | 单一任务域、停车派单、多轮返工、看板与合并放行 | [需求确认](phases/32-work-relay/brief.md) · [工作单](phases/32-work-relay/handoff.md) · [核验](phases/32-work-relay/review.md) · [试跑](phases/32-work-relay/run.md) |
-
-**阶段文档按下表命名。**
-
-| 文件 | 什么时候有 |
-|---|---|
-| `brief.md` | 一定有。开工前写，**用户签字后**才写 handoff；写需求、范围、验收场景和不做的部分 |
-| `handoff.md` | 一定有。brief 签字后写，边界写死 |
-| `review.md` | 一定有。做完后写，记录独立验证过程 |
-| `observation.md` | 有实测才写（真实模型行为、缺陷证据） |
-| `result.md` | 有验收结论才写（如 P2 的一盘完整对局） |
-| `run.md` | 有运行步骤或清理命令才写 |
-
----
-
-## 4. 新增一轮工作怎么做
-
-```powershell
-mkdir docs/phases/32-<主题>
-# 写 docs/phases/32-<主题>/brief.md        ← 开工前，用户签字
-# 写 docs/phases/32-<主题>/handoff.md      ← brief 签字后
-# 实现完，写 docs/phases/32-<主题>/review.md
-# 有实测再补 observation.md / result.md；有运行步骤补 run.md
-```
-
-然后：
-
-0. 先写 `brief.md`，确认需求、范围、验收场景和明确不做的事；**用户签字前不写 handoff、不改代码**。
-1. 在 §3 的表格末尾加一行；
-2. 到 [`roadmap.md`](roadmap.md) 标记该阶段状态；
-3. 如果这轮定下了**新的硬约束**，加进 [`architecture/constraints.md`](architecture/constraints.md)；
-4. 如果这轮做了**取舍决策**，加进 [`architecture/decisions.md`](architecture/decisions.md)。
-
-编号只增不减，不要为了"插进去"重排历史。
-
----
-
-## 5. 维护约定
-
-- **`phases/` 只增不改。** 结论错了就在新一轮的评审里纠正，别回头改旧档案。
-- **历史角色不代表现行分工。** 旧档案的 GLM / DSH 署名保留；新任务和未完成任务的执行安排以 [`AGENTS.md`](../AGENTS.md) §2–3 及最新补充工作单为准。
-- **`handoff.md` 是开工前的合同。** 它写的时候还不知道答案，所以允许和最终实现不一致——`review.md` 里会记差异。
-- **作废的工作单进 `archive/`**，顶部加醒目警告，实验结论保留。
-- **不设常驻交接文档**：当前状态与可选项看 [`roadmap.md`](roadmap.md) §11；有新工作就开新的 phase 目录。
-- **链接用相对路径**，跨目录引用直接指到文件，不要只写文件名——同名文件太多了（`handoff.md`、`review.md`）。
+日常小任务在对话或已有 PR 里验收。复杂重构只维护一份 Proposal（`docs/proposals/<主题>.md`），或直接维护已有的架构文档。阶段 01–32 的材料、旧提案和基线审查报告统一从[历史档案](archive/README.md)查找。

@@ -14,9 +14,9 @@ const bindingKey = 'work';
 
 export const WORK_INSTRUCTIONS = [
   '开发任务接力。会话通过 join_work 声明统筹或执行角色，角色由工作职责决定。',
-  '统筹先复述并等待用户确认需求，再写 brief、设计与实现提示，最后派单。',
+  '统筹先确认需求，再在一份 Proposal 或架构文档中写明方案与验收条件。派单引用已确认版本，附件类型为 brief。',
   '工作端用 wait_for_work 收件，执行后提交文件、提交号、测试及文档引用，再等复审。',
-  '统筹用 wait_for_work 领取复审，独立验证并写 review 文档。同一任务可以按复审意见返工。',
+  '统筹用 wait_for_work 领取复审，将独立审核结论写回主文档，引用本轮版本并标为 review。已登记的附件路径和内容须保留，返工沿用同一任务。',
   '长时间工作或复审要在租约到期前调用 renew_claim。timeout 后可以继续等待。',
   '收到 finished 后，执行端确认收工。统筹等待网页放行后再执行合并和验证，推送前另等用户放行。',
   '任务阶段由领取、回报、复审和用户操作推进，本域不设聊天发言轮次、hop 或发言预算。',
@@ -113,7 +113,7 @@ function registerTools(server: Server, store: WorkStore, bindings: SessionBindin
     const member = store.join(input.role, displayName, session);
     bindings.bind(session, bindingKey, member.id);
     return { participantId: member.id, role: member.role, name: member.name, workspace: store.workspace,
-      hint: member.role === 'worker' ? '调用 wait_for_work 收件。' : '用户确认需求后写文档并派单。' };
+      hint: member.role === 'worker' ? '调用 wait_for_work 收件。' : '用户确认需求后，用主文档的已确认版本派单。' };
   }));
   registerTool('leave_work', {
     description: '离开工作域。当前会话持有活跃执行、复审或合并时先完成操作。',
@@ -125,7 +125,7 @@ function registerTools(server: Server, store: WorkStore, bindings: SessionBindin
     return { hint: '已离开工作域。' };
   }));
   registerTool('create_task', {
-    description: '统筹派单，附分支、基线、验收标准和用户确认的 brief 等文档引用。',
+    description: '统筹派单，附分支、基线、验收标准。用 brief 引用主文档的已确认版本。',
     inputSchema: createInput,
   }, (input) => run(() => taskResult(store.create(actor(), input))));
   registerTool('get_task', {
@@ -154,7 +154,7 @@ function registerTools(server: Server, store: WorkStore, bindings: SessionBindin
     inputSchema: claimInput.extend({ result: resultInput }),
   }, ({ result, ...claim }) => run(() => taskResult(store.submitWork(actor(), claim, result))));
   registerTool('submit_review', {
-    description: '统筹提交独立复审与 review 文档。返工时提供具体意见并开启下一轮。',
+    description: '统筹提交独立审核结论，用 review 引用主文档的本轮版本。返工时提供具体意见并开启下一轮。',
     inputSchema: reviewInput,
   }, (input) => run(() => taskResult(store.submitReview(actor(), input))));
   registerTool('ack_task_finished', {
