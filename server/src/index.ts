@@ -15,7 +15,14 @@ import { WorkStore } from './work/store.js';
 import { startWorkSweep } from './work/sweep.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const webDist = path.resolve(here, '../../web/dist');
+const webDistCandidates = [
+  path.resolve(here, '../../web/dist'),
+  path.resolve(here, '../web'),
+  path.resolve(here, 'web'),
+];
+const webDist =
+  webDistCandidates.find((dir) => existsSync(path.join(dir, 'index.html'))) ??
+  path.resolve(here, '../../web/dist');
 /**
  * Where the cwd-relative default used to put everything when the server was
  * started through pnpm. Kept only to warn about it - see main().

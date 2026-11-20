@@ -32,6 +32,19 @@ pnpm start
 
 打开 <http://127.0.0.1:3000/>。单进程同时提供页面静态资源、REST / WebSocket 与 MCP HTTP。
 
+### 独立部署包构建（生产交付）
+
+若需要将编译产物打成不含源码和开发依赖的独立绿色包，发送至目标服务器运行：
+
+```bash
+pnpm bundle    # 或 pnpm run deploy
+```
+
+构建产物将输出至 `deploy-dst/` 目录（已加入 `.gitignore`）：
+1. 包含编译后的后端 JS（`dist/`）、前端静态网页（`web/`）与纯生产依赖（`node_modules/`）；
+2. 将整个 `deploy-dst/` 目录压缩（如 zip / tar.gz）并发送至目标服务器（仅需 Node.js ≥ 20）；
+3. 在目标机解压后进入目录直接执行：`node dist/index.js`（或 `npm start`）。
+
 ### 测试与检查
 
 ```bash

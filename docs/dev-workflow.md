@@ -20,6 +20,10 @@ pwsh -File scripts/dev-isolated.ps1 -Only dev
 
 数据位置由启动日志列出，默认根目录随代码位置确定。临时验证可在启动服务前把 `ARENA_DATA_DIR` 指向独立绝对目录。端口、等待时长、棋谱保留数等见[配置表](../README.md#配置)。
 
+## 独立部署打包
+
+运行 `pnpm bundle`（或 `pnpm run deploy`），自动将编译后的后端、前端静态资源与轻量生产依赖打包进 `deploy-dst/`。该包由 `.gitignore` 排除，不含任何 TypeScript 源码或开发依赖。打包为压缩文件发送到目标主机解压后，执行 `node dist/index.js` 即可独立运行。
+
 ## 客户端和会话
 
 项目的 [.mcp.json](../.mcp.json) 列出三个 Streamable HTTP 地址。DSH 可在所用 profile 的 `cordis.patch.yml` 加入对应插件，例如下面的工作域配置。接棋类或聊天时使用配置表中的对应名称和 URL。
