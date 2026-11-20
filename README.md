@@ -34,16 +34,20 @@ pnpm start
 
 ### 独立部署包构建（生产交付）
 
-若需要将编译产物打成不含源码和开发依赖的独立绿色包，发送至目标服务器运行：
+在开发机运行以下命令，生成可发送到另一台机器的独立部署包。
 
 ```bash
 pnpm bundle    # 或 pnpm run deploy
 ```
 
-构建产物将输出至 `deploy-dst/` 目录（已加入 `.gitignore`）：
-1. 包含编译后的后端 JS（`dist/`）、前端静态网页（`web/`）与纯生产依赖（`node_modules/`）；
-2. 将整个 `deploy-dst/` 目录压缩（如 zip / tar.gz）并发送至目标服务器（仅需 Node.js ≥ 20）；
-3. 在目标机解压后进入目录直接执行：`node dist/index.js`（或 `npm start`）。
+`deploy-dst/` 包含编译后的后端、前端静态文件和生产依赖。完整压缩该目录（ZIP 或 `tar.gz`），包含其中的 `node_modules/`。在装有 Node.js 20 或更新版本的目标机解压并运行下面的命令即可。
+
+```bash
+cd deploy-dst
+node dist/index.js
+```
+
+在运行服务的机器上打开 <http://127.0.0.1:3000/>。默认数据保存在包旁边的 `data/`，工作域默认使用包的上一级目录。升级时保留数据目录，也可用 `ARENA_DATA_DIR` 和 `ARENA_WORK_WORKSPACE` 分别指定绝对路径。
 
 ### 测试与检查
 

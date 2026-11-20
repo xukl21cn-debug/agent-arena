@@ -34,3 +34,4 @@ data-dev/
 .commandcode
 docs/archive
 deploy-dst/
+/.arena-bundle-*/

@@ -16,8 +16,8 @@ import { startWorkSweep } from './work/sweep.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDistCandidates = [
-  path.resolve(here, '../../web/dist'),
   path.resolve(here, '../web'),
+  path.resolve(here, '../../web/dist'),
   path.resolve(here, 'web'),
 ];
 const webDist =

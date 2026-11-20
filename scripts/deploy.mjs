@@ -1,4 +1,4 @@
-import { rmSync, cpSync, existsSync } from 'node:fs';
+import { accessSync, cpSync, existsSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,18 +9,35 @@ const webDist = path.resolve(root, 'web/dist');
 
 console.log('[deploy] 1/3 构建所有子项目 (shared, server, web)...');
 execSync('pnpm build', { cwd: root, stdio: 'inherit' });
+accessSync(path.join(webDist, 'index.html'));
 
-if (existsSync(deployDst)) {
-  console.log('[deploy] 清理已存在的 deploy-dst...');
-  rmSync(deployDst, { recursive: true, force: true });
-}
+const staging = mkdtempSync(path.join(root, '.arena-bundle-'));
+const stagedBundle = path.join(staging, 'package');
+const previousBundle = path.join(staging, 'previous');
+let installed = false;
 
-console.log('[deploy] 2/3 执行 pnpm deploy 抽离生产运行包...');
-execSync('pnpm --filter @arena/server deploy --prod --legacy deploy-dst', { cwd: root, stdio: 'inherit' });
+try {
+  console.log('[deploy] 2/3 打包可压缩传输的生产依赖...');
+  // An archive can flatten Windows junctions and break pnpm's default dependency layout.
+  const deployCommand = [
+    'pnpm --config.node-linker=hoisted --config.inject-workspace-packages=true',
+    `--filter @arena/server deploy --prod ${path.basename(staging)}/package`,
+  ].join(' ');
+  execSync(deployCommand, { cwd: root, stdio: 'inherit' });
 
-if (existsSync(webDist)) {
-  console.log('[deploy] 3/3 拷贝前端静态网页产物到 deploy-dst/web...');
-  cpSync(webDist, path.resolve(deployDst, 'web'), { recursive: true });
+  console.log('[deploy] 3/3 复制前端产物并更新 deploy-dst...');
+  cpSync(webDist, path.join(stagedBundle, 'web'), { recursive: true });
+
+  if (existsSync(deployDst)) renameSync(deployDst, previousBundle);
+  try {
+    renameSync(stagedBundle, deployDst);
+    installed = true;
+  } catch (error) {
+    if (existsSync(previousBundle)) renameSync(previousBundle, deployDst);
+    throw error;
+  }
+} finally {
+  if (installed || !existsSync(previousBundle)) rmSync(staging, { recursive: true, force: true });
 }
 
 console.log('\n======================================================');

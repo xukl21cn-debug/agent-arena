@@ -22,7 +22,7 @@ pwsh -File scripts/dev-isolated.ps1 -Only dev
 
 ## 独立部署打包
 
-运行 `pnpm bundle`（或 `pnpm run deploy`），自动将编译后的后端、前端静态资源与轻量生产依赖打包进 `deploy-dst/`。该包由 `.gitignore` 排除，不含任何 TypeScript 源码或开发依赖。打包为压缩文件发送到目标主机解压后，执行 `node dist/index.js` 即可独立运行。
+运行 `pnpm bundle`（或 `pnpm run deploy`），将编译后的后端、前端静态资源与生产依赖打包进 `deploy-dst/`。打包根据工作区锁文件部署生产依赖，使用可直接压缩传输的 `hoisted` 布局。目标机的启动命令和数据目录见[生产交付](../README.md#独立部署包构建生产交付)。
 
 ## 客户端和会话
 
