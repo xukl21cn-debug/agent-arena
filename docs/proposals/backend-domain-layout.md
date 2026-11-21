@@ -1,9 +1,9 @@
 # 后端领域目录归拢（含 stdio 适配层下线）
 
-> 设计提案 · 2026-11-21
+> 设计提案 · 2026-11-21（第二版，合并外部评审意见）
 > 状态：**草案（取舍已确认，待实现）**
 > 基线：`cf3b53b`（`main` 为 `34bd7ef`，两者差异只在部署脚本、README 与 `server/src/index.ts` 一行），383 项测试全绿
-> 范围：`server/src/` 的物理结构与 import 路径、文档里的源码链接与接入说明，外加**下线棋类 stdio 适配层**。
+> 范围：`server/src/` 的物理结构与 import 路径、`server/test/` 的静态与动态 import、根目录 `scripts/*.mjs` 对编译产物的引用、文档里的源码链接与接入说明，外加**下线棋类 stdio 适配层**。
 > ⚠️ **本提案含一处破坏性变更**：stdio 接入方式下线（§2.3）。除此之外的步骤都是纯移动，函数签名、端点路径、`shared/` 类型、落盘格式一律不动。
 > 兄弟提案：[前端 SPA 外壳与样式现代化](frontend-spa-and-styles.md)。两者互不依赖，各自分支、各自合入。
 
@@ -30,16 +30,16 @@
 
 ### 1.3 范围
 
-- **改**：删除棋类 stdio 适配层及其唯一依赖（`resolveServerUrl`、`bin`、只测它的用例）；`server/src/` 下文件的物理位置与 import 路径；`docs/architecture/*.md` 与 README 里对应的链接、路径文本和接入说明。
+- **改**：删除棋类 stdio 适配层及其唯一依赖（`resolveServerUrl`、`bin`、只测 `HttpApi` 的 S-03，并补一个走 MCP 的 `InProcessApi.callerSeat` 回归用例）；`server/src/` 下文件的物理位置与 import 路径；`server/test/` 的静态与动态 import；根目录 3 个脚本对 `server/dist/core/*` 的引用；`docs/architecture/*.md` 与 README 里对应的链接、路径文本和接入说明。
 - **不改**：任何函数的入参/返回值/错误码、`/api/*` 与 `/game/mcp` `/chat/mcp` `/work/mcp` 的路径与报文、`shared/` 任何类型、`data/` 下任何落盘格式、`shared/src/game.ts` 的名字（[constraints.md:17](../architecture/constraints.md)：`GameState` 继续指五子棋）。
 
 ### 1.4 可观察的验收条件
 
-1. `pnpm test` **382 项全绿**（383 − 1，减少的是只测 `HttpApi` 的 S-03，账在 §2.3）。
-2. `pnpm typecheck` 与 `pnpm build` 通过；`server/src` 里不存在指向旧路径的 import。
+1. `pnpm test` **383 项全绿**（383 − 1 删掉测 `HttpApi` 的 S-03 + 1 补 `InProcessApi.callerSeat` 的回归用例，账在 §2.3）。
+2. 清空旧产物后 `pnpm typecheck && pnpm build` 通过；`server/src`、`server/test`、`scripts/` 里不存在指向旧路径的静态或动态 import。
 3. 三个 MCP 端点手工连通：`/game/mcp`、`/chat/mcp`、`/work/mcp`，外加 `/api/rooms`。
-4. `server/package.json` 里没有 `bin`；构建产物里没有 `dist/mcp/stdio.js`。
-5. `node server/scripts/duel.mjs` 仍能下完一盘（HTTP MCP 链路没坏）。
+4. `server/package.json` 里没有 `bin`；全新构建产物里没有 `server/dist/mcp/stdio.js`，也没有 `server/dist/core/`。
+5. `node server/scripts/duel.mjs` 仍能下完一盘；根目录 3 个辅助脚本（`scripts/replay-game2.mjs`、`scripts/measure-payload.mjs`、`scripts/demo-agent-view.mjs`）能正常加载模块。
 6. `docs/architecture/overview.md` 的源码链接可以点开，`constraints.md`、`decisions.md` 里的路径文本与新结构一致。
 7. `node scripts/deploy.mjs` 仍能产出 `deploy-dst`。
 
@@ -104,13 +104,28 @@ stdio 桥不是独立服务：它启动后把每个工具调用转成 REST 请�
 
 现在三个域都是 Streamable HTTP，仓库自己的 [.mcp.json](../../.mcp.json) 与 [duel.mjs](../../server/scripts/duel.mjs) 也都走 HTTP，stdio 已经是纯历史包袱。
 
+#### 这个入口是棋类专属的
+
+先澄清一个容易搞混的点：`stdio.ts` 名字像通用入口，实现上只服务棋类。
+
+| 检查点 | 结果 |
+|---|---|
+| [api.ts](../../server/src/mcp/api.ts) 的 `ArenaApi` 接口 | 全部是棋类方法：`joinGame` / `placeStone` / `passGame` / `markDead` / `confirmScore` / `resumePlay` / `resign` / `say`，没有任何聊天或工作的方法 |
+| [tools.ts](../../server/src/mcp/tools.ts) 注册的工具 | `join_game` / `leave_room` / `new_game` / `get_state` / `wait_for_turn` / `place_stone` / `pass` / `mark_dead` / `confirm_score` |
+| `SERVER_INSTRUCTIONS` 第一句 | 「你是棋类对弈 Agent。」 |
+| 聊天与工作 | 只有 HTTP 端点（`/chat/mcp`、`/work/mcp`），**没有 stdio 桥** |
+
+所以真身跟着 `game/` 走是准确的。但**名字确实是产品级的**：`bin` 叫 `agent-arena`、路径叫 `mcp/stdio`，这是项目最初只做五子棋时留下的（[gomoku-design.md](../archive/gomoku-design.md) 那套设计里棋类就是全部）。这也是为什么它看起来像「整个产品的入口」——而现在直接删掉，这个误导源就彻底消失了。
+
+如果以后想让 stdio 桥也暴露聊天工具，那是一次产品级变更：重新建入口、改 `bin`、改 README、通知所有客户端，与本次归拢无关。
+
 #### 删除清单
 
 | 文件 / 位置 | 动作 | 说明 |
 |---|---|---|
 | `server/src/mcp/stdio.ts`（327 行） | 删 | `HttpApi` + `createStdioServer` + `main()`，无其他模块引用 |
 | `server/src/config.ts` 的 `resolveServerUrl()` | 删 | 唯一使用者是 stdio；`config.test.ts` 没测它。`DEFAULT_SERVER_URL` 保留（`loadConfig` 还在用） |
-| `server/test/dual-agent.test.ts` 的 S-03（152 行） | 删 | 它测的就是 `HttpApi` 自己的 `yourColor` 解析，见下面「测试账」 |
+| `server/test/dual-agent.test.ts` 的 S-03（461-612 行） | **替换**为 `InProcessApi` 用例 | S-03 测的是 `HttpApi`，但其中多个 `yourColor` 边界在现有用例中**无替代覆盖**，需迁到 `/game/mcp`（见下面「测试账」） |
 | `server/package.json` 的 `bin` | 删 | 包不再提供可执行命令 |
 | README 第 79、81 行 | 删 | 接入表格的 stdio 行与那段说明 |
 | README 第 155 行 | 改 | `ARENA_SERVER_URL` 仍被 Vite 代理使用，描述里去掉 stdio |
@@ -122,13 +137,26 @@ stdio 桥不是独立服务：它启动后把每个工具调用转成 REST 请�
 
 `docs/archive/` 下的历史文档（如 [gomoku-design.md](../archive/gomoku-design.md) 里的 stdio 命令）**不动**——它们是归档，不是当前说明。
 
-#### 测试账：383 → 382
+#### 测试账：383 − 1 + 1 = 383
 
-S-03 构造了 4~6 个 `HttpApi` 实例，验证「每个适配器各自从 `state.seats.*.id` 解析自己的 `yourColor`」。适配器删掉后这段代码不存在了，测试也就没有对象——**减掉它是正确的，不是丢覆盖**：
+直接删掉 S-03 会留下真实的覆盖缺口。逐项核查的结果：
 
-- 服务端的身份解析（`resolve` 的降级链、`AMBIGUOUS_ACTOR`）由 [room-identity.test.ts](../../server/test/room-identity.test.ts) 覆盖；
-- REST 层的 `yourColor` 与参与者身份由 [http.test.ts](../../server/test/http.test.ts)、[dual-agent.test.ts](../../server/test/dual-agent.test.ts) 的其他用例覆盖；
-- `body.participantId` 这条 REST 身份路径由 [lobby.test.ts:259](../../server/test/lobby.test.ts) 覆盖。
+| 现有用例 | 覆盖到哪 | 缺什么 |
+|---|---|---|
+| [room-identity.test.ts](../../server/test/room-identity.test.ts) | `GameRoom.resolve()` / `moveAs()` / `resignAs()` | 不断言任何 `yourColor`，也不经过 `InProcessApi.callerSeat()` |
+| [http.test.ts:300-331](../../server/test/http.test.ts) | 「单白 AI、未 join」的 `new_game` 与 `wait_for_turn` | 没测 `get_state`，也没测单黑 AI |
+| [lobby.test.ts:255-259](../../server/test/lobby.test.ts) | `POST /ready` 传 `body.participantId` 推 phase | 与 `yourColor` 无关 |
+| [dual-agent.test.ts:232-272](../../server/test/dual-agent.test.ts) | 双 AI 的 `get_state.yourColor`（246、249 行） | 没测 `new_game.yourColor` |
+| [dual-agent.test.ts:274-358](../../server/test/dual-agent.test.ts) | `wait_for_turn.yourColor` | 走 `room.resolve`，不经 `callerSeat` |
+
+也就是说，S-03 独有覆盖的是 [mcp/http.ts:189-198](../../server/src/mcp/http.ts) 里 `callerSeat()` 的几个分支。所以**删 S-03 的同一次提交必须补 1 个走真实 `/game/mcp` 的回归用例**，覆盖：
+
+1. **双 AI 的 `new_game` 与 `get_state`**：黑方与白方各自收到自己的 `yourColor`；
+2. **旁观者（`join_game` 不传 seat）**：`get_state` / `new_game` 返回 `yourColor: null`，不得回退到 `black`；
+3. **被顶掉座位（evicted）的 AI**：第三者抢占白座后，原白方调 `get_state` / `new_game` 返回 `yourColor: null`；
+4. **被 REST `DELETE /participants/:id` 移除的参与者**：其 MCP session 仍持有旧 bindings 时，`get_state` / `new_game` 返回 `yourColor: null`；另补未 join 的旧客户端在单黑 AI 房回退 `getAgentSeat()` 的校验。
+
+这样测试总数保持 **383 全绿**，`callerSeat` 的约束也真正有回归保护。
 
 #### 保留不动的东西
 
@@ -145,15 +173,21 @@ S-03 构造了 4~6 个 `HttpApi` 实例，验证「每个适配器各自从 `sta
 
 | 步 | 动作 | 触及面 | 验证 |
 |---|---|---|---|
-| **1** | 下线 stdio 适配层（§2.3 清单） | `stdio.ts`、`resolveServerUrl`、S-03、`bin`、README 与 3 篇架构文档的 stdio 段落 | **382 全绿** + `duel.mjs` 跑通 + 构建产物无 `dist/mcp/stdio.js` |
-| **2** | `core/session-context.ts` → `src/session-context.ts` | 4 处 import：`chat/mcp.ts:17`、`work/mcp.ts:8`、`mcp/http.ts:22`、`app.ts:6` | 382 全绿 |
-| **3** | `http/ws.ts` → `src/ws.ts` | `index.ts` + 5 个测试文件（`chat-ws`、`http`、`presence-wire`、`lobby`、`work-mcp`） | 382 全绿 |
-| **4** | `core/{engine→gomoku,rules,go,go-game,insights,replay}` → `game/engine/`；`core/presence.ts` → `game/rooms/presence.ts`；`rooms/*` → `game/rooms/`；`mcp/{api,http,tools}.ts` → `game/mcp/`；`http/routes.ts` → `game/http/routes.ts` | src 内 27 行 import + 测试内 52 行 import（`core` 14 / `rooms` 33 / `http` 5 / `mcp` 0） | 382 全绿 + 三个 MCP 端点连通 |
+| **1** | 下线 stdio 适配层（§2.3 清单），并把 S-03 替换为 `InProcessApi.callerSeat` 回归用例 | `stdio.ts`、`resolveServerUrl`、`dual-agent.test.ts`、`bin`、README 与 3 篇架构文档的 stdio 段落 | **383 全绿** + `duel.mjs` 跑通 + `rm -rf server/dist && pnpm build` 后确认无 `dist/mcp/stdio.js` |
+| **2** | `core/session-context.ts` → `src/session-context.ts` | **5 处 import**：`chat/mcp.ts:17`、`work/mcp.ts:8`、`mcp/http.ts:22`、`app.ts:6`、`test/dual-agent.test.ts:616`（动态 `await import`） | 383 全绿 |
+| **3** | `http/ws.ts` → `src/ws.ts` | `index.ts` + 5 个测试文件（`chat-ws`、`http`、`presence-wire`、`lobby`、`work-mcp`） | 383 全绿 |
+| **4** | `core/{engine→gomoku,rules,go,go-game,insights,replay}` → `game/engine/`；`core/presence.ts` → `game/rooms/presence.ts`；`rooms/*` → `game/rooms/`；`mcp/{api,http,tools}.ts` → `game/mcp/`；`http/routes.ts` → `game/http/routes.ts`；同步改根目录 3 个脚本 | `src/` 内 27 行 import + `test/` 内 52 行静态 import（`core` 14 / `rooms` 33 / `http` 5）+ `test/dual-agent.test.ts:615`（动态 `await import('../src/mcp/http')`）+ 3 个脚本：`scripts/replay-game2.mjs:12-13`、`scripts/measure-payload.mjs:1-2`、`scripts/demo-agent-view.mjs:1,6`（`../server/dist/core/*` → `../server/dist/game/engine/*`） | `rm -rf server/dist && pnpm typecheck && pnpm build` + 383 全绿 + 全仓检索零旧路径 + 三个 MCP 端点连通 |
 | **5** | 文档：`overview.md` 4 条源码链接（第 7、13、14、19 行）、`constraints.md:41` 的模块清单、`constraints.md:59` 的 `core/go.ts`、`decisions.md:45` 的 `core/go-game.ts` 与 `engine.ts` | 4 个文件 | 链接可点、`pnpm build` 通过 |
 
-第 1 步放最前面的原因：删掉 stdio 之后，`mcp/` 里只剩三个纯棋类文件，第 4 步就是一次干净的整体搬运，不需要兼容壳、不需要 `bin` 说明，也不会出现「根级 mcp/ 里留了个壳」这种新的误导源。
+**为什么不能只靠 `tsc` 兜第 4 步：** [server/tsconfig.json](../../server/tsconfig.json) 只配置了 `"include": ["src/**/*.ts"]`，所以 `tsc` **只检查 `src/` 内的 27 处 import，既不看 `server/test/` 也不看根目录 `scripts/*.mjs`**。实际要靠三层联合兜底：
 
-第 4 步为什么不拆成「先移 rooms 再移 core」：两种拆法都会留下一段 import 路径别扭的中间态（`game/rooms/room.ts` 引 `../core/engine.js` 会解析到 `game/core/`），收益只有 bisect 粒度，代价是多一轮 60 多处 import 往返。合并成一步，由 `tsc` 一次性列出全部遗漏，测试套件兜底。
+1. `pnpm typecheck` / `pnpm build` 兜 `server/src/`（27 处）；
+2. `pnpm test`（Vitest）兜 `server/test/`（52 处静态 import + 2 处受影响的动态 `import()`）；
+3. **先 `rm -rf server/dist` 再 `pnpm build` + 全仓检索旧路径**，兜根目录 `scripts/*.mjs`，同时防止旧 `dist/` 残留造成「假绿」。
+
+第 1 步放最前面的原因：删掉 stdio 之后，`mcp/` 里只剩三个纯棋类文件，第 4 步就是一次干净的整体搬运，不需要兼容壳、不需要 `bin` 说明，也不会出现「根级 `mcp/` 里留了个壳」这种新的误导源。
+
+第 4 步不拆成「先移 rooms 再移 core」的原因：两种拆法都会留下一段 import 路径别扭的中间态（`game/rooms/room.ts` 引 `../core/engine.js` 会解析到 `game/core/`），收益只有 bisect 粒度，代价是多一轮 60 多处 import 往返。合并成一步，由三层验证兜住。
 
 **不要改的**：`constraints.md:94` 与 `README:157` 里的 `data/rooms/`、`data/chat/` 是**数据目录**，不是源码目录。
 
@@ -177,9 +211,10 @@ S-03 构造了 4~6 个 `HttpApi` 实例，验证「每个适配器各自从 `sta
 
 | 风险 | 处置 |
 |---|---|
-| 已配置 stdio 的客户端失效 | 这是本提案唯一的破坏性变更，单独第 1 步、单独提交；变更时一次性通知（§2.3） |
-| 删掉 S-03 是否丢覆盖 | 已核实不丢：它测的是被删的适配器；服务端身份与 `yourColor` 由其他用例覆盖（§2.3 测试账） |
-| 漏改 import | `tsc` 编译即报错；第 4 步一次移完，不留中间态 |
+| 已配置 stdio 的客户端失效 | 本提案唯一的破坏性变更，单独第 1 步、单独提交；变更时一次性通知（§2.3） |
+| 删掉 S-03 导致 `yourColor` 边界失守 | 第 1 步同步补 1 个走 `/game/mcp` 的 `InProcessApi.callerSeat` 回归用例，覆盖双 AI / 旁观者 / 被顶掉 / 被移除 / 未 join 回退（§2.3 测试账） |
+| `tsc` 不覆盖 `test/` 与 `scripts/*.mjs`，漏改 import | 三层兜底：`tsc` 查 `src/` + Vitest 查 `test/`（含动态 import）+ 清 `server/dist` 后重构建并全仓检索 |
+| 旧 `server/dist/` 残留造成假绿 | 第 1 步与第 4 步验证前先 `rm -rf server/dist` 再 `pnpm build` |
 | 大范围重命名让 review 看不出内容改动 | 全程 `git mv`，评审用 `git diff -M`，重命名文件的相似度应为 100% |
 | 文档链接失效 | 第 1 步与第 5 步各管一半，验收项 6 逐条点开 |
 | 中间态测试挂住 | 每步都跑全量，不攒到最后 |
@@ -198,6 +233,7 @@ S-03 构造了 4~6 个 `HttpApi` 实例，验证「每个适配器各自从 `sta
 | 议题 | 结论 |
 |---|---|
 | stdio 适配层 | **下线**，三个域统一 Streamable HTTP（§2.3） |
+| S-03 的处置 | **删 `HttpApi` 用例，同提交补 1 个 `InProcessApi.callerSeat` 回归用例**，总数保持 383 |
 | `core/` 的新名字 | `engine/` |
 | `engine.ts` 的额外改名 | 做，改成 `gomoku.ts` |
 | 棋牌域目录名 | `game/` 单数，不用 `games/` |

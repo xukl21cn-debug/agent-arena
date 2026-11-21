@@ -1,6 +1,6 @@
 # 前端 SPA 外壳与样式现代化
 
-> 设计提案 · 2026-11-21
+> 设计提案 · 2026-11-21（第二版，合并外部评审意见）
 > 状态：**草案（取舍已确认，待实现）**
 > 基线：`cf3b53b`（`main` 为 `34bd7ef`，两者差异只在部署脚本、README 与 `server/src/index.ts` 一行，不影响本提案的结构判断）
 > 范围：只改 `web/`。后端零改动，`/api/*`、`/ws`、MCP 端点与 `shared/` 契约一律不动。
@@ -21,23 +21,24 @@
 | 维度 | 当前 | 期望 |
 |---|---|---|
 | 路由 | `window.location.search` 手工分支，无 history | `react-router` + `BrowserRouter`，深链可收藏、可刷新、可前进后退 |
-| 外壳 | 每个页面自带一份 topbar，开发任务只是大厅顶栏一个 ghost 按钮 | 常驻 App Shell，三域 Tab 无刷新切换 |
-| 样式 | 单文件 [styles.css](../../web/src/styles.css) 2153 行，无预处理器、无变量体系 | 预处理器 + 按组件拆分的 partial（2a）；组件作用域按需（2b） |
+| 外壳 | 7 处 `<header className="topbar">` 散在 5 个文件里（`ReplayPage` 三态各一份），开发任务只是大厅顶栏一个 ghost 按钮 | 常驻 App Shell，三域 Tab 无刷新切换，各页移除重复 `topbar` 并归位页内元信息 |
+| 状态与链接 | 切页靠整页 `<a href="/?...">` 刷新；store 只在 `connect()` 时重置，路由内换房会先渲染一帧旧房间 | 页内链接改 `<Link>`；换房用 `useLayoutEffect` 连接或渲染门控，同步更新 `document.title` |
+| 样式 | 单文件 [styles.css](../../web/src/styles.css) 2153 行，无预处理器、无变量体系 | 预处理器 + 按组件拆分的 partial（2a）；组件作用域按需增量迁移（2b） |
 | 大厅 | 四段平铺、历史 20 条封顶 | 域内分栏 + 状态筛选 + 标准分页，窄屏 1~2 列 |
 
 ### 1.3 范围
 
-- **改**：`web/src/**`、`web/package.json`（新增 `react-router`、`sass`）。
+- **改**：`web/src/**`、`web/index.html`（标题）、`web/package.json`（新增 `react-router`、`sass`）。
 - **不改**：`server/**`、`shared/**`、任何 `/api` 与 `/ws` 的报文结构、`data/` 下任何落盘格式。
-- **不碰**：后端 SPA fallback（[app.ts:65](../../server/src/app.ts) 已经存在且正确，见 §2.1）。
+- **不碰**：后端 SPA fallback（[app.ts:65](../../server/src/app.ts) 已经存在且对主路径有效，前提与边界见 §2.1）。
 
 ### 1.4 可观察的验收条件
 
-1. 六种旧 URL 逐条打开，页面内容与改造前一致，地址栏变成新路径（对照表见 §2.3）。
-2. 任一深链**直接刷新**不 404：生产 `pnpm build && pnpm start` 与开发 `pnpm dev` 各验一次。
+1. 六种旧 URL 及其边界用例逐条打开，页面内容与改造前一致，地址栏规范化为新路径（对照表见 §2.3）。边界至少覆盖：`?room=`（空值）、`?room=bad!`（非法）、`?archive=`（空值）、`?view=replay&room=bad!`、`?kind=chat&room=`、`?utm_source=test`（无关参数，**不得**触发重定向）。
+2. 任一深链（含多段路径 `/games/default/replay`）**直接刷新**不 404：生产 `pnpm build && pnpm start` 与开发 `pnpm dev` 各验一次。
 3. 浏览器后退/前进在页面之间正确回退，不出现「后退又被打回新地址」的循环。
-4. 顶栏三个 Tab 点击后无整页刷新地切换。
-5. 逐页视觉对照无回退：大厅 / 五子棋 / 围棋 / 数子 / 聊天 / 看板 / 两种回放。
+4. 顶栏三个 Tab 与大厅卡片点击后无整页刷新地切换；连续切换不同房间（`/games/a` → `/games/b`、`/chats/a` → `/chats/b`）**不闪现上一房间**的棋盘、消息或报错条。
+5. 逐页视觉对照无回退：大厅 / 五子棋 / 围棋 / 数子 / 聊天 / 看板 / 两种回放，且每个页面**不再出现双顶栏**。
 6. `pnpm typecheck` 与 `pnpm build:web` 通过。
 7. 375px 窄屏与 1440px 桌面下大厅可用，卡片不溢出。
 
@@ -45,24 +46,29 @@
 
 ## 2. 方案设计
 
-### 2.1 后端不用改（已核实）
+### 2.1 后端不用改（已核实，含边界备注）
 
-- [app.ts:65-84](../../server/src/app.ts) 已有静态托管 + 非 API 路径回落 `index.html`，且排除了 `/api`、`/mcp`、`/work/mcp`、`/ws`。
-- [vite.config.ts](../../web/vite.config.ts) 没设 `appType`，dev 默认就是 SPA fallback，且只代理 `/api` 与 `/ws`。
+- **资源与接口均为根相对路径**：[web/index.html:19](../../web/index.html) 用 `/src/main.tsx`（Vite 默认 `base: '/'`，产物是 `/assets/...`），[web/src/api.ts](../../web/src/api.ts) 与三个 store 全部以 `/api/...`、`/ws?...` 发起请求（[room.ts:361](../../web/src/store/room.ts)、[chat.ts:161](../../web/src/store/chat.ts) 用 `window.location.host` 拼 socket 地址）。所以多段深链刷新时不会出现相对路径的资源或接口 404。
+- **生产环境（Express）**：[app.ts:65-84](../../server/src/app.ts) 已有 `express.static(webDist, { index: false })` + 非 API/MCP/WS 的 GET/HEAD 回落 `index.html`。
+  - *边界备注*：`app.ts:73-78` 的排除列表只写了 `/api`、`/mcp`、`/work/mcp`、`/ws`，**没有**列 `/game/mcp` 与 `/chat/mcp`。当前不冲突，是因为 `mountMcpHttp`（54 行）和 `mountChatMcp`（60 行）注册在 `express.static`（66 行）之前，会先拦截。本提案不改后端，但以后若调整 `app.ts` 的中间件顺序，必须同步补齐排除项。
+- **开发环境（Vite）**：[vite.config.ts](../../web/vite.config.ts) 没设 `appType`，dev 默认就是 SPA fallback，且只代理 `/api` 与 `/ws`。
+  - *实测结论*：Vite 8 的 `htmlFallbackMiddleware` 对路径**不做扩展名判断**，末段是无条件回落 `index.html`。起 dev server 实测，`/games/foo.bar`、`/games/foo.js`、`/games/foo.css`、`/games/default/replay` 全部返回 `200 text/html`。**含点号的深链在 dev 下不会 404。**
+  - 但兼容层仍然要归一化非法 `roomId`，理由见 §2.3 第 2 条——与 dev 404 无关。
 
-所以 `/games/xxx` 这类路径在 dev 与生产都不会 404，**本提案不新增任何后端路由**。
+所以常规深链在 dev 与生产都不会 404，**本提案不新增任何后端路由**。
 
 ### 2.2 路由表
 
 | 路径 | 视图 | 说明 |
 |---|---|---|
-| `/` | 大厅总览 | 已确认保留现状的跨域卡片（三域 + 历史），见 §5 |
+| `/` | 大厅总览 | 保留跨域总览（三域 + 历史），同时挂载 `LegacyRedirector` 处理旧 query |
 | `/games` | 棋类大厅 | 五子棋 / 围棋 / 历史 三个子 Tab + 状态筛选 + 分页 |
-| `/games/:roomId` | 对局室 | 原 `?room=` |
-| `/games/:roomId/replay` | 当前局回放 | 原 `?view=replay` |
-| `/replay/:archiveId` | 归档回放 | 原 `?archive=` |
+| `/games/:roomId` | 对局室 | 原 `?room=`；组件内仍用 `ROOM_ID_PATTERN` 兜底回落 `DEFAULT_ROOM_ID` |
+| `/games/:roomId/replay` | 当前局回放 | 原 `?view=replay`；同样对 `:roomId` 做合法性回落 |
+| `/replay` | 归档回放（空 ID 报错态） | 承接旧 URL `?archive=` 空值，保留原报错反馈，不静默回 `/` |
+| `/replay/:archiveId` | 归档回放 | 原 `?archive=<id>` |
 | `/chats` | 聊天大厅 | 房间列表 + 分页 |
-| `/chats/:roomId` | 聊天室 | 原 `?room=x&kind=chat` |
+| `/chats/:roomId` | 聊天室 | 原 `?room=x&kind=chat`；对 `:roomId` 做合法性回落 |
 | `/work` | 开发看板 | 原 `?view=work` |
 | `*` | 重定向 `/` | 未知路径回大厅 |
 
@@ -73,42 +79,89 @@
 
 ### 2.3 旧 URL 兼容层（LegacyRedirector）
 
-在路由根部挂一个只在**带旧参数**时生效的组件，用 `<Navigate replace>` 跳转（`replace` 避免后退时被打回来）。
+只在 `/` 路径下检查 `location.search`；当且仅当命中下表 1~5 中任一旧参数时，用 `<Navigate replace>` 跳转（`replace` 避免后退时被打回来），并丢弃全部 query。**无关 query 参数（如 `/?utm_source=xxx`）不触发重定向**，直接停在 `/` 渲染大厅。
 
 按优先级匹配，与 [App.tsx:48-74](../../web/src/App.tsx) 的现有顺序**完全一致**：
 
-| 优先级 | 旧 URL | 新地址 |
-|---|---|---|
-| 1 | `?archive=<id>` | `/replay/<id>` |
-| 2 | `?view=replay[&room=<id>]` | `/games/<room>/replay` |
-| 3 | `?kind=chat[&room=<id>]` | `/chats/<room>` |
-| 4 | `?view=work` | `/work` |
-| 5 | `?room=<id>` | `/games/<id>` |
-| 6 | 无参数 | 停在 `/` |
+| 优先级 | 判定条件（严格对齐现状） | 旧 URL 示例 | 新地址 |
+|---|---|---|---|
+| 1 | `params.get('archive') !== null` | `?archive=<id>` / `?archive=` | 合法 → `/replay/<id>`；空值 → `/replay` |
+| 2 | `params.get('view') === 'replay'` | `?view=replay[&room=<id>]` | `/games/<normalizedRoom>/replay` |
+| 3 | `params.get('kind') === 'chat'` | `?kind=chat[&room=<id>]` | `/chats/<normalizedRoom>` |
+| 4 | `params.get('view') === 'work'` | `?view=work` | `/work` |
+| 5 | `params.has('room')` | `?room=<id>` / `?room=` | `/games/<normalizedRoom>` |
+| 6 | 以上皆不命中 | `/` 或 `/?foo=bar` | 停在 `/` |
 
-配套规则：
+**配套规则（覆盖全部边界）：**
 
-- `room` 缺省时用 `DEFAULT_ROOM_ID`（现状如此：`?kind=chat` 不带 room 会打开默认房间，不是报错）。
-- **非法 `roomId` 不跳大厅。** 只有 URL 里**没有** `room` 参数才进大厅（[constraints.md:31](../architecture/constraints.md)）。分三种情况：
-  - 参数存在、值为空（`?room=`）→ 跳 `/games/<DEFAULT_ROOM_ID>`（`/games/` 不匹配路由，且今天这种 URL 也是打开默认房间）。
-  - 值为非空但不匹配 `ROOM_ID_PATTERN` → 照样跳 `/games/<原值>`（用 `encodeURIComponent` 拼路径），由页面按现状回落默认房间，地址栏保留用户写的值。
-  - 值合法 → 直跳 `/games/<id>`。
-- 组合参数只认上表优先级最高的一个，其余忽略；重定向后丢弃全部 query。
-- 重定向只跑一次（`useMemo` 读 `location.search`），避免 `/` 反复重定向。
+1. **统一 `normalizeRoomId(raw)`**，沿用 [App.tsx:34-39](../../web/src/App.tsx) 的现有判定：
 
-### 2.4 App Shell
+   ```ts
+   const normalizedRoom = raw && ROOM_ID_PATTERN.test(raw) ? raw : DEFAULT_ROOM_ID;
+   ```
+
+   适用于第 2、3、5 条全部三个带房间号的分支。
+2. **为什么非法 `roomId` 归一化到 `DEFAULT_ROOM_ID`，而不把原值拼进路径**：
+   - 满足 [constraints.md:31](../architecture/constraints.md) 的核心契约：只有 URL 里**没有** `room` 参数才进大厅；带 `?room=`（空或非法）仍进默认房间。
+   - `ChatRoomPage` 与 `ReplayPage` 自身不做 `ROOM_ID_PATTERN` 校验，透传非法值会直接发错误请求。
+   - 含 `/` 的值经 `encodeURIComponent` 会变成 `%2F`，在 Express 与 Router 两层解码时容易产生路径段歧义。
+   - 重定向本来就是把旧地址规范化，没有必要把垃圾留在新路径里。
+   - **不是**因为 Vite dev 会对含 `.` 的路径 404——实测不会（见 §2.1）。
+3. **页面侧再校验一次**：直接访问深链 `/games/:roomId`、`/games/:roomId/replay`、`/chats/:roomId` 时，页面读到 `useParams().roomId` 后同样过一遍 `normalizeRoomId`，保证手输非法深链的行为一致。
+4. **`?archive=` 必须用 `!== null` 而非真值判断**：防止 `/?archive=&view=replay` 因空串 falsy 改变优先级落到第 2 条。空值跳 `/replay` 渲染 `<ReplayPage archiveId="" />`，保留原报错反馈，不静默跳回 `/`。
+5. **单次重定向保障**：只挂在 `/` 路由，且重定向目标都不再带旧 query，不会产生重定向循环。
+
+### 2.4 App Shell、页面清理与 SPA 生命周期
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
-│ Agent Arena · MCP   [ 棋局对弈 ] [ AI 聊天室 ] [ 开发任务 ]   域标题 │
+│ Agent Arena · MCP   [ 棋局对弈 ] [ AI 聊天室 ] [ 开发任务 ]   右区槽位 │
 ├──────────────────────────────────────────────────────────────────────┤
 │                          <Outlet />                                  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- 点 logo 回 `/`；三个 Tab 用 `NavLink` 高亮当前域。
-- **连接状态胶囊只在棋局路由渲染。** 现状里 `connection`（[store/room.ts](../../web/src/store/room.ts)）是「本浏览器到房间 socket」的状态，聊天页有自己的通道，看板没有 socket。把它挂到全局顶栏会在聊天页/看板页谎报「已断开」。非棋局路由显示域标题即可。
-- `/work` 的前提：看板只在后端监听回环时挂载（[app.ts:43](../../server/src/app.ts) 的 `isWorkLoopback`）。非回环部署下该路由会显示接口错误——这是现状，不是本提案引入的，但 Tab 上要能看出「本机专用」。
+- 点 logo 回 `/`；三个 Tab 用 `NavLink` 高亮当前域（`/games*` 高亮「棋局对弈」，`/chats*` 高亮「AI 聊天室」，`/work` 高亮「开发任务」）。
+- **连接状态胶囊只在棋局路由渲染**（[store/room.ts](../../web/src/store/room.ts) 的 `connection` 只代表当前棋局 socket）。非棋局路由右侧显示域标题；聊天室的连接状态留在聊天页内，看板没有 socket。
+- `/work` 的前提：看板只在后端监听回环时挂载（[app.ts:43](../../server/src/app.ts) 的 `isWorkLoopback`）。非回环部署下该路由会显示接口错误，Tab 上标注「本机」或加 tooltip。
+
+#### 现有 7 处重复 `<header className="topbar">` 拆除与内容归位
+
+| 文件 | 现状 `topbar` 位置 | 改造方式 | 原顶栏内元素的归位 |
+|---|---|---|---|
+| [App.tsx](../../web/src/App.tsx)（`GamePage`） | 第 228 行 | 拆出 `web/src/components/game/GamePage.tsx` 并移除 `<header className="topbar">` | `room / {roomId}` 与棋局 `connection` 胶囊移入 App Shell 右区；棋种标题与副标题保留在页内紧凑头栏 |
+| [LobbyPage.tsx](../../web/src/components/lobby/LobbyPage.tsx) | 第 306 行 | 移除 `<header className="topbar">` | 「开发任务」按钮删除（顶栏 Tab 已替代）；大厅标题与筛选条保留在页内 |
+| [ChatRoomPage.tsx](../../web/src/components/chat/ChatRoomPage.tsx) | 第 210 行 | 移除 `<header className="topbar">` | 聊天室名、`chat-phase`、聊天 `connection`、返回聊天大厅的链接下沉为页内紧凑工具条 |
+| [ReplayPage.tsx](../../web/src/components/replay/ReplayPage.tsx) | 第 132、149、168 行（三态） | 合并移除 3 处 `<header className="topbar">` | 回放标题、棋局元信息与返回链接合并为页内头部 |
+| [WorkPage.tsx](../../web/src/components/work/WorkPage.tsx) | 第 109 行 | 移除 `<header className="topbar">` | 删除 `<a href="/">返回大厅</a>`（点顶栏 logo 或 Tab 即可切换） |
+
+#### 页内硬编码旧链接改造清单（全部改为 `<Link>`）
+
+| 文件 | 行号 | 现状 | 改后 |
+|---|---|---|---|
+| [LobbyPage.tsx](../../web/src/components/lobby/LobbyPage.tsx) | 54 | `href: '/?room=...'` | `<Link to={'/games/...'}>` |
+| [LobbyPage.tsx](../../web/src/components/lobby/LobbyPage.tsx) | 72 | `href: '/?room=...&kind=chat'` | `<Link to={'/chats/...'}>` |
+| [LobbyPage.tsx](../../web/src/components/lobby/LobbyPage.tsx) | 313 | `<a href="/?view=work">开发任务</a>` | 删除（由 App Shell 顶栏 Tab 接管） |
+| [LobbyPage.tsx](../../web/src/components/lobby/LobbyPage.tsx) | 335 | 文案「打开 `?room=<房间名>` 即可开一间」 | 改为「打开 `/games/<房间名>` 即可开一间」 |
+| [LobbyPage.tsx](../../web/src/components/lobby/LobbyPage.tsx) | 389 | `href: '/?archive=...'` | `<Link to={'/replay/...'}>` |
+| [WorkPage.tsx](../../web/src/components/work/WorkPage.tsx) | 111 | `<a href="/">返回大厅</a>` | 删除或改 `<Link to="/">`；注意第 19 行的 `/api/work/.../artifact` 是文件下载接口，**保持 `<a>` 不动** |
+
+#### 换房不闪旧数据（时序问题，不是清理问题）
+
+两个 store 的 `connect()` 入口**已经**重置了状态——[room.ts:154-166](../../web/src/store/room.ts) 会清空 `state` / `participants` / `commentary` / `error` / `resultDismissed`，[chat.ts:51-60](../../web/src/store/chat.ts) 会清空 `room` / `messages` / `error`。cleanup 只负责关 socket 和清 `retryTimer`，这没问题。
+
+**真正的问题是时序**：`connect()` 在 `useEffect` 里调用，而 `useEffect` 在浏览器**绘制之后**才执行。从 `/games/a` 跳到 `/games/b`，会先用 a 的残留状态渲染一帧，再被重置成空态。
+
+处置：
+
+- 房间页的连接改用 `useLayoutEffect`（绘制前执行，无闪烁）；或
+- 页面在 `store.roomId !== 路由 roomId` 时渲染骨架/空态，不渲染棋盘。
+- `key={roomId}` 只保证组件局部 state 不残留，**单独用它消除不了这一帧**。
+
+其他两项：
+
+- **`document.title` 同步**：[web/index.html:15](../../web/index.html) 当前写死「五子棋 · 与 AI 对弈」。在 App Shell 或各域页面按当前路由更新（大厅 / 棋局 / 聊天 / 看板 / 回放）。
+- **组件目录边界**：只把 `GamePage` 从 [App.tsx:76-351](../../web/src/App.tsx) 拆到 `web/src/components/game/GamePage.tsx`，让 `App.tsx` 专注路由与 Shell；现有 8 个棋类子组件（`Board`、`GoBoard`、`Controls` 等）在 F2 保留原路径，不顺手大搬家。
 
 ### 2.5 样式改造：先 2a，后 2b
 
@@ -153,19 +206,23 @@ web/src/styles/
 
 1. 2a 之后样式已经按域拆成 partial，「一个文件互相踩」的问题已经解决，2b 剩下的只是类名作用域这一层，边际收益低。
 2. 现有组件已按域分文件、类名前缀基本隔离（`.lobby-*`、`.card-*`、`.seat-*`），污染风险本来就小。
-3. 全站迁移要改每一个 `className` 外加 11 处动态类名，而前端零测试，回归面远大于收益。
+3. 全站迁移要改每一个 `className` 外加全站 **18 处**动态类名，而前端零测试，回归面远大于收益。
 4. 增量路线的好处是：新代码天然干净，存量代码在动手改它时才付成本，不为「统一」制造一次高风险大改。
 
-**最大的坑：动态类名会静默失效。** 有 11 处 `className` 是模板字符串拼的，改成 module 后拼出来的 key 不存在时**不报编译错误，只是没样式**：
+**最大的坑：动态类名会静默失效。** 全站实测共 **18 处** `className` 用模板字符串拼接，改成 module 后拼出来的 key 不存在时**不报编译错误，只是没样式**：
 
-| 文件 | 行 |
-|---|---|
-| [CommentaryPanel.tsx](../../web/src/components/CommentaryPanel.tsx) | 142、170 |
-| [SeatBadge.tsx](../../web/src/components/SeatBadge.tsx) | 61、64、69、75 |
-| [StatusBar.tsx](../../web/src/components/StatusBar.tsx) | 177 |
-| [Controls.tsx](../../web/src/components/Controls.tsx) | 136、156、165、209 |
+| 文件 | 行号 | 示例模式 |
+|---|---|---|
+| [CommentaryPanel.tsx](../../web/src/components/CommentaryPanel.tsx) | 142、170 | `panel-live …`、`bubble--${item.mood}` |
+| [SeatBadge.tsx](../../web/src/components/SeatBadge.tsx) | 61、64、69、75 | `seat--${presence}`、`seat-dot--${color}`、`presence--${presence}`、`is-ready` |
+| [StatusBar.tsx](../../web/src/components/StatusBar.tsx) | 177 | `turn-stone--${turn}` |
+| [Controls.tsx](../../web/src/components/Controls.tsx) | 136、156、165、209 | `btn--primary`、`is-active`、`is-confirming` |
+| [App.tsx](../../web/src/App.tsx)（拆出后在 `GamePage` / Shell） | 245 | `connection--${connection}` |
+| [LobbyPage.tsx](../../web/src/components/lobby/LobbyPage.tsx) | 110 | `card-phase--${tone}` |
+| [ChatRoomPage.tsx](../../web/src/components/chat/ChatRoomPage.tsx) | 51、74、222、225 | `chat-hop--${tone}`、`is-turn`、`chat-phase--${phase}`、`connection--${connection}` |
+| [ChatTimeline.tsx](../../web/src/components/chat/ChatTimeline.tsx) | 90 | `chat-line--own` |
 
-这些必须改成显式映射表，不能留字符串拼接：
+迁移任何包含上述模式的组件时，必须改成显式映射表，不能留字符串拼接：
 
 ```tsx
 const TONE_CLASS = { active: styles.phaseActive, warn: styles.phaseWarn, done: styles.phaseDone };
@@ -174,7 +231,7 @@ const TONE_CLASS = { active: styles.phaseActive, warn: styles.phaseWarn, done: s
 两条硬规则：
 
 - **同一个组件不允许一半 module 一半全局。** 混用时两类选择器在同一层级竞争，出问题极难定位。要么整体迁，要么整体不迁。
-- **动态类名必须改显式映射表**，不能留字符串拼接——上面列出的 11 处一个都不能漏。
+- **动态类名必须改显式映射表**——凡迁到上表 18 处中的任何文件，一个都不能漏。
 
 迁移一个组件 = 一个提交 = 一次视觉对照 + 一次 `pnpm typecheck`，出问题能单独回退。
 
@@ -192,7 +249,7 @@ const TONE_CLASS = { active: styles.phaseActive, warn: styles.phaseWarn, done: s
 | 步 | 内容 | 验收 |
 |---|---|---|
 | **F1（2a）** | 装 `sass`，`styles.css` 拆成 `styles/*.scss`，`main.tsx` 改引用 | 构建通过、产物选择器集合一致、逐页视觉对照 |
-| **F2** | 装 `react-router`，加 App Shell、路由表、LegacyRedirector | §1.4 的第 1~4 条（六种旧 URL + 刷新 + 前进后退 + Tab 切换） |
+| **F2** | 装 `react-router`，加 App Shell、路由表、`LegacyRedirector`；拆出 `GamePage`；拆除 7 处旧 `topbar` 并归位元素；页内旧链接改 `<Link>`；换房时序处理与 `document.title` 同步 | §1.4 的第 1~5 条（旧 URL + 边界值 + 刷新 + 前进后退 + Tab/换房无串态 + 无双顶栏） |
 | **F3** | 大厅域内分栏、状态筛选、分页器 | 窄屏/桌面排版，历史翻页，`useLobbyList` 竞态逻辑保留 |
 | **F4（2b）** | 新组件用 CSS Modules；存量组件按需逐个迁移 | 每个组件单独提交，逐组件视觉对照 |
 
@@ -204,24 +261,29 @@ F1 独立于 F2/F3，可以先合。F4 放最后且允许长期未完成。
 
 护栏建议（按成本从低到高）：
 
-1. **F2 结束时补一个 CDP 冒烟脚本**（[reviewing.md:40](../reviewing.md) 那套 `--remote-debugging-port`，不引 playwright 包）：开六个旧 URL，断言最终 `location.pathname` 与页面主标题；再断言任一深链直接刷新后 DOM 有内容。这个脚本是「旧链接不许死」唯一能自动回归的地方。
+1. **F2 结束时补一个 CDP 冒烟脚本**（[reviewing.md:40](../reviewing.md) 那套 `--remote-debugging-port`，不引 playwright 包）：覆盖 6 种旧 URL + 4 个边界（`?room=`、`?room=foo.bar`、`?archive=`、`?utm_source=1`），断言最终 `location.pathname` 与页面主标题；再断言深链（含 `/games/default/replay`）直接刷新后 DOM 有内容。这是「旧链接不许死」唯一能自动回归的地方。
 2. 一份手工验收清单（§1.4 七条），每次改动跑一遍并记录结论。
-3. 每个步骤单独提交，出问题整步回退，不做「一大坨一起上」。
+3. 每个步骤单独提交，出问题整步回退。
 
 其他风险：
 
 | 风险 | 处置 |
 |---|---|
-| 重定向循环把 `/` 打回自己 | 只在 `location.search` 非空时跳转，且用 `replace` |
-| 深链刷新 404 | 已核实前后端都有 fallback；验收项 2 强制覆盖 |
-| CSS Modules 静默丢样式 | 2b 强制「动态类名改显式映射」，见 §2.5 |
-| 视觉回退 | 2a 先做、单独验收，把样式与逻辑的风险拆开 |
+| 重定向循环或误拦截无关 query | 只挂在 `/`，且仅命中 5 个旧参数之一时才 `<Navigate replace>` |
+| 非法 `roomId` 被写进路径 | 兼容层与房间页入口统一按 `ROOM_ID_PATTERN` 归一化到 `DEFAULT_ROOM_ID` |
+| 换房闪一帧旧棋盘/旧消息 | 连接改 `useLayoutEffect`，或按 `store.roomId === 路由 roomId` 门控渲染 |
+| 深链刷新 404 | 已核实前后端均有 fallback 且资源全根相对路径（Vite dev 已实测）；验收项 2 在 dev 与生产双路径强验 |
+| CSS Modules 静默丢样式 | 2b 强制「动态类名改显式映射」，覆盖全站 18 处 |
+| 视觉回退与双顶栏 | 2a 先做、单独验收；F2 按表逐页拆除旧 `topbar` |
 
 ## 5. 已确认的取舍
 
 | 议题 | 结论 | 理由 |
 |---|---|---|
 | `/` 的定位 | **保留跨域总览**：三域卡片 + 历史，内容沿用现有 `LobbyPage`；`/games` 与 `/chats` 只是过滤视图 | [decisions.md:80](../architecture/decisions.md)「大厅就是首页」的延续；三个路由共用一个组件加 `domain` 参数，不产生重复实现 |
+| 非法 `roomId` 的 URL 处理 | **归一化为 `DEFAULT_ROOM_ID`**，不把原值拼进路径 | 满足 [constraints.md:31](../architecture/constraints.md)（带 `room` 不进大厅）；房间页自身不校验 roomId；避免 `%2F` 路径段歧义；重定向本就是规范化 |
+| `?archive=` 空值 | **路由至 `/replay` 保留报错态**，判定用 `!== null` | 避免空串 falsy 改变与 `?view=replay` 的优先级，也不静默吞掉错误提示 |
+| 前端组件目录 | **只把 `GamePage` 拆出 `App.tsx`**，8 个存量棋类子组件暂不搬目录 | 避免 F2 同时叠加「路由重构 + 跨文件大搬家」，降低无测试场景下的回归面 |
 | 2b 的范围 | **增量**：新组件用 module，存量按需迁移，不设全站截止线 | 见 §2.5，回归面与收益的权衡 |
 | 每页条数 | 历史 12 条/页，房间 12 条/页 | 纯展示参数，实现时觉得不合适可直接微调，不影响结构 |
 
