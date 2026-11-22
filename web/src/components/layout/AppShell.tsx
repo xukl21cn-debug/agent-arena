@@ -3,11 +3,22 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import styles from './AppShell.module.scss';
 
 /** Tabs mirror the three domains; the label is also the document title. */
-const TABS = [
+interface ShellTab {
+  to: string;
+  label: string;
+  /** Shown on hover, for tabs whose availability depends on the deployment. */
+  hint?: string;
+}
+
+const TABS: ShellTab[] = [
   { to: '/games', label: '棋局对弈' },
   { to: '/chats', label: 'AI 聊天室' },
-  { to: '/work', label: '开发任务' },
-] as const;
+  {
+    to: '/work',
+    label: '开发任务',
+    hint: '看板只在后端监听回环地址时可用',
+  },
+];
 
 /**
  * The header title is the domain, not the page: the page keeps its own compact
@@ -51,7 +62,12 @@ export function AppShell() {
         </Link>
         <nav className={styles.shellNav} aria-label="主导航">
           {TABS.map((tab) => (
-            <NavLink key={tab.to} className={styles.shellNavLink} to={tab.to}>
+            <NavLink
+              key={tab.to}
+              className={styles.shellNavLink}
+              title={tab.hint}
+              to={tab.to}
+            >
               {tab.label}
             </NavLink>
           ))}

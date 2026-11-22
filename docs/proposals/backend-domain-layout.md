@@ -258,10 +258,28 @@ stdio 桥不是独立服务：它启动后把每个工具调用转成 REST 请�
 
 - §2.4 说「重命名文件的相似度应为 100%」。实际 98–99%：搬目录时 import 说明符必须改，内容必然有变。评审时按 `git diff -M` 看，改动的行全是 import。
 - 第 4 步的 79 处 import 没有手改，而是用一个按「旧路径 → 新路径」映射重算相对路径的脚本一次性处理，再由 `tsc` + `vitest` 双向兜底。脚本第一次跑出过 `./rules.ts.js` 这类错误（路径未剥离 `.ts` 就补 `.js`），已回滚重跑。
+- **`shared/src/presence.ts` 的注释也同步改了**（「the stdio bridge holds no session」→「an agent seat that never had an MCP session」）。§4 写的是「不动 `shared/`」，这属于越界：只动 JSDoc，`PRESENCE_STALE_MS` 与任何类型都没变。独立审核指出后在此登记；选择保留而不是回退——旧注释指向的 stdio 桥已经不存在了。
 
 **遗留项：** 无。`docs/archive/` 下的历史文档按 §2.3 保留原样。
 
 
 ## 7. 独立审核
 
-（待实现完成后由未参与实现的 agent 补：基线、独立检查结果、未覆盖项）
+**审核者**：独立 subagent（未参与实现），基线 `4aa7b2c`。**结论：有条件通过 → 整改后通过。**
+
+已独立复现的结论：
+
+| 项 | 证据 |
+|---|---|
+| 383 项全绿 | `Test Files 28 passed (28) / Tests 383 passed (383)` |
+| 清空 `server/dist` 后重建 | 无 `dist/mcp/stdio.js`、无 `dist/core/`、无 `dist/http/`；`package.json` 无 `bin` |
+| 旧路径残留 | 只匹配 import 说明符的检查仅命中 5 条 `game/` **内部**相对路径，零残留 |
+| 纯移动 | `ws.ts` 只有 7 行 import 变化；`routes.ts` 2 行 import + 5 段注释；`go.ts` / `rules.ts` 等 diff 为 0 行 |
+| 三端点 + REST | `/game/mcp`、`/chat/mcp`、`/work/mcp` 的 `initialize` 均 200，`/api/rooms` 200 |
+| `duel.mjs` | 31 手黑胜，exit 0 |
+| 部署包 | `deploy.mjs` exit 0，产物无 `bin`、有 `dist/game/`，且能实际起服务 |
+| **S-03 覆盖** | 用 5 个变异（退回 agent 座位 / null 时回退 / 查不到人回退 / 未 join 返回 null / 顶座不清旧持有者）逐一打红，§2.3 的 5 条要求全部有独立断言 |
+
+审核未覆盖：没有对 9 个中间提交逐个 checkout 复跑「每步全绿」；`go.ts` 等文件依赖 `git diff -M` 的 0 行判定而非逐字节比对。
+
+**审核提出的问题与处置**：`shared/` 越界（已登记，见 §6）；`web/index.html` 标题未改、README 与架构地图仍推旧 URL（已改，见前端提案 §6）。

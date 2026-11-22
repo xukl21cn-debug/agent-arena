@@ -23,7 +23,7 @@
 | 路由 | `window.location.search` 手工分支，无 history | `react-router` + `BrowserRouter`，深链可收藏、可刷新、可前进后退 |
 | 外壳 | 7 处 `<header className="topbar">` 散在 5 个文件里（`ReplayPage` 三态各一份），开发任务只是大厅顶栏一个 ghost 按钮 | 常驻 App Shell，三域 Tab 无刷新切换，各页移除重复 `topbar` 并归位页内元信息 |
 | 状态与链接 | 切页靠整页 `<a href="/?...">` 刷新；store 只在 `connect()` 时重置，路由内换房会先渲染一帧旧房间 | 页内链接改 `<Link>`；换房用 `useLayoutEffect` 连接或渲染门控，同步更新 `document.title` |
-| 样式 | 单文件 [styles.css](../../web/src/styles.css) 2153 行，无预处理器、无变量体系 | 预处理器 + 按组件拆分的 partial（2a）；组件作用域按需增量迁移（2b） |
+| 样式 | 单文件 `styles.css` 2153 行，无预处理器、无变量体系 | 预处理器 + 按组件拆分的 partial（2a）；组件作用域按需增量迁移（2b） |
 | 大厅 | 四段平铺、历史 20 条封顶 | 域内分栏 + 状态筛选 + 标准分页，窄屏 1~2 列 |
 
 ### 1.3 范围
@@ -324,7 +324,36 @@ F1 独立于 F2/F3，可以先合。F4 放最后且允许长期未完成。
 
 **全部完成。** 存量组件（`Board`、`Controls`、`ChatComposer` 等）按 §2.5 的约定保持全局类名，后续被重写时再迁。
 
+**与计划的偏差（审核后补登）：**
+
+- **`ARCHIVE_ID_PATTERN` 归一化**：`?archive=` 的值不合法时，实现跳到 `/replay`（空 ID 报错态），而改造前是把原值直接传给 `<ReplayPage archiveId>`。§2.3 的表只规定了「合法 → `/replay/<id>`；空值 → `/replay`」，没写非法值；实现自行补了校验。影响很小（真实 archiveId 恒为 `[a-zA-Z0-9_-]{1,80}`，两条路径都是报错态），但属于规范外扩展。
+- **`_breakpoints.scss` 没有落地**：§2.5 的计划目录里列了断点变量 + 响应式 mixin，实际 11 个 partial 全是「plain CSS + `@use` 拼接」，`@mixin`/`@include` 零使用。原因是加 mixin 就做不到 F1 的字节级相同，所以放弃了——但当时没登记。
+- **`web/index.html` 的静态标题与描述**：F2 只在 `AppShell` 里用 `useEffect` 改 `document.title`，首屏 HTML 仍是「五子棋 · 与 AI 对弈」。审核指出后已把静态 `<title>` 改成中性的 `Agent Arena · MCP`、`meta description` 一并改成三域通用文案。
+- **`/work` Tab 的可用性提示**：§2.4 说「Tab 上标注「本机」或加 tooltip」，F2 当时两者都没做；审核后补了 `title` 提示「看板只在后端监听回环地址时可用」。
+
 
 ## 7. 独立审核
 
-（待实现完成后由未参与实现的 agent 补：基线、独立检查结果、未覆盖项）
+**审核者**：独立 subagent（未参与实现），基线 `4aa7b2c`。**结论：有条件通过 → 整改后通过。**
+
+已独立复现的结论：
+
+| 项 | 证据 |
+|---|---|
+| 旧 URL 兼容表 | 生产（3000）与 `pnpm dev`（5173）两轮一致，23 条主用例 + 11 条边界；`?utm_source=test`、`?foo=bar` 不跳转；`?archive=&view=replay` 仍落 `/replay`（`!== null` 生效）；`?kind=chat&view=work` 走 chat（优先级 3 先于 4） |
+| 深链刷新 | `/games/default/replay`、`/games/foo.js` 在 dev 与生产都返回 200 `text/html` |
+| 后退/前进 | `/` → `/?room=default` → `/games/default` → back 回 `/` → forward 回 `/games/default`，无循环 |
+| 无刷新切换 | `window.__alive` 跨 `/games → /chats → /work → /games` 存活；大厅卡片 `<Link>` 同样不刷新 |
+| **F1 字节级相同** | 在 `ddbdd3d` 的临时 worktree 里构建，产物 CSS 与 `main` **SHA-256 相同**（`7145575A…850B1`）、字节数相同（28328）、文件名 hash 相同（`index-4Aa-PB0C.css`） |
+| 双顶栏消除 | `className="topbar"` 从 7 处 / 5 文件降到 0（收进 `AppShell.module.scss`） |
+| 响应式 | 7 条路由 × 375 / 1440，全部 `overflow=false`、`scrollWidth ≤ innerWidth` |
+| 样式仍生效 | 模块类名哈希后用 `getComputedStyle` 断言：header flex + 下边框、h1 26px、导航 gap 6px、当前 tab `rgb(217,166,75)` |
+
+审核未覆盖：
+
+1. **逐页视觉对照**（§1.4-5 的前半）没有做人眼/像素比对，只做了结构断言与尺寸检查。
+2. **换房不闪旧数据**（§1.4-4 后半）只做了代码级验证（`useLayoutEffect` + `connect()` 同步 reset），没有用 `requestAnimationFrame` 抓绘制时序。
+3. `/work` 的非回环降级表现未实测。
+4. 跨浏览器未验（只有 Chrome）。
+
+**审核提出的问题与处置**：`web/index.html` 静态标题未改（已改）、`shared/` 越界（后端提案 §6 登记）、`ARCHIVE_ID_PATTERN` 与 `_breakpoints.scss` 两处未声明偏差（已补登于 §6）、README 与架构地图仍推旧 URL（已改）、`/work` Tab 缺可用性提示（已补 tooltip）。

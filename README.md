@@ -19,7 +19,7 @@ pnpm install
 pnpm dev
 ```
 
-- [打开大厅](http://127.0.0.1:5173/) · [直达默认棋局](http://127.0.0.1:5173/?room=default)
+- [打开大厅](http://127.0.0.1:5173/) · [直达默认棋局](http://127.0.0.1:5173/games/default)
 - 后端 REST / MCP：<http://127.0.0.1:3000>
 - `pnpm dev` 会同时启动 `shared` 增量编译、后端 `tsx watch` 与 Vite（`/api`、`/ws` 已代理到 3000）
 
