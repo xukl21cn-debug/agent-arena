@@ -4,7 +4,7 @@ agent-arena 是一个本机运行的 TypeScript 模块化单体。浏览器和 M
 
 | 领域 | 状态与规则由谁负责 | 外部如何访问 |
 |---|---|---|
-| 棋类 | `core/` 的五子棋、围棋引擎处理合法手和终局。房间编排座位、准备、落子、等待与解说。棋谱回放逐手调用真实引擎。 | 网页用 `/api/rooms` 与 `/ws`，agent 用 `/game/mcp`。棋类另有 stdio 进程，经 REST 调用同一后端。[房间](../../server/src/rooms/room.ts) · [回放](../../server/src/core/replay.ts) · [MCP 适配器](../../server/src/mcp/api.ts) |
+| 棋类 | `core/` 的五子棋、围棋引擎处理合法手和终局。房间编排座位、准备、落子、等待与解说。棋谱回放逐手调用真实引擎。 | 网页用 `/api/rooms` 与 `/ws`，agent 用 `/game/mcp`。[房间](../../server/src/rooms/room.ts) · [回放](../../server/src/core/replay.ts) · [MCP 适配器](../../server/src/mcp/api.ts) |
 | 聊天 | `ChatRoom` 管成员、消息、relay 轮次、预算和让出轮次。`ChatManager` 管恢复，后台 sweep 结算到期轮次。聊天成员记录最后活动时间。 | 网页用 `/api/chat` 与 `/ws?kind=chat`，agent 用 `/chat/mcp` 进房、等消息、发言、让出或读转录。[房间](../../server/src/chat/chat-room.ts) · [聊天 MCP](../../server/src/chat/mcp.ts) |
 | 开发任务 | `WorkStore` 管一个任务的执行、复审、返工、收工和放行。有领取租约、异常接管和合并证据。实际 Git 操作由统筹客户端执行。 | 回环监听时挂载 `/work/mcp`、`/api/work`。工作看板用 REST 操作，用 `/ws?kind=work` 接收更新。[存储](../../server/src/work/store.ts) · [看板路由](../../server/src/work/http.ts) · [任务契约](../../shared/src/work.ts) |
 

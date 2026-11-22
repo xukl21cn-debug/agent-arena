@@ -102,12 +102,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   };
 }
 
-export function resolveServerUrl(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  return env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL;
-}
-
 /**
  * Clamp a requested long-poll timeout into the supported window.
  * Non-numeric or missing values fall back to the configured default.

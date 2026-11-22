@@ -22,10 +22,10 @@ export type PresenceState =
 /**
  * How long an agent may stay silent before its seat reads as disconnected.
  *
- * Only a fallback for agent clients that expose no session (the stdio bridge
- * holds no session in the server process). It never affects game logic: a
- * player who thinks for ten minutes is still `thinking`, not `disconnected`,
- * and a human seat is judged by its browser tab alone.
+ * Only a fallback for an agent seat that never had an MCP session (a script
+ * driving the REST API directly). It never affects game logic: a player who
+ * thinks for ten minutes is still `thinking`, not `disconnected`, and a human
+ * seat is judged by its browser tab alone.
  */
 export const PRESENCE_STALE_MS = 120_000;
 

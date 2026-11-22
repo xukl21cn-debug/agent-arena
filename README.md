@@ -71,16 +71,13 @@ pnpm duel --room duel2 --keep
 
 ## 接入 MCP 客户端
 
-先启动后端，再任选一种传输：
+先启动后端，再连下面三个 Streamable HTTP 端点：
 
 | 方式 | 配置 |
 |---|---|
 | Streamable HTTP | 棋类 `http://127.0.0.1:3000/game/mcp` · 聊天 `http://127.0.0.1:3000/chat/mcp` · 开发任务 `http://127.0.0.1:3000/work/mcp` |
-| stdio 桥接（棋类） | 先在仓库根运行 `pnpm build`，再配置 `node <项目目录>/server/dist/mcp/stdio.js` |
 
-stdio 桥接仅提供棋类工具，本身不保存棋局，所有操作通过 REST 转给已启动的后端；可用 `ARENA_SERVER_URL` 指定后端地址（默认 `http://127.0.0.1:3000`）。后端未启动时工具会返回明确的连接错误。
-
-仓库根目录的 `.mcp.json` 配置了 `arena-game`、`arena-chat` 和 `arena-work`。各端点提供自己的工具。工具清单变更后重新打开客户端会话。
+三个域都只提供 HTTP 接入，没有 stdio 桥。仓库根目录的 `.mcp.json` 配置了 `arena-game`、`arena-chat` 和 `arena-work`。各端点提供自己的工具。工具清单变更后重新打开客户端会话。
 
 棋类 `/game/mcp`（服务名 `arena-game`，12 个）：
 
@@ -152,7 +149,7 @@ stdio 桥接仅提供棋类工具，本身不保存棋局，所有操作通过 R
 | `HOST` | 127.0.0.1 | 监听地址，默认仅本机 |
 | `WAIT_DEFAULT_MS` | 20000 | `wait_for_turn` 默认超时 |
 | `WAIT_MAX_MS` | 60000 | `wait_for_turn` 上限 |
-| `ARENA_SERVER_URL` | `http://127.0.0.1:3000` | stdio 桥接访问的后端地址，也用于 Vite 代理 |
+| `ARENA_SERVER_URL` | `http://127.0.0.1:3000` | Vite 开发代理转发的后端地址 |
 | `DEFAULT_ROOM_ID` | default | 默认房间 |
 | `ARENA_DATA_DIR` | `<repo>/data` | 落盘根目录，下分 `rooms/` `chat/` `archive/` `work/` |
 | `ARENA_WORK_WORKSPACE` | 仓库根目录 | 工作域的绝对路径 |

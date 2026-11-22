@@ -73,7 +73,7 @@
 | 错误响应里 `moves` 与 `moveCount` 必须一致，不伪装成空历史 | 46 手时返回 `moveCount: 46` 但 `moves: []`，模型据错误复盘时上下文断裂 |
 | `boardText` 每个行列号必须可被**唯一解析**（不得出现 `9101112`） | 9/10/11 连成 `9101112`，模型可能读成 910、1112 |
 | `win` 判定必须复用引擎 `findWinLine()` | `overlineWin:false` 时六连候选被报成 `win`，而引擎返回 `null` |
-| `InProcessApi` 与 `HttpApi` 必须返回**同一份视图** | 两个适配器各写一份就会漂移，必须共用 `toAgentStateView()` |
+| MCP 视图只由 `toAgentStateView()` 生成 | 工具、REST 与错误响应各写一份就会漂移 |
 | 面向 agent 的字段只给**事实**，不给结论 | 让模型根据棋盘和威胁信息自行判断落点 |
 
 ---

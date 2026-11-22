@@ -285,8 +285,8 @@ describe('PresenceRegistry', () => {
 
   it('treats a closed session as disconnected even while the call stamp is fresh', () => {
     // A session that closes is a confirmed disconnect. The recent-call fallback
-    // exists for the stdio bridge, which never has a session — it must not keep
-    // a departed agent looking alive for the whole stale window.
+    // exists for seats that never had a session — it must not keep a departed
+    // agent looking alive for the whole stale window.
     const reg = registry();
     reg.attachSession('r1', 'white', 'session-1', 'dsh');
     reg.detachSession('session-1');
@@ -295,8 +295,8 @@ describe('PresenceRegistry', () => {
   });
 
   it('falls back to a recent call for clients without a session', () => {
-    // The stdio bridge has no MCP session in this process; its REST calls are
-    // the only evidence that the agent is alive.
+    // An agent seat driven over REST has no MCP session in this process; its
+    // REST calls are the only evidence that the agent is alive.
     const reg = registry();
     reg.touch('r1', 'white');
     expect(snapshot(reg)[1]?.presence).toBe('idle');

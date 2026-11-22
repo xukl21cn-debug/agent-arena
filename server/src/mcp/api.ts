@@ -14,10 +14,9 @@ import type {
 } from '@arena/shared';
 
 /**
- * The only surface MCP tools know about. Two implementations exist:
- * `InProcessApi` (same process as the game server) and `HttpApi` (stdio
- * bridge talking REST to a running server). Both return agent-facing views:
- * boardText + moves + hotPoints instead of the raw nested board array.
+ * The only surface MCP tools know about. `InProcessApi` implements it inside
+ * the game server, and every method returns agent-facing views: boardText +
+ * moves + hotPoints instead of the raw nested board array.
  *
  * Every method that acts on a seat resolves the caller's identity on the
  * server side (session binding, then room roster). The model never passes a

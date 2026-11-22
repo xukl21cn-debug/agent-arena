@@ -18,8 +18,8 @@ interface SeatSignals {
   sessions: Map<string, number>;
   /**
    * Whether an MCP session ever attached here. Once one has, its expiry is a
-   * confirmed disconnect; only clients that never had a session (the stdio
-   * bridge) fall back to recent-call freshness.
+   * confirmed disconnect; only seats that never had a session (a human playing
+   * over REST) fall back to recent-call freshness.
    */
   sessionSeen: boolean;
   /** Long-polls parked on this seat. */
@@ -281,8 +281,8 @@ export class PresenceRegistry implements PresenceSource {
       // calling for the idle window — the SDK's client.close() never sends a
       // DELETE, so silence is the only signal a vanished client gives us.
       //
-      // A client that never opened a session at all (the stdio bridge, which
-      // lives in another process) falls back to recent-call freshness.
+      // A seat that never had an MCP session at all (a human playing over
+      // REST) falls back to recent-call freshness.
       const lastSeenAt =
         spec.kind === 'human'
           ? watchers > 0

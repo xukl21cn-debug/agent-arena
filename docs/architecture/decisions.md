@@ -11,7 +11,7 @@
 
 | 决策 | 放弃的选项 | 为什么 |
 |---|---|---|
-| **身份靠会话绑定**（`join_game` 记 sessionId → participantId），模型从不传 id | 让模型每次传 `participantId`；或用 HTTP header 传身份 | 模型从不传 id，所以不会传错、也无法冒充。header 那套只给 stdio 桥用 |
+| **身份靠会话绑定**（`join_game` 记 sessionId → participantId），模型从不传 id | 让模型每次传 `participantId`；或用 HTTP header 传身份 | 模型从不传 id，所以不会传错、也无法冒充。header 那套只留给不走 MCP 会话的 REST 调用方 |
 | `resolve` 保留**降级链**：有 id 直查；只有 `actor` 时「恰好一个」才成功，两个报 `AMBIGUOUS_ACTOR`，零个退回旧座位 | 只认 `participantId`，砍掉旧 `actor` 路径 | 要兼容没有 roster 的房间和还在用旧路径的脚本 |
 | `new_game` 的座位**优先从 roster 取**（`seatSpecOf()`），`agentColor` 只兜底 | 继续按 `agentColor` 重建座位 | 原写法把 join 建立的 id/name 抹掉，agent 丢身份 |
 | `phase` 做成**派生值**（`getPhase()` 现算），不落库 | 存一个 `phase` 字段、每次变更时更新 | 不存在同步问题，也不会因为漏更新而漂移；代价只是每次遍历 roster，可忽略 |

@@ -4,9 +4,6 @@
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
-  "bin": {
-    "agent-arena": "./dist/mcp/stdio.js"
-  },
   "files": [
     "dist",
     "scripts"

@@ -164,9 +164,9 @@ async function runTool(action: () => Promise<unknown>): Promise<CallToolResult> 
 }
 
 /**
- * The single source of truth for the MCP tools. Both the in-process HTTP
- * transport and the stdio bridge register exactly these definitions, so every
- * client sees identical behaviour and descriptions.
+ * The single source of truth for the MCP tools. Only the in-process HTTP
+ * transport registers these definitions, so every client sees identical
+ * behaviour and descriptions.
  */
 export function registerTools(server: McpServer, api: ArenaApi): void {
   server.registerTool(

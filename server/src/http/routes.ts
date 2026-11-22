@@ -284,8 +284,8 @@ function asInvalidRequest(error: unknown): never {
 }
 
 /**
- * Record activity for whichever seat the actor occupies, so REST callers (the
- * stdio bridge included) count as present even without an MCP session.
+ * Record activity for whichever seat the actor occupies, so REST callers count
+ * as present even without an MCP session.
  */
 function touchActor(manager: RoomManager, room: GameRoom, actor: Actor): void {
   const seat = room.getSeatFor(actor);
@@ -297,10 +297,10 @@ function touchActor(manager: RoomManager, room: GameRoom, actor: Actor): void {
 /**
  * How the caller identifies itself.
  *
- * The header wins so the stdio bridge — which holds no server session — can
- * present its participant id on every request. A body field is accepted for
- * callers that cannot set headers. Falling back to `actor` keeps every
- * pre-participant client working.
+ * The header wins so a caller that holds no server session can present its
+ * participant id on every request. A body field is accepted for callers that
+ * cannot set headers. Falling back to `actor` keeps every pre-participant
+ * client working.
  */
 function actorRefOf(
   req: { headers: Record<string, unknown> },
@@ -375,8 +375,8 @@ function replayResponse(
 }
 
 /**
- * REST API used by the browser and, through the stdio bridge, by MCP clients.
- * Every mutation is delegated to the owning GameRoom.
+ * REST API used by the browser and by REST-only clients. Every mutation is
+ * delegated to the owning GameRoom.
  */
 export function createApiRouter(
   manager: RoomManager,
@@ -468,8 +468,8 @@ export function createApiRouter(
   /**
    * Join (or reconnect to) the room, optionally claiming a seat.
    *
-   * The stdio bridge calls this once and then sends its id on every request;
-   * the web client joins as the human seat when it connects.
+   * A REST client calls this once and then sends its id on every request; the
+   * web client joins as the human seat when it connects.
    */
   router.post('/rooms/:roomId/participants', (req, res) => {
     const room = roomOrThrow(manager, req.params.roomId);
@@ -780,7 +780,7 @@ export function createApiRouter(
   router.get('/rooms/:roomId/wait-for-turn', async (req, res) => {
     const room = roomOrThrow(manager, req.params.roomId);
 
-    // The header identifies the stdio bridge; a query parameter serves callers
+    // The header carries the participant id; a query parameter serves callers
     // that cannot set one. Falling back to `actor` keeps old clients working.
     const ref = actorRefOf(
       req,
