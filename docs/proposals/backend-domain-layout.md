@@ -1,7 +1,7 @@
 # 后端领域目录归拢（含 stdio 适配层下线）
 
 > 设计提案 · 2026-11-21（第二版，合并外部评审意见）
-> 状态：**已实现，待独立审核**（5 个提交见 §6）
+> 状态：**已实现，两轮复审整改完成，待用户验收**（5 个提交见 §6）
 > 基线：`cf3b53b`（`main` 为 `34bd7ef`，两者差异只在部署脚本、README 与 `server/src/index.ts` 一行），383 项测试全绿
 > 范围：`server/src/` 的物理结构与 import 路径、`server/test/` 的静态与动态 import、根目录 `scripts/*.mjs` 对编译产物的引用、文档里的源码链接与接入说明，外加**下线棋类 stdio 适配层**。
 > ⚠️ **本提案含一处破坏性变更**：stdio 接入方式下线（§2.3）。除此之外的步骤都是纯移动，函数签名、端点路径、`shared/` 类型、落盘格式一律不动。
@@ -283,3 +283,21 @@ stdio 桥不是独立服务：它启动后把每个工具调用转成 REST 请�
 审核未覆盖：没有对 9 个中间提交逐个 checkout 复跑「每步全绿」；`go.ts` 等文件依赖 `git diff -M` 的 0 行判定而非逐字节比对。
 
 **审核提出的问题与处置**：`shared/` 越界（已登记，见 §6）；`web/index.html` 标题未改、README 与架构地图仍推旧 URL（已改，见前端提案 §6）。
+
+### 2026-11-22 分支复审
+
+复审范围为远端 `main` 的 `31471a4` 到 `9625d95`，共 11 个提交。实现提交的 Git 作者为 `xukeli`，执行 harness 和模型未记录。本轮由未参与本次重构实现的 Codex（GPT-6.2 Sol）复审。
+
+**本轮复审退回整改。**
+
+- **[P2] 增量部署会带上已下线的 stdio 和旧目录。** 临时 checkout 在 `31471a4` 编译服务端，切换到 `9625d95`，直接执行 `pnpm bundle`。打包成功，但 `deploy-dst/dist/mcp/stdio.js` 仍存在，包内还有旧 `core/`、`http/`、`mcp/`、`rooms/`。干净 checkout 的对照包没有这些旧文件。默认构建仅执行 `tsc`，打包随后复制整个 `dist`。在构建或打包入口清理服务端输出目录，并用同一 checkout 升级重打包验证删除结果。涉及 `e8090ed`、`633a21c`。[构建](../../server/package.json#L14) · [部署](../../scripts/deploy.mjs#L11)
+
+完整分支通过 `pnpm typecheck`、`pnpm build` 和 `pnpm test`（28 个文件，383 项）。通过 MCP SDK 实际连接三个端点并列出工具（棋类 12、聊天 5、工作 11），`/api/rooms` 可用，双 agent 脚本下完 31 手，三个根目录辅助脚本均以状态 0 退出。核对了会话上下文、WebSocket 和棋类引擎搬迁的提交差异。本轮未逐提交重跑全量测试。
+
+#### 整改（同日）
+
+| 审查意见 | 处置 |
+|---|---|
+| P2 增量打包带上已下线的 stdio 与旧目录 | `scripts/deploy.mjs` 在 `pnpm build` 之前先 `rmSync` 掉 `server/dist` 与 `web/dist`——`tsc` 只增量写、不清理，旧产物会被原样打进包。复验方式与审查一致：在 `server/dist/mcp/stdio.js` 植入假文件后跑 `pnpm bundle`，产物里已无 `dist/mcp`，`dist/game` 正常 |
+
+说明：清理放在**打包入口**而不是 `pnpm build` 本身，因为本地 `pnpm build && node server/dist/index.js` 的旧产物不影响交付；打包是唯一对外产物的出口。

@@ -90,14 +90,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ busy: true, error: null });
     try {
       const { message, room } = await api.chatSend(roomId, text, to);
+      // A reply that lands after the user switched rooms belongs to the room
+      // they left; appending it would put a stranger's line in this timeline.
+      if (get().roomId !== roomId) {
+        return false;
+      }
       get().applyMessage(message);
       get().applyRoom(room);
       return true;
     } catch (caught) {
-      set({ error: errorMessage(caught) });
+      if (get().roomId === roomId) {
+        set({ error: errorMessage(caught) });
+      }
       return false;
     } finally {
-      set({ busy: false });
+      if (get().roomId === roomId) {
+        set({ busy: false });
+      }
     }
   },
 
@@ -132,11 +141,19 @@ async function control(
   const { roomId } = get();
   set({ busy: true, error: null });
   try {
-    get().applyRoom(await api.chatControl(roomId, action));
+    const room = await api.chatControl(roomId, action);
+    // Same rule as `send`: a reply for a room the user already left is dropped.
+    if (get().roomId === roomId) {
+      get().applyRoom(room);
+    }
   } catch (caught) {
-    set({ error: errorMessage(caught) });
+    if (get().roomId === roomId) {
+      set({ error: errorMessage(caught) });
+    }
   } finally {
-    set({ busy: false });
+    if (get().roomId === roomId) {
+      set({ busy: false });
+    }
   }
 }
 

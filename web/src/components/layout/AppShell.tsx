@@ -29,7 +29,10 @@ const TABS: ShellTab[] = [
  * replay views, and a plain `/games` prefix test would label the latter as a
  * live game.
  */
-function titleFor(pathname: string): string {
+function titleFor(rawPathname: string): string {
+  // A trailing slash is the same route; `/games/default/replay/` must not fall
+  // through to the live-game branch.
+  const pathname = rawPathname.replace(/\/+$/, '') || '/';
   if (pathname.startsWith('/replay') || /^\/games\/[^/]+\/replay$/.test(pathname)) {
     return '棋谱回放';
   }

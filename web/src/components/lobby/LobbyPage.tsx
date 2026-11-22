@@ -26,7 +26,8 @@ const CHAT_PHASE_LABELS: Record<ChatRoomSummaryDto['phase'], string> = {
 const FILTERS = [
   { key: 'all', label: '全部' },
   { key: 'active', label: '进行中' },
-  { key: 'warn', label: '待开始' },
+  { key: 'pending', label: '待开始' },
+  { key: 'paused', label: '已暂停' },
   { key: 'done', label: '已结束' },
 ] as const;
 
@@ -44,6 +45,32 @@ function phaseTone(phase: string): string {
 }
 
 /**
+ * Which filter a room belongs to. Deliberately not the same function as
+ * `phaseTone`: a room in the `lobby` phase is grey on its pill but has not
+ * started yet, so it belongs under 待开始; a paused room is neither pending nor
+ * over, so it gets its own bucket.
+ */
+function phaseBucket(phase: string): FilterKey {
+  if (phase === 'playing' || phase === 'open') {
+    return 'active';
+  }
+  if (phase === 'waiting' || phase === 'lobby') {
+    return 'pending';
+  }
+  if (phase === 'paused') {
+    return 'paused';
+  }
+  return 'done';
+}
+
+/**
+ * Page and filter survive leaving the lobby and coming back, so the browser's
+ * back button lands on the page the user left. Keyed by list rather than by
+ * route because `/` shows several lists at once.
+ */
+const listMemory = new Map<string, { filter: FilterKey; page: number }>();
+
+/**
  * The two list endpoints name their room differently (`roomId` vs `id`).
  * Normalization happens here, once, so no card component ever sees the
  * difference.
@@ -54,6 +81,7 @@ function gameCard(summary: RoomSummary): {
   typeLabel: string;
   phaseLabel: string;
   tone: string;
+  bucket: FilterKey;
   title: string;
   meta: string;
   people: string;
@@ -65,6 +93,7 @@ function gameCard(summary: RoomSummary): {
     typeLabel: summary.game === 'go' ? '围棋' : '五子棋',
     phaseLabel: GAME_PHASE_LABELS[summary.phase],
     tone: phaseTone(summary.phase),
+    bucket: phaseBucket(summary.phase),
     title: summary.roomId,
     meta: `${summary.moveCount} 手`,
     people: (summary.participants ?? [])
@@ -83,6 +112,7 @@ function chatCard(summary: ChatRoomSummaryDto) {
     typeLabel: '聊天',
     phaseLabel: CHAT_PHASE_LABELS[summary.phase],
     tone: phaseTone(summary.phase),
+    bucket: phaseBucket(summary.phase),
     title: summary.title || summary.id,
     meta: `${summary.messageCount} 条 · hop ${summary.hop}/${summary.maxHops}`,
     people: `${summary.memberCount} 人 · ${summary.agentCount} agent`,
@@ -97,6 +127,8 @@ interface CardProps {
   typeLabel: string;
   phaseLabel: string;
   tone: string;
+  /** Which status filter this card answers to. */
+  bucket: FilterKey;
   title: string;
   meta: string;
   people: string;
@@ -176,6 +208,8 @@ function Pager({
 
 interface GroupProps {
   title: string;
+  /** Stable identity for the page/filter memory; defaults to the title. */
+  listKey?: string;
   /** Unit for the count in the group head, e.g. 间 or 局. */
   unit: string;
   emptyHint: string;
@@ -187,6 +221,7 @@ interface GroupProps {
 
 function Group({
   title,
+  listKey = title,
   unit,
   emptyHint,
   cards,
@@ -194,11 +229,23 @@ function Group({
   error = null,
   filterable = false,
 }: GroupProps) {
-  const [filter, setFilter] = useState<FilterKey>('all');
-  const [page, setPage] = useState(0);
+  const remembered = listMemory.get(listKey);
+  const [filter, setFilter] = useState<FilterKey>(remembered?.filter ?? 'all');
+  const [page, setPage] = useState(remembered?.page ?? 0);
+
+  const applyFilter = (next: FilterKey) => {
+    setFilter(next);
+    setPage(0);
+    listMemory.set(listKey, { filter: next, page: 0 });
+  };
+
+  const applyPage = (next: number) => {
+    setPage(next);
+    listMemory.set(listKey, { filter, page: next });
+  };
 
   const filtered =
-    filter === 'all' ? cards : cards.filter((card) => card.tone === filter);
+    filter === 'all' ? cards : cards.filter((card) => card.bucket === filter);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
   const visible = filtered.slice(
@@ -232,10 +279,7 @@ function Group({
                 item.key === filter ? 'filter-chip is-active' : 'filter-chip'
               }
               aria-pressed={item.key === filter}
-              onClick={() => {
-                setFilter(item.key);
-                setPage(0);
-              }}
+              onClick={() => applyFilter(item.key)}
             >
               {item.label}
             </button>
@@ -259,7 +303,7 @@ function Group({
         </div>
       )}
 
-      <Pager page={current} pageCount={pageCount} onPage={setPage} />
+      <Pager page={current} pageCount={pageCount} onPage={applyPage} />
     </section>
   );
 }
@@ -338,7 +382,12 @@ function HistorySection({
   loading: boolean;
   error: string | null;
 }) {
-  const [page, setPage] = useState(0);
+  const remembered = listMemory.get('history');
+  const [page, setPage] = useState(remembered?.page ?? 0);
+  const applyPage = (next: number) => {
+    setPage(next);
+    listMemory.set('history', { filter: 'all', page: next });
+  };
   const history = archives ?? [];
   const pageCount = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
   const current = Math.min(page, pageCount - 1);
@@ -405,7 +454,7 @@ function HistorySection({
               );
             })}
           </div>
-          <Pager page={current} pageCount={pageCount} onPage={setPage} />
+          <Pager page={current} pageCount={pageCount} onPage={applyPage} />
         </>
       )}
     </section>
@@ -475,10 +524,14 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
           .map(chatCard)
       : [];
 
+  // Only the domains this route actually shows: a chat outage must not shout
+  // at someone browsing the board-game lobby.
+  const showsGames = domain !== 'chats';
+  const showsChats = domain !== 'games';
   const activeErrors = [
-    gamesError ? `棋类房间：${gamesError}` : null,
-    chatsError ? `聊天房间：${chatsError}` : null,
-    archivesError ? `历史对局：${archivesError}` : null,
+    showsGames && gamesError ? `棋类房间：${gamesError}` : null,
+    showsChats && chatsError ? `聊天房间：${chatsError}` : null,
+    showsGames && archivesError ? `历史对局：${archivesError}` : null,
   ].filter(Boolean) as string[];
   const topError = activeErrors.length > 0 ? activeErrors.join('；') : null;
 

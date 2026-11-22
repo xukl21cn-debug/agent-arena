@@ -8,6 +8,11 @@ const deployDst = path.resolve(root, 'deploy-dst');
 const webDist = path.resolve(root, 'web/dist');
 
 console.log('[deploy] 1/3 构建所有子项目 (shared, server, web)...');
+// tsc does not prune stale outputs. A dist/mcp/stdio.js left behind from
+// before the stdio adapter was retired would otherwise be shipped verbatim,
+// so every bundle starts from an empty dist.
+rmSync(path.join(root, 'server/dist'), { recursive: true, force: true });
+rmSync(webDist, { recursive: true, force: true });
 execSync('pnpm build', { cwd: root, stdio: 'inherit' });
 accessSync(path.join(webDist, 'index.html'));
 

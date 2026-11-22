@@ -216,102 +216,82 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
 
   async setReady(ready) {
     const { roomId } = get();
-    set({ busy: true, error: null });
-    try {
-      const view = await api.ready(roomId, ready);
+    await runRoomAction(set, roomId, () => api.ready(roomId, ready), (view) => {
       get().applyState(view.state);
       get().applyParticipants(view.participants);
       get().applyPhase(view.phase);
-    } catch (caught) {
-      handleError(caught, set);
-    } finally {
-      set({ busy: false });
-    }
+    });
   },
 
   async startGame(humanColor, game = 'gomoku') {
     const { roomId } = get();
-    set({ busy: true, error: null });
-    try {
-      const agentColor: StoneColor = humanColor === 'black' ? 'white' : 'black';
-      get().applyState(await api.newGame(roomId, agentColor, game));
-    } catch (caught) {
-      handleError(caught, set);
-    } finally {
-      set({ busy: false });
-    }
+    const agentColor: StoneColor = humanColor === 'black' ? 'white' : 'black';
+    await runRoomAction(
+      set,
+      roomId,
+      () => api.newGame(roomId, agentColor, game),
+      (state) => get().applyState(state),
+    );
   },
 
   async play(row, col) {
     const { roomId } = get();
-    set({ busy: true, error: null });
-    try {
-      get().applyState(await api.move(roomId, row, col));
-    } catch (caught) {
-      handleError(caught, set);
-    } finally {
-      set({ busy: false });
-    }
+    await runRoomAction(
+      set,
+      roomId,
+      () => api.move(roomId, row, col),
+      (state) => get().applyState(state),
+    );
   },
 
   async pass() {
     const { roomId } = get();
-    set({ busy: true, error: null });
-    try {
-      get().applyState(await api.pass(roomId));
-    } catch (caught) {
-      handleError(caught, set);
-    } finally {
-      set({ busy: false });
-    }
+    await runRoomAction(
+      set,
+      roomId,
+      () => api.pass(roomId),
+      (state) => get().applyState(state),
+    );
   },
 
   async markDead(row, col) {
     const { roomId } = get();
-    set({ busy: true, error: null });
-    try {
-      get().applyState(await api.markDead(roomId, row, col));
-    } catch (caught) {
-      handleError(caught, set);
-    } finally {
-      set({ busy: false });
-    }
+    await runRoomAction(
+      set,
+      roomId,
+      () => api.markDead(roomId, row, col),
+      (state) => get().applyState(state),
+    );
   },
 
   async confirmScore() {
     const { roomId } = get();
-    set({ busy: true, error: null });
-    try {
-      get().applyState(await api.confirmScore(roomId));
-    } catch (caught) {
-      handleError(caught, set);
-    } finally {
-      set({ busy: false });
-    }
+    await runRoomAction(
+      set,
+      roomId,
+      () => api.confirmScore(roomId),
+      (state) => get().applyState(state),
+    );
   },
 
   async resumePlay() {
     const { roomId } = get();
-    set({ busy: true, error: null });
-    try {
-      get().applyState(await api.resumePlay(roomId));
-    } catch (caught) {
-      handleError(caught, set);
-    } finally {
-      set({ busy: false });
-    }
+    await runRoomAction(
+      set,
+      roomId,
+      () => api.resumePlay(roomId),
+      (state) => get().applyState(state),
+    );
   },
 
   async resign() {
     const { roomId } = get();
-    set({ busy: true, error: null });
-    try {
-      get().applyState(await api.resign(roomId));
-    } catch (caught) {
-      handleError(caught, set);
-    } finally {
-      set({ busy: false });
-    }
+    await runRoomAction(
+      set,
+      roomId,
+      () => api.resign(roomId),
+      (state) => get().applyState(state),
+    );
   },
 
   dismissResult() {
@@ -329,13 +309,48 @@ type Setter = (
     | ((state: RoomStore) => Partial<RoomStore>),
 ) => void;
 
-function handleError(caught: unknown, set: Setter): void {
+function handleError(caught: unknown, set: Setter, roomId: string): void {
+  // A reply from a room the user has already left is dropped: `connect()`
+  // reset the store, so applying it would paint the old board into the new room.
+  if (useRoomStore.getState().roomId !== roomId) {
+    return;
+  }
   // A rejected mutation still carries the authoritative state, so the board
   // never shows a move the server refused.
   if (caught instanceof ApiError && caught.state) {
     useRoomStore.getState().applyState(caught.state);
   }
   set({ error: errorMessage(caught) });
+}
+
+/**
+ * Run a room-scoped request and apply its result only while the store still
+ * points at the same room.
+ *
+ * The route can change while a request is in flight: `connect()` resets the
+ * store, and the late reply would otherwise overwrite the new room's board
+ * with the previous one. Busy and error state follow the same rule so a stale
+ * reply cannot leave the new room stuck as busy.
+ */
+async function runRoomAction<T>(
+  set: Setter,
+  roomId: string,
+  request: () => Promise<T>,
+  apply: (result: T) => void,
+): Promise<void> {
+  set({ busy: true, error: null });
+  try {
+    const result = await request();
+    if (useRoomStore.getState().roomId === roomId) {
+      apply(result);
+    }
+  } catch (caught) {
+    handleError(caught, set, roomId);
+  } finally {
+    if (useRoomStore.getState().roomId === roomId) {
+      set({ busy: false });
+    }
+  }
 }
 
 /**
