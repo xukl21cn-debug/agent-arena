@@ -8,7 +8,7 @@ import type { ServerMessage } from '@arena/shared';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
-import { attachWebSocket } from '../src/http/ws';
+import { attachWebSocket } from '../src/ws';
 import { MemoryRoomRepository } from '../src/rooms/repository';
 import { RoomManager } from '../src/rooms/room-manager';
 

@@ -7,7 +7,7 @@ import { ChatManager } from './chat/manager.js';
 import { loadConfig } from './config.js';
 import { startChatSweep } from './chat/sweep.js';
 import { PresenceRegistry } from './core/presence.js';
-import { attachWebSocket } from './http/ws.js';
+import { attachWebSocket } from './ws.js';
 import { FileRoomRepository } from './rooms/repository.js';
 import { RoomManager } from './rooms/room-manager.js';
 import { isWorkLoopback } from './work/mcp.js';

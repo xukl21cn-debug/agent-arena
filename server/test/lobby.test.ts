@@ -5,7 +5,7 @@ import type { ServerMessage } from '@arena/shared';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { PresenceRegistry } from '../src/core/presence';
-import { attachWebSocket } from '../src/http/ws';
+import { attachWebSocket } from '../src/ws';
 import { GameRoom } from '../src/rooms/room';
 import { MemoryRoomRepository } from '../src/rooms/repository';
 import { RoomManager } from '../src/rooms/room-manager';
