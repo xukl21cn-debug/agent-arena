@@ -1,0 +1,32 @@
+/* ------------------------------------------------------------------
+   五子棋 · design tokens
+   Dark room, kaya wood board, lacquer gold, vermilion seal.
+------------------------------------------------------------------ */
+:root {
+  color-scheme: dark;
+  --bg: #0c0d09;
+  --bg-raised: #12140f;
+  --panel: #14170f;
+  --line: #24281d;
+  --line-strong: #373d2c;
+  --text: #ece5d5;
+  --text-dim: #9b988a;
+  --text-faint: #6d6b5e;
+  --wood: #c99a5c;
+  --wood-light: #ddb67f;
+  --wood-deep: #aa7c43;
+  --grid: rgba(56, 35, 14, 0.42);
+  --gold: #d9a64b;
+  --seal: #b4422e;
+  --ok: #7faf6a;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --board-pad: 7px;
+  --font-display: 'Songti SC', 'STSong', 'Noto Serif SC', SimSun, Georgia,
+    serif;
+  --font-body: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', system-ui,
+    -apple-system, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas,
+    'Liberation Mono', monospace;
+  --shadow-panel: 0 24px 70px rgba(0, 0, 0, 0.45);
+}
