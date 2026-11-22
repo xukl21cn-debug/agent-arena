@@ -6,8 +6,8 @@ import { endLabel, timeAgo } from '../../labels';
 
 /** The lobby is a directory, not a dashboard: a slow heartbeat is enough. */
 const POLL_MS = 8_000;
-/** History can hold room-count × N entries; render the newest, offer the rest. */
-const HISTORY_LIMIT = 20;
+/** One page of cards; history can be much larger than a room list. */
+const PAGE_SIZE = 12;
 
 const GAME_PHASE_LABELS: Record<RoomSummary['phase'], string> = {
   lobby: '等待加入',
@@ -22,6 +22,15 @@ const CHAT_PHASE_LABELS: Record<ChatRoomSummaryDto['phase'], string> = {
   paused: '已暂停',
   closed: '已结束',
 };
+
+const FILTERS = [
+  { key: 'all', label: '全部' },
+  { key: 'active', label: '进行中' },
+  { key: 'warn', label: '待开始' },
+  { key: 'done', label: '已结束' },
+] as const;
+
+type FilterKey = (typeof FILTERS)[number]['key'];
 
 /** Phase tone for the pill: active green, pending gold, over dim. */
 function phaseTone(phase: string): string {
@@ -120,51 +129,137 @@ function Card({
   );
 }
 
+function Pager({
+  page,
+  pageCount,
+  onPage,
+}: {
+  page: number;
+  pageCount: number;
+  onPage: (page: number) => void;
+}) {
+  if (pageCount <= 1) {
+    return null;
+  }
+  return (
+    <nav className="pager" aria-label="分页">
+      <button
+        type="button"
+        className="btn btn--ghost pager-step"
+        disabled={page === 0}
+        onClick={() => onPage(page - 1)}
+      >
+        上一页
+      </button>
+      {Array.from({ length: pageCount }, (_, index) => (
+        <button
+          key={index}
+          type="button"
+          className={index === page ? 'pager-page is-current' : 'pager-page'}
+          aria-current={index === page ? 'page' : undefined}
+          onClick={() => onPage(index)}
+        >
+          {index + 1}
+        </button>
+      ))}
+      <button
+        type="button"
+        className="btn btn--ghost pager-step"
+        disabled={page >= pageCount - 1}
+        onClick={() => onPage(page + 1)}
+      >
+        下一页
+      </button>
+    </nav>
+  );
+}
+
 interface GroupProps {
   title: string;
-  note: string;
+  /** Unit for the count in the group head, e.g. 间 or 局. */
+  unit: string;
   emptyHint: string;
   cards: CardProps[];
   loading?: boolean;
   error?: string | null;
+  filterable?: boolean;
 }
 
 function Group({
   title,
-  note,
+  unit,
   emptyHint,
   cards,
   loading = false,
   error = null,
+  filterable = false,
 }: GroupProps) {
+  const [filter, setFilter] = useState<FilterKey>('all');
+  const [page, setPage] = useState(0);
+
+  const filtered =
+    filter === 'all' ? cards : cards.filter((card) => card.tone === filter);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  const visible = filtered.slice(
+    current * PAGE_SIZE,
+    current * PAGE_SIZE + PAGE_SIZE,
+  );
+
   const isInitialLoading = loading && cards.length === 0;
   const isFailed = error !== null && cards.length === 0;
+
+  const headNote = isInitialLoading
+    ? '读取中…'
+    : isFailed
+      ? '加载失败'
+      : `${filtered.length} ${unit}`;
 
   return (
     <section className="lobby-group">
       <div className="group-head">
         <h2 className="group-title">{title}</h2>
-        <span className="group-note">
-          {isInitialLoading
-            ? '读取中…'
-            : isFailed
-              ? '加载失败'
-              : note}
-        </span>
+        <span className="group-note">{headNote}</span>
       </div>
+
+      {filterable && cards.length > 0 ? (
+        <div className="lobby-filters" role="group" aria-label="按状态筛选">
+          {FILTERS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={
+                item.key === filter ? 'filter-chip is-active' : 'filter-chip'
+              }
+              aria-pressed={item.key === filter}
+              onClick={() => {
+                setFilter(item.key);
+                setPage(0);
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {isFailed ? (
         <p className="lobby-empty">{error}</p>
       ) : isInitialLoading ? (
         <p className="lobby-empty">读取中…</p>
       ) : cards.length === 0 ? (
         <p className="lobby-empty">{emptyHint}</p>
+      ) : visible.length === 0 ? (
+        <p className="lobby-empty">这个状态下没有房间。</p>
       ) : (
         <div className="lobby-grid">
-          {cards.map((card) => (
+          {visible.map((card) => (
             <Card key={card.id} {...card} />
           ))}
         </div>
       )}
+
+      <Pager page={current} pageCount={pageCount} onPage={setPage} />
     </section>
   );
 }
@@ -234,8 +329,98 @@ function useLobbyList<T>(fetchList: () => Promise<T[]>) {
   return { data, loading, error, load };
 }
 
+function HistorySection({
+  archives,
+  loading,
+  error,
+}: {
+  archives: ArchiveSummary[] | null;
+  loading: boolean;
+  error: string | null;
+}) {
+  const [page, setPage] = useState(0);
+  const history = archives ?? [];
+  const pageCount = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  const visible = history.slice(
+    current * PAGE_SIZE,
+    current * PAGE_SIZE + PAGE_SIZE,
+  );
+
+  return (
+    <section className="lobby-group lobby-history">
+      <div className="group-head">
+        <h2 className="group-title">历史对局</h2>
+        <span className="group-note">
+          {loading && archives === null
+            ? '读取中…'
+            : error !== null && archives === null
+              ? '加载失败'
+              : `${history.length} 局`}
+        </span>
+      </div>
+      {error !== null && archives === null ? (
+        <p className="lobby-empty">{error}</p>
+      ) : loading && archives === null ? (
+        <p className="lobby-empty">读取中…</p>
+      ) : history.length === 0 ? (
+        <p className="lobby-empty">
+          暂无历史对局。一局下完再开新局，旧局会来到这里。
+        </p>
+      ) : (
+        <>
+          <div className="lobby-grid">
+            {visible.map((entry) => {
+              const result = endLabel(
+                entry.game,
+                entry.winner,
+                entry.endReason,
+              );
+              return (
+                <Link
+                  key={entry.archiveId}
+                  className="lobby-card lobby-card--history"
+                  to={`/replay/${encodeURIComponent(entry.archiveId)}`}
+                >
+                  <div className="card-head">
+                    <span className="card-type">
+                      {entry.game === 'go' ? '围棋' : '五子棋'}
+                    </span>
+                    <span
+                      className={
+                        result === null
+                          ? 'card-phase card-phase--done'
+                          : 'card-result'
+                      }
+                    >
+                      {result ?? '未终局'}
+                    </span>
+                  </div>
+                  <p className="card-title">{entry.roomId}</p>
+                  <div className="card-meta">
+                    <span>{entry.moveCount} 手</span>
+                    <time>{timeAgo(entry.playedAt)}</time>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+          <Pager page={current} pageCount={pageCount} onPage={setPage} />
+        </>
+      )}
+    </section>
+  );
+}
+
 /** `/` shows every domain; the domain routes show one slice of the same data. */
 type LobbyDomain = 'games' | 'chats';
+type GameTab = 'gomoku' | 'go' | 'history';
+
+const GAME_TABS: Array<{ key: GameTab; label: string }> = [
+  { key: 'gomoku', label: '五子棋' },
+  { key: 'go', label: '围棋' },
+  { key: 'history', label: '历史对局' },
+];
 
 export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
   const {
@@ -259,7 +444,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
     load: loadArchives,
   } = useLobbyList(fetchArchives);
 
-  const [showAllHistory, setShowAllHistory] = useState(false);
+  const [gameTab, setGameTab] = useState<GameTab>('gomoku');
 
   const load = useCallback((): void => {
     void loadRooms();
@@ -290,14 +475,6 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
           .map(chatCard)
       : [];
 
-  // The server already ordered the archive list by playedAt desc; slicing
-  // keeps that order, nothing re-sorts it.
-  const history = archives ?? [];
-  const visibleHistory = showAllHistory
-    ? history
-    : history.slice(0, HISTORY_LIMIT);
-  const hiddenHistory = history.length - visibleHistory.length;
-
   const activeErrors = [
     gamesError ? `棋类房间：${gamesError}` : null,
     chatsError ? `聊天房间：${chatsError}` : null,
@@ -305,20 +482,21 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
   ].filter(Boolean) as string[];
   const topError = activeErrors.length > 0 ? activeErrors.join('；') : null;
 
+  const title =
+    domain === 'games' ? '棋局' : domain === 'chats' ? '聊天室' : '大厅';
+  const subtitle =
+    domain === 'games'
+      ? '五子棋与围棋的房间，点卡片进入。'
+      : domain === 'chats'
+        ? '多个 agent 轮流发言的聊天室。'
+        : '三类房间与历史对局，点卡片进入。';
+
   return (
     <>
       <div className="page-head">
         <div>
-          <h2 className="page-title">
-            {domain === 'games' ? '棋局' : domain === 'chats' ? '聊天室' : '大厅'}
-          </h2>
-          <p className="page-subtitle">
-            {domain === 'games'
-              ? '五子棋与围棋的房间，点卡片进入。'
-              : domain === 'chats'
-                ? '多个 agent 轮流发言的聊天室。'
-                : '三类房间与历史对局，点卡片进入。'}
-          </p>
+          <h2 className="page-title">{title}</h2>
+          <p className="page-subtitle">{subtitle}</p>
         </div>
         <div className="page-head-meta">
           <span className="room-chip">每 {POLL_MS / 1000} 秒自动刷新</span>
@@ -339,107 +517,103 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
       ) : null}
 
       <main className="lobby">
-        {domain !== 'chats' ? (
+        {domain === 'games' ? (
           <>
-            <Group
-              title="五子棋"
-              note={`${gomoku.length} 间`}
-              emptyHint="暂无房间。打开 /games/<房间名> 即可开一间。"
-              cards={gomoku}
-              loading={gamesLoading}
-              error={gamesError}
-            />
-            <Group
-              title="围棋"
-              note={`${go.length} 间`}
-              emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
-              cards={go}
-              loading={gamesLoading}
-              error={gamesError}
-            />
+            <div className="lobby-tabs" role="tablist" aria-label="棋类分区">
+              {GAME_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={gameTab === tab.key}
+                  className={
+                    gameTab === tab.key ? 'lobby-tab is-active' : 'lobby-tab'
+                  }
+                  onClick={() => setGameTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            {gameTab === 'gomoku' ? (
+              <Group
+                title="五子棋"
+                unit="间"
+                emptyHint="暂无房间。打开 /games/<房间名> 即可开一间。"
+                cards={gomoku}
+                loading={gamesLoading}
+                error={gamesError}
+                filterable
+              />
+            ) : null}
+            {gameTab === 'go' ? (
+              <Group
+                title="围棋"
+                unit="间"
+                emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
+                cards={go}
+                loading={gamesLoading}
+                error={gamesError}
+                filterable
+              />
+            ) : null}
+            {gameTab === 'history' ? (
+              <HistorySection
+                archives={archives}
+                loading={archivesLoading}
+                error={archivesError}
+              />
+            ) : null}
           </>
         ) : null}
-        {domain !== 'games' ? (
+
+        {domain === 'chats' ? (
           <Group
             title="聊天"
-            note={`${chatCards.length} 间`}
+            unit="间"
             emptyHint="暂无房间。POST /api/chat/rooms 或 MCP 建房。"
             cards={chatCards}
             loading={chatsLoading}
             error={chatsError}
+            filterable
           />
         ) : null}
 
-        {domain !== 'chats' ? (
-          <section className="lobby-group lobby-history">
-            <div className="group-head">
-              <h2 className="group-title">历史对局</h2>
-              <span className="group-note">
-                {archivesLoading && archives === null
-                  ? '读取中…'
-                  : archivesError !== null && archives === null
-                    ? '加载失败'
-                    : `${history.length} 局`}
-              </span>
-            </div>
-            {archivesError !== null && archives === null ? (
-              <p className="lobby-empty">{archivesError}</p>
-            ) : archivesLoading && archives === null ? (
-              <p className="lobby-empty">读取中…</p>
-            ) : history.length === 0 ? (
-              <p className="lobby-empty">
-                暂无历史对局。一局下完再开新局，旧局会来到这里。
-              </p>
-            ) : (
-              <>
-                <div className="lobby-grid">
-                  {visibleHistory.map((entry) => {
-                    const result = endLabel(
-                      entry.game,
-                      entry.winner,
-                      entry.endReason,
-                    );
-                    return (
-                      <Link
-                        key={entry.archiveId}
-                        className="lobby-card lobby-card--history"
-                        to={`/replay/${encodeURIComponent(entry.archiveId)}`}
-                      >
-                        <div className="card-head">
-                          <span className="card-type">
-                            {entry.game === 'go' ? '围棋' : '五子棋'}
-                          </span>
-                          <span
-                            className={
-                              result === null
-                                ? 'card-phase card-phase--done'
-                                : 'card-result'
-                            }
-                          >
-                            {result ?? '未终局'}
-                          </span>
-                        </div>
-                        <p className="card-title">{entry.roomId}</p>
-                        <div className="card-meta">
-                          <span>{entry.moveCount} 手</span>
-                          <time>{timeAgo(entry.playedAt)}</time>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-                {hiddenHistory > 0 ? (
-                  <button
-                    type="button"
-                    className="btn btn--ghost lobby-more"
-                    onClick={() => setShowAllHistory(true)}
-                  >
-                    查看更多（还有 {hiddenHistory} 局）
-                  </button>
-                ) : null}
-              </>
-            )}
-          </section>
+        {domain === undefined ? (
+          <>
+            <Group
+              title="五子棋"
+              unit="间"
+              emptyHint="暂无房间。打开 /games/<房间名> 即可开一间。"
+              cards={gomoku}
+              loading={gamesLoading}
+              error={gamesError}
+              filterable
+            />
+            <Group
+              title="围棋"
+              unit="间"
+              emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
+              cards={go}
+              loading={gamesLoading}
+              error={gamesError}
+              filterable
+            />
+            <Group
+              title="聊天"
+              unit="间"
+              emptyHint="暂无房间。POST /api/chat/rooms 或 MCP 建房。"
+              cards={chatCards}
+              loading={chatsLoading}
+              error={chatsError}
+              filterable
+            />
+            <HistorySection
+              archives={archives}
+              loading={archivesLoading}
+              error={archivesError}
+            />
+          </>
         ) : null}
       </main>
     </>
