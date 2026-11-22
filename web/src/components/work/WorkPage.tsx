@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ArtifactRef, TestEvidence, WorkStatus, WorkTask } from '@arena/shared';
 import { useWorkStore } from '../../store/work';
+import { usePageTitle } from '../layout/PageTitle';
 
 const labels: Record<WorkStatus, string> = {
   queued: '待领取', working: '执行中', pending_review: '待复审', reviewing: '复审中',
@@ -102,6 +103,7 @@ function TaskDetail({ task }: { task: WorkTask }) {
 }
 
 export function WorkPage() {
+  usePageTitle('开发任务');
   const { connect, tasks, select, selected, detail, loading, error } = useWorkStore();
   useEffect(() => connect(), [connect]);
   return (

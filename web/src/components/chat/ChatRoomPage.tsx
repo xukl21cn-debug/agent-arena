@@ -3,6 +3,7 @@ import type { ChatMemberFrame } from '@arena/shared';
 import { useChatStore, type ChatConnection } from '../../store/chat';
 import { ChatComposer } from './ChatComposer';
 import { authorColor, ChatTimeline } from './ChatTimeline';
+import { usePageTitle } from '../layout/PageTitle';
 
 const CONNECTION_LABELS: Record<ChatConnection, string> = {
   connecting: '连接中',
@@ -173,6 +174,7 @@ function HostControls({
 }
 
 export function ChatRoomPage({ roomId }: { roomId: string }) {
+  usePageTitle('AI 聊天室');
   const connect = useChatStore((store) => store.connect);
   const connection = useChatStore((store) => store.connection);
   const room = useChatStore((store) => store.room);

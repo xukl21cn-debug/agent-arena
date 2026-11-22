@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import type { ArchiveSummary, RoomSummary } from '@arena/shared';
 import { api, errorMessage, type ChatRoomSummaryDto } from '../../api';
 import { endLabel, timeAgo } from '../../labels';
+import { usePageTitle } from '../layout/PageTitle';
 
 /** The lobby is a directory, not a dashboard: a slow heartbeat is enough. */
 const POLL_MS = 8_000;
@@ -69,6 +70,16 @@ function phaseBucket(phase: string): FilterKey {
  * route because `/` shows several lists at once.
  */
 const listMemory = new Map<string, { filter: FilterKey; page: number }>();
+
+/**
+ * Page, filter and sub-tab are remembered per history entry, not per list.
+ * A single map keyed by the list would make every earlier lobby entry show the
+ * position of the newest one; the router's `location.key` is unique per entry
+ * and comes back when the user goes back to it.
+ */
+function entryKey(locationKey: string, listKey: string): string {
+  return `${locationKey}:${listKey}`;
+}
 
 /**
  * The two list endpoints name their room differently (`roomId` vs `id`).
@@ -229,19 +240,20 @@ function Group({
   error = null,
   filterable = false,
 }: GroupProps) {
-  const remembered = listMemory.get(listKey);
+  const memoryKey = entryKey(useLocation().key, listKey);
+  const remembered = listMemory.get(memoryKey);
   const [filter, setFilter] = useState<FilterKey>(remembered?.filter ?? 'all');
   const [page, setPage] = useState(remembered?.page ?? 0);
 
   const applyFilter = (next: FilterKey) => {
     setFilter(next);
     setPage(0);
-    listMemory.set(listKey, { filter: next, page: 0 });
+    listMemory.set(memoryKey, { filter: next, page: 0 });
   };
 
   const applyPage = (next: number) => {
     setPage(next);
-    listMemory.set(listKey, { filter, page: next });
+    listMemory.set(memoryKey, { filter, page: next });
   };
 
   const filtered =
@@ -382,11 +394,12 @@ function HistorySection({
   loading: boolean;
   error: string | null;
 }) {
-  const remembered = listMemory.get('history');
+  const memoryKey = entryKey(useLocation().key, 'history');
+  const remembered = listMemory.get(memoryKey);
   const [page, setPage] = useState(remembered?.page ?? 0);
   const applyPage = (next: number) => {
     setPage(next);
-    listMemory.set('history', { filter: 'all', page: next });
+    listMemory.set(memoryKey, { filter: 'all', page: next });
   };
   const history = archives ?? [];
   const pageCount = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
@@ -472,9 +485,12 @@ const GAME_TABS: Array<{ key: GameTab; label: string }> = [
 ];
 
 /** The game lobby's sub-tab survives leaving and coming back, like the pages do. */
-let rememberedGameTab: GameTab = 'gomoku';
+const gameTabMemory = new Map<string, GameTab>();
 
 export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
+  usePageTitle(
+    domain === 'games' ? '棋局对弈' : domain === 'chats' ? 'AI 聊天室' : '大厅',
+  );
   const {
     data: games,
     loading: gamesLoading,
@@ -496,9 +512,10 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
     load: loadArchives,
   } = useLobbyList(fetchArchives);
 
-  const [gameTab, setGameTab] = useState<GameTab>(rememberedGameTab);
+  const entry = useLocation().key;
+  const [gameTab, setGameTab] = useState<GameTab>(() => gameTabMemory.get(entry) ?? 'gomoku');
   const selectTab = (next: GameTab): void => {
-    rememberedGameTab = next;
+    gameTabMemory.set(entry, next);
     setGameTab(next);
   };
 

@@ -4,6 +4,7 @@ import { api, errorMessage } from '../../api';
 import { endLabel } from '../../labels';
 import { Board } from '../Board';
 import { GoBoard } from '../GoBoard';
+import { usePageTitle } from '../layout/PageTitle';
 
 function clockOf(at: string): string {
   const date = new Date(at);
@@ -55,6 +56,7 @@ interface ReplayPageProps {
  * coordinates and capture marks stay maintained in one place.
  */
 export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
+  usePageTitle('棋谱回放');
   const [replay, setReplay] = useState<ReplayResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);

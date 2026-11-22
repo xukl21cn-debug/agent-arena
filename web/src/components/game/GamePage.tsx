@@ -19,6 +19,7 @@ import {
   visibleCommentary,
   type ConnectionStatus,
 } from '../../store/room';
+import { usePageTitle } from '../layout/PageTitle';
 
 const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
   connecting: '连接中',
@@ -28,6 +29,7 @@ const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
 };
 
 export function GamePage() {
+  usePageTitle('棋局对弈');
   const params = useParams();
   const roomId =
     params.roomId !== undefined && ROOM_ID_PATTERN.test(params.roomId)

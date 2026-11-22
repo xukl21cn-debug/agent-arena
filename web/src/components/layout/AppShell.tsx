@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Link, NavLink, Outlet } from 'react-router';
 import styles from './AppShell.module.scss';
+import { PageTitleContext } from './PageTitle';
 
 /** Tabs mirror the three domains; the label is also the document title. */
 interface ShellTab {
@@ -21,67 +22,43 @@ const TABS: ShellTab[] = [
 ];
 
 /**
- * The header title mirrors the route table in `App.tsx` exactly instead of
- * matching prefixes. A path that matches no route is redirected to `/`, so it
- * has to read as the lobby here too — otherwise the header would describe a
- * page that never renders.
+ * The header title is the domain, not the page: the page keeps its own compact
+ * head for things like the room name or the current game. Keeping one title in
+ * the shell is what stops every page from rendering its own topbar.
  *
- * Two normalizations keep this table honest: a trailing slash is the same
- * route, and the router matches case-insensitively, so `/GAMES/x/REPLAY` is a
- * replay even though the pattern here is written in lowercase.
+ * Each route declares its own title through `usePageTitle`, so the header can
+ * never disagree with what actually rendered.
  */
-function titleFor(rawPathname: string): string {
-  const pathname = rawPathname.replace(/\/+$/, '').toLowerCase() || '/';
-  if (pathname === '/') {
-    return '大厅';
-  }
-  if (pathname === '/games' || /^\/games\/[^/]+$/.test(pathname)) {
-    return '棋局对弈';
-  }
-  if (/^\/games\/[^/]+\/replay$/.test(pathname)) {
-    return '棋谱回放';
-  }
-  if (pathname === '/replay' || /^\/replay\/[^/]+$/.test(pathname)) {
-    return '棋谱回放';
-  }
-  if (pathname === '/chats' || /^\/chats\/[^/]+$/.test(pathname)) {
-    return 'AI 聊天室';
-  }
-  if (pathname === '/work') {
-    return '开发任务';
-  }
-  return '大厅';
-}
-
 export function AppShell() {
-  const { pathname } = useLocation();
-  const title = titleFor(pathname);
+  const [title, setTitle] = useState('大厅');
 
   useEffect(() => {
     document.title = `${title} · Agent Arena`;
   }, [title]);
 
   return (
-    <div className={styles.app}>
-      <header className={styles.topbar}>
-        <Link className={styles.brandLink} to="/">
-          <p className={styles.eyebrow}>Agent Arena · MCP</p>
-          <h1 className={styles.title}>{title}</h1>
-        </Link>
-        <nav className={styles.shellNav} aria-label="主导航">
-          {TABS.map((tab) => (
-            <NavLink
-              key={tab.to}
-              className={styles.shellNavLink}
-              title={tab.hint}
-              to={tab.to}
-            >
-              {tab.label}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
-      <Outlet />
-    </div>
+    <PageTitleContext.Provider value={setTitle}>
+      <div className={styles.app}>
+        <header className={styles.topbar}>
+          <Link className={styles.brandLink} to="/">
+            <p className={styles.eyebrow}>Agent Arena · MCP</p>
+            <h1 className={styles.title}>{title}</h1>
+          </Link>
+          <nav className={styles.shellNav} aria-label="主导航">
+            {TABS.map((tab) => (
+              <NavLink
+                key={tab.to}
+                className={styles.shellNavLink}
+                title={tab.hint}
+                to={tab.to}
+              >
+                {tab.label}
+              </NavLink>
+            ))}
+          </nav>
+        </header>
+        <Outlet />
+      </div>
+    </PageTitleContext.Provider>
   );
 }
