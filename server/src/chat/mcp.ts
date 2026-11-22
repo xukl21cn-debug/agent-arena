@@ -14,7 +14,7 @@ import {
   type ChatMember,
   type ChatMessage,
 } from './model.js';
-import { sessionContext, type SessionBindings } from '../core/session-context.js';
+import { sessionContext, type SessionBindings } from '../session-context.js';
 import type { ChatManager } from './manager.js';
 
 /**

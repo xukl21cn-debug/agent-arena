@@ -626,7 +626,7 @@ describe('two agents in one room', () => {
 
   it('S-07: InProcessApi.clearSession drops session bindings cleanly', async () => {
     const { InProcessApi } = await import('../src/mcp/http');
-    const { SessionBindings } = await import('../src/core/session-context');
+    const { SessionBindings } = await import('../src/session-context');
     const bindings = new SessionBindings();
     const testApi = new InProcessApi({} as any, {} as any, bindings);
 

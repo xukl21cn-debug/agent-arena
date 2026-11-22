@@ -5,7 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema, isInitializeRequest, typ
 import { WORK_STATUSES, type WorkStatus } from '@arena/shared';
 import type { Express } from 'express';
 import { z } from 'zod';
-import { sessionContext, type SessionBindings } from '../core/session-context.js';
+import { sessionContext, type SessionBindings } from '../session-context.js';
 import { claimInput, createInput, id, mergeInput, name, reason, resultInput, reviewInput, role, WorkError } from './model.js';
 import type { WorkStore } from './store.js';
 

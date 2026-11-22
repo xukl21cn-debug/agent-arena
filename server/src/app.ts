@@ -3,7 +3,7 @@ import path from 'node:path';
 import express, { type Express } from 'express';
 import type { ErrorResponse } from '@arena/shared';
 import type { ServerConfig } from './config.js';
-import { SessionBindings } from './core/session-context.js';
+import { SessionBindings } from './session-context.js';
 import { chatErrorHandler, createChatRouter } from './chat/http.js';
 import { mountChatMcp } from './chat/mcp.js';
 import { ChatManager } from './chat/manager.js';

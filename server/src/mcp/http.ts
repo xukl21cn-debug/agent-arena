@@ -19,7 +19,7 @@ import {
   toAnyAgentStateView,
   type AgentViewOptions,
 } from '../core/insights.js';
-import { currentSession, SessionBindings, sessionContext } from '../core/session-context.js';
+import { currentSession, SessionBindings, sessionContext } from '../session-context.js';
 import { RoomError, type ActorRef, type GameRoom, type StateActionResult } from '../rooms/room.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
 import {
