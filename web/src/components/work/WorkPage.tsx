@@ -105,11 +105,13 @@ export function WorkPage() {
   const { connect, tasks, select, selected, detail, loading, error } = useWorkStore();
   useEffect(() => connect(), [connect]);
   return (
-    <div className="app">
-      <header className="topbar">
-        <h1 className="title">开发任务</h1>
-        <a className="btn btn--ghost" href="/">返回大厅</a>
-      </header>
+    <>
+      <div className="page-head">
+        <div>
+          <h2 className="page-title">开发任务</h2>
+          <p className="page-subtitle">本机看板：领取、复审、收工确认与放行合并。</p>
+        </div>
+      </div>
       {error && <p className="error-bar" role="alert">{error}</p>}
       <main className="work-board">
         <nav className="panel work-list" aria-label="任务列表">
@@ -125,6 +127,6 @@ export function WorkPage() {
         </nav>
         {detail && <TaskDetail key={detail.id} task={detail} />}
       </main>
-    </div>
+    </>
   );
 }

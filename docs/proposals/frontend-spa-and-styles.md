@@ -291,7 +291,25 @@ F1 独立于 F2/F3，可以先合。F4 放最后且允许长期未完成。
 
 ## 6. 实施记录
 
-（待实现后按步骤补：提交号、跑过的验收项、遗留项）
+分支 `feat/backend-and-frontend-refactor`。
+
+**F1（2a）`ddbdd3d`**
+
+- `styles.css`（2152 行）按原有 banner 拆成 10 个 partial + `index.scss`，`main.tsx` 只改一行引用。
+- 验证：构建产物的 CSS 与改造前**逐字节相同**（SHA-256 一致，连 `index-4Aa-PB0C.css` 这个 hash 文件名都没变）；dev 模式下 `/src/styles/index.scss` 返回 200。
+- 与计划的偏差：提案写的是「按选择器归属切」，实际必须按**连续区段**切。`scoring.scss` 的 `.btn--toggle` 与 `responsive.scss` 中 980px 查询内的 `.btn` 特异度相同，按归属合并会改变窄屏按钮样式。因此比提案多了 `responsive` / `scoring` / `replay` 三个文件，顺序约束写进了 `index.scss` 的注释。
+
+**F2（路由外壳）本提交**
+
+- `react-router` 接管路径：`/`、`/games`、`/games/:roomId`、`/games/:roomId/replay`、`/replay[/:archiveId]`、`/chats[/:roomId]`、`/work`，未知路径回 `/`。
+- `AppShell` 成为唯一渲染 `.topbar` 的地方（改造前 7 处散在 5 个文件），页面改用紧凑的 `.page-head` 承载房间号、阶段与连接状态；`GamePage` 从 `App.tsx` 拆到 `components/game/`。
+- `LegacyRedirector` 挂在 `/`，按 `archive → replay → chat → work → room` 的旧优先级跳转，非法 roomId 归一化到 `DEFAULT_ROOM_ID`，无关 query（如 `?utm_source=`）不触发跳转。
+- 房间页的连接改成 `useLayoutEffect`：`connect()` 会重置 store，普通 effect 会先绘制一帧上一间房。
+- 验证：用 CDP 驱动真实 Chrome 跑 17 条用例（8 条新路径 + 7 条旧 query + 未知路径），全部通过——路径、`document.title`、`.page-title`、`topbar` 数量都断言；另验 tab 点击不整页刷新（`window` 标记存活）、`history.back()` / `forward()` 落在正确路径。
+- 已知偏差：`/games` 与 `/chats` 目前只做了「隐藏另一域的列表」的过滤，子 Tab、状态筛选与分页仍是 F3。
+
+**待办：** F3（大厅分栏与分页）、F4（2b 增量 module）。
+
 
 ## 7. 独立审核
 

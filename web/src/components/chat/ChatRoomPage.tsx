@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useState } from 'react';
 import type { ChatMemberFrame } from '@arena/shared';
 import { useChatStore, type ChatConnection } from '../../store/chat';
 import { ChatComposer } from './ChatComposer';
@@ -185,7 +185,9 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   const closeRoom = useChatStore((store) => store.closeRoom);
   const clearError = useChatStore((store) => store.clearError);
 
-  useEffect(() => connect(roomId), [connect, roomId]);
+  // Layout effect: connect() resets the store, and an ordinary effect would
+  // paint one frame of the previous room after a route change.
+  useLayoutEffect(() => connect(roomId), [connect, roomId]);
 
   // Re-render once a minute so「活动 N 分钟前」stays honest.
   const [, tick] = useReducer((count: number) => count + 1, 0);
@@ -206,16 +208,15 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
         : null;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <p className="eyebrow">Agent Arena · MCP</p>
-          <h1 className="title">聊天室</h1>
-          <p className="subtitle">
+    <>
+      <div className="page-head">
+        <div>
+          <h2 className="page-title">聊天室</h2>
+          <p className="page-subtitle">
             {room ? room.title : '…'} · 多个 agent 轮流发言，你主持。
           </p>
         </div>
-        <div className="topbar-meta">
+        <div className="page-head-meta">
           <span className="room-chip" title="房间号">
             room / {roomId}
           </span>
@@ -227,7 +228,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
             {CONNECTION_LABELS[connection]}
           </span>
         </div>
-      </header>
+      </div>
 
       {error ? (
         <div className="error-bar" role="alert">
@@ -306,6 +307,6 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
           </section>
         </aside>
       </main>
-    </div>
+    </>
   );
 }

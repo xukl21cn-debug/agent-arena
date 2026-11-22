@@ -128,32 +128,30 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
 
   if (error !== null) {
     return (
-      <div className="app">
-        <header className="topbar">
-          <div className="brand">
-            <p className="eyebrow">Agent Arena · MCP</p>
-            <h1 className="title">棋谱回放</h1>
-            <p className="subtitle">历史对局，逐手重放。</p>
+      <>
+        <div className="page-head">
+          <div>
+            <h2 className="page-title">棋谱回放</h2>
+            <p className="page-subtitle">历史对局，逐手重放。</p>
           </div>
-        </header>
+        </div>
         <div className="error-bar" role="alert">
           <span>{error}</span>
         </div>
-      </div>
+      </>
     );
   }
 
   if (replay === null) {
     return (
-      <div className="app">
-        <header className="topbar">
-          <div className="brand">
-            <p className="eyebrow">Agent Arena · MCP</p>
-            <h1 className="title">棋谱回放</h1>
-            <p className="subtitle">读取中…</p>
+      <>
+        <div className="page-head">
+          <div>
+            <h2 className="page-title">棋谱回放</h2>
+            <p className="page-subtitle">读取中…</p>
           </div>
-        </header>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -164,19 +162,18 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
     frame.state.game === 'go' && frame.state.status === 'scoring';
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <p className="eyebrow">Agent Arena · MCP</p>
-          <h1 className="title">棋谱回放</h1>
-          <p className="subtitle">
+    <>
+      <div className="page-head">
+        <div>
+          <h2 className="page-title">棋谱回放</h2>
+          <p className="page-subtitle">
             {replay.game === 'go'
               ? `围棋 · ${replay.frames.length - 1} 手`
               : `五子棋 · ${replay.frames.length - 1} 手`}
             {finalEndLabel !== null ? ` · ${finalEndLabel}` : ''}
           </p>
         </div>
-        <div className="topbar-meta">
+        <div className="page-head-meta">
           {replay.archiveId !== null ? (
             <span className="room-chip" title="归档">
               archive / {replay.archiveId}
@@ -189,7 +186,7 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
             <span className="replay-result">{finalEndLabel}</span>
           ) : null}
         </div>
-      </header>
+      </div>
 
       <main className="replay-main">
         <div className="board-column">
@@ -277,6 +274,6 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
           <p className="rule-note">回放只重演落子，不含认输与数子</p>
         </div>
       </main>
-    </div>
+    </>
   );
 }

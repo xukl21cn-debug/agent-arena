@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
 import type { ArchiveSummary, RoomSummary } from '@arena/shared';
 import { api, errorMessage, type ChatRoomSummaryDto } from '../../api';
 import { endLabel, timeAgo } from '../../labels';
@@ -40,7 +41,7 @@ function phaseTone(phase: string): string {
  */
 function gameCard(summary: RoomSummary): {
   id: string;
-  href: string;
+  to: string;
   typeLabel: string;
   phaseLabel: string;
   tone: string;
@@ -51,7 +52,7 @@ function gameCard(summary: RoomSummary): {
 } {
   return {
     id: summary.roomId,
-    href: `/?room=${encodeURIComponent(summary.roomId)}`,
+    to: `/games/${encodeURIComponent(summary.roomId)}`,
     typeLabel: summary.game === 'go' ? '围棋' : '五子棋',
     phaseLabel: GAME_PHASE_LABELS[summary.phase],
     tone: phaseTone(summary.phase),
@@ -69,7 +70,7 @@ function chatCard(summary: ChatRoomSummaryDto) {
   // would be invention (AGENTS §4.2). People are a count, activity is a time.
   return {
     id: summary.id,
-    href: `/?room=${encodeURIComponent(summary.id)}&kind=chat`,
+    to: `/chats/${encodeURIComponent(summary.id)}`,
     typeLabel: '聊天',
     phaseLabel: CHAT_PHASE_LABELS[summary.phase],
     tone: phaseTone(summary.phase),
@@ -83,7 +84,7 @@ function chatCard(summary: ChatRoomSummaryDto) {
 interface CardProps {
   /** The list key (the normalized room id); not rendered. */
   id: string;
-  href: string;
+  to: string;
   typeLabel: string;
   phaseLabel: string;
   tone: string;
@@ -94,7 +95,7 @@ interface CardProps {
 }
 
 function Card({
-  href,
+  to,
   typeLabel,
   phaseLabel,
   tone,
@@ -104,7 +105,7 @@ function Card({
   updatedAt,
 }: CardProps) {
   return (
-    <a className="lobby-card" href={href}>
+    <Link className="lobby-card" to={to}>
       <div className="card-head">
         <span className="card-type">{typeLabel}</span>
         <span className={`card-phase card-phase--${tone}`}>{phaseLabel}</span>
@@ -115,7 +116,7 @@ function Card({
         {people !== '' ? <span>{people}</span> : null}
         <time>{timeAgo(updatedAt)}</time>
       </div>
-    </a>
+    </Link>
   );
 }
 
@@ -233,7 +234,10 @@ function useLobbyList<T>(fetchList: () => Promise<T[]>) {
   return { data, loading, error, load };
 }
 
-export function LobbyPage() {
+/** `/` shows every domain; the domain routes show one slice of the same data. */
+type LobbyDomain = 'games' | 'chats';
+
+export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
   const {
     data: games,
     loading: gamesLoading,
@@ -302,18 +306,24 @@ export function LobbyPage() {
   const topError = activeErrors.length > 0 ? activeErrors.join('；') : null;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <p className="eyebrow">Agent Arena · MCP</p>
-          <h1 className="title">大厅</h1>
-          <p className="subtitle">三类房间与历史对局，点卡片进入。</p>
+    <>
+      <div className="page-head">
+        <div>
+          <h2 className="page-title">
+            {domain === 'games' ? '棋局' : domain === 'chats' ? '聊天室' : '大厅'}
+          </h2>
+          <p className="page-subtitle">
+            {domain === 'games'
+              ? '五子棋与围棋的房间，点卡片进入。'
+              : domain === 'chats'
+                ? '多个 agent 轮流发言的聊天室。'
+                : '三类房间与历史对局，点卡片进入。'}
+          </p>
         </div>
-        <div className="topbar-meta">
-          <a className="btn btn--ghost" href="/?view=work">开发任务</a>
+        <div className="page-head-meta">
           <span className="room-chip">每 {POLL_MS / 1000} 秒自动刷新</span>
         </div>
-      </header>
+      </div>
 
       {topError !== null ? (
         <div className="error-bar" role="alert">
@@ -329,101 +339,109 @@ export function LobbyPage() {
       ) : null}
 
       <main className="lobby">
-        <Group
-          title="五子棋"
-          note={`${gomoku.length} 间`}
-          emptyHint="暂无房间。打开 ?room=<房间名> 即可开一间。"
-          cards={gomoku}
-          loading={gamesLoading}
-          error={gamesError}
-        />
-        <Group
-          title="围棋"
-          note={`${go.length} 间`}
-          emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
-          cards={go}
-          loading={gamesLoading}
-          error={gamesError}
-        />
-        <Group
-          title="聊天"
-          note={`${chatCards.length} 间`}
-          emptyHint="暂无房间。POST /api/chat/rooms 或 MCP 建房。"
-          cards={chatCards}
-          loading={chatsLoading}
-          error={chatsError}
-        />
+        {domain !== 'chats' ? (
+          <>
+            <Group
+              title="五子棋"
+              note={`${gomoku.length} 间`}
+              emptyHint="暂无房间。打开 /games/<房间名> 即可开一间。"
+              cards={gomoku}
+              loading={gamesLoading}
+              error={gamesError}
+            />
+            <Group
+              title="围棋"
+              note={`${go.length} 间`}
+              emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
+              cards={go}
+              loading={gamesLoading}
+              error={gamesError}
+            />
+          </>
+        ) : null}
+        {domain !== 'games' ? (
+          <Group
+            title="聊天"
+            note={`${chatCards.length} 间`}
+            emptyHint="暂无房间。POST /api/chat/rooms 或 MCP 建房。"
+            cards={chatCards}
+            loading={chatsLoading}
+            error={chatsError}
+          />
+        ) : null}
 
-        <section className="lobby-group lobby-history">
-          <div className="group-head">
-            <h2 className="group-title">历史对局</h2>
-            <span className="group-note">
-              {archivesLoading && archives === null
-                ? '读取中…'
-                : archivesError !== null && archives === null
-                  ? '加载失败'
-                  : `${history.length} 局`}
-            </span>
-          </div>
-          {archivesError !== null && archives === null ? (
-            <p className="lobby-empty">{archivesError}</p>
-          ) : archivesLoading && archives === null ? (
-            <p className="lobby-empty">读取中…</p>
-          ) : history.length === 0 ? (
-            <p className="lobby-empty">
-              暂无历史对局。一局下完再开新局，旧局会来到这里。
-            </p>
-          ) : (
-            <>
-              <div className="lobby-grid">
-                {visibleHistory.map((entry) => {
-                  const result = endLabel(
-                    entry.game,
-                    entry.winner,
-                    entry.endReason,
-                  );
-                  return (
-                    <a
-                      key={entry.archiveId}
-                      className="lobby-card lobby-card--history"
-                      href={`/?archive=${encodeURIComponent(entry.archiveId)}`}
-                    >
-                      <div className="card-head">
-                        <span className="card-type">
-                          {entry.game === 'go' ? '围棋' : '五子棋'}
-                        </span>
-                        <span
-                          className={
-                            result === null
-                              ? 'card-phase card-phase--done'
-                              : 'card-result'
-                          }
-                        >
-                          {result ?? '未终局'}
-                        </span>
-                      </div>
-                      <p className="card-title">{entry.roomId}</p>
-                      <div className="card-meta">
-                        <span>{entry.moveCount} 手</span>
-                        <time>{timeAgo(entry.playedAt)}</time>
-                      </div>
-                    </a>
-                  );
-                })}
-              </div>
-              {hiddenHistory > 0 ? (
-                <button
-                  type="button"
-                  className="btn btn--ghost lobby-more"
-                  onClick={() => setShowAllHistory(true)}
-                >
-                  查看更多（还有 {hiddenHistory} 局）
-                </button>
-              ) : null}
-            </>
-          )}
-        </section>
+        {domain !== 'chats' ? (
+          <section className="lobby-group lobby-history">
+            <div className="group-head">
+              <h2 className="group-title">历史对局</h2>
+              <span className="group-note">
+                {archivesLoading && archives === null
+                  ? '读取中…'
+                  : archivesError !== null && archives === null
+                    ? '加载失败'
+                    : `${history.length} 局`}
+              </span>
+            </div>
+            {archivesError !== null && archives === null ? (
+              <p className="lobby-empty">{archivesError}</p>
+            ) : archivesLoading && archives === null ? (
+              <p className="lobby-empty">读取中…</p>
+            ) : history.length === 0 ? (
+              <p className="lobby-empty">
+                暂无历史对局。一局下完再开新局，旧局会来到这里。
+              </p>
+            ) : (
+              <>
+                <div className="lobby-grid">
+                  {visibleHistory.map((entry) => {
+                    const result = endLabel(
+                      entry.game,
+                      entry.winner,
+                      entry.endReason,
+                    );
+                    return (
+                      <Link
+                        key={entry.archiveId}
+                        className="lobby-card lobby-card--history"
+                        to={`/replay/${encodeURIComponent(entry.archiveId)}`}
+                      >
+                        <div className="card-head">
+                          <span className="card-type">
+                            {entry.game === 'go' ? '围棋' : '五子棋'}
+                          </span>
+                          <span
+                            className={
+                              result === null
+                                ? 'card-phase card-phase--done'
+                                : 'card-result'
+                            }
+                          >
+                            {result ?? '未终局'}
+                          </span>
+                        </div>
+                        <p className="card-title">{entry.roomId}</p>
+                        <div className="card-meta">
+                          <span>{entry.moveCount} 手</span>
+                          <time>{timeAgo(entry.playedAt)}</time>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+                {hiddenHistory > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn--ghost lobby-more"
+                    onClick={() => setShowAllHistory(true)}
+                  >
+                    查看更多（还有 {hiddenHistory} 局）
+                  </button>
+                ) : null}
+              </>
+            )}
+          </section>
+        ) : null}
       </main>
-    </div>
+    </>
   );
 }
