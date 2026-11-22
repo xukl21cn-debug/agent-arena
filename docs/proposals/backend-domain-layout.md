@@ -110,8 +110,8 @@ stdio 桥不是独立服务：它启动后把每个工具调用转成 REST 请�
 
 | 检查点 | 结果 |
 |---|---|
-| [api.ts](../../server/src/mcp/api.ts) 的 `ArenaApi` 接口 | 全部是棋类方法：`joinGame` / `placeStone` / `passGame` / `markDead` / `confirmScore` / `resumePlay` / `resign` / `say`，没有任何聊天或工作的方法 |
-| [tools.ts](../../server/src/mcp/tools.ts) 注册的工具 | `join_game` / `leave_room` / `new_game` / `get_state` / `wait_for_turn` / `place_stone` / `pass` / `mark_dead` / `confirm_score` |
+| [api.ts](../../server/src/game/mcp/api.ts) 的 `ArenaApi` 接口 | 全部是棋类方法：`joinGame` / `placeStone` / `passGame` / `markDead` / `confirmScore` / `resumePlay` / `resign` / `say`，没有任何聊天或工作的方法 |
+| [tools.ts](../../server/src/game/mcp/tools.ts) 注册的工具 | `join_game` / `leave_room` / `new_game` / `get_state` / `wait_for_turn` / `place_stone` / `pass` / `mark_dead` / `confirm_score` |
 | `SERVER_INSTRUCTIONS` 第一句 | 「你是棋类对弈 Agent。」 |
 | 聊天与工作 | 只有 HTTP 端点（`/chat/mcp`、`/work/mcp`），**没有 stdio 桥** |
 
@@ -149,7 +149,7 @@ stdio 桥不是独立服务：它启动后把每个工具调用转成 REST 请�
 | [dual-agent.test.ts:232-272](../../server/test/dual-agent.test.ts) | 双 AI 的 `get_state.yourColor`（246、249 行） | 没测 `new_game.yourColor` |
 | [dual-agent.test.ts:274-358](../../server/test/dual-agent.test.ts) | `wait_for_turn.yourColor` | 走 `room.resolve`，不经 `callerSeat` |
 
-也就是说，S-03 独有覆盖的是 [mcp/http.ts:189-198](../../server/src/mcp/http.ts) 里 `callerSeat()` 的几个分支。所以**删 S-03 的同一次提交必须补 1 个走真实 `/game/mcp` 的回归用例**，覆盖：
+也就是说，S-03 独有覆盖的是 [mcp/http.ts:189-198](../../server/src/game/mcp/http.ts) 里 `callerSeat()` 的几个分支。所以**删 S-03 的同一次提交必须补 1 个走真实 `/game/mcp` 的回归用例**，覆盖：
 
 1. **双 AI 的 `new_game` 与 `get_state`**：黑方与白方各自收到自己的 `yourColor`；
 2. **旁观者（`join_game` 不传 seat）**：`get_state` / `new_game` 返回 `yourColor: null`，不得回退到 `black`；
@@ -244,7 +244,23 @@ stdio 桥不是独立服务：它启动后把每个工具调用转成 REST 请�
 
 ## 6. 实施记录
 
-（待实现后按步骤补：提交号、每步测试结果、遗留项）
+分支 `feat/backend-and-frontend-refactor`，按 §2.4 的顺序分 5 个提交完成，每个提交后都跑过全量测试。
+
+| 步 | 提交 | 内容 | 验证 |
+|---|---|---|---|
+| 1 | `e8090ed` | 下线 stdio：删 `stdio.ts`（327 行）、`resolveServerUrl`、`bin`；S-03 换成走 `/game/mcp` 的 `InProcessApi.callerSeat` 用例（覆盖双 AI / 旁观者 / 被顶掉 / 被移除 / 未 join 回退）；同步 10 处 stdio 注释与 4 篇文档 | 383 全绿；`rm -rf server/dist && pnpm build` 后无 `dist/mcp/stdio.js`；三端点 `initialize` 均 200；`duel.mjs` 下完一盘（31 手） |
+| 2 | `2e77e8c` | `core/session-context.ts` → 根级 | 383 全绿；`git diff` 只有 5 行 import |
+| 3 | `877ee49` | `http/ws.ts` → 根级 | 383 全绿；rename 识别 96% |
+| 4 | `633a21c` | `core/`→`game/engine/`、`core/presence.ts`→`game/rooms/`、`rooms/`→`game/rooms/`、`mcp/`→`game/mcp/`、`http/routes.ts`→`game/http/`；`engine.ts`→`gomoku.ts`；3 个根目录脚本改指 `dist/game/engine/*` | 383 全绿；15 个文件全部识别为 rename（相似度 98–100%）；`dist/` 下无 `core/`；3 个辅助脚本 exit 0（`measure-payload` 热路径 2590 字符，仍在 4000 预算内） |
+| 5 | 本提交 | 文档链接与路径文本；提案自身 4 条失效链接改指新位置 | 全仓 docs 链接 0 失效 |
+
+**与计划的偏差：**
+
+- §2.4 说「重命名文件的相似度应为 100%」。实际 98–99%：搬目录时 import 说明符必须改，内容必然有变。评审时按 `git diff -M` 看，改动的行全是 import。
+- 第 4 步的 79 处 import 没有手改，而是用一个按「旧路径 → 新路径」映射重算相对路径的脚本一次性处理，再由 `tsc` + `vitest` 双向兜底。脚本第一次跑出过 `./rules.ts.js` 这类错误（路径未剥离 `.ts` 就补 `.js`），已回滚重跑。
+
+**遗留项：** 无。`docs/archive/` 下的历史文档按 §2.3 保留原样。
+
 
 ## 7. 独立审核
 

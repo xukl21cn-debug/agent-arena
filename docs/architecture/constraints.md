@@ -38,7 +38,7 @@
 
 | 约束 | 为什么 |
 |---|---|
-| 聊天不碰 `rooms/room.ts`、`rooms/room-manager.ts`、`mcp/tools.ts`、`core/presence.ts`、`shared/src/game.ts` | 复用棋类对象会把两套契约绑死。棋类侧只允许在 `app.ts` 挂路由、`index.ts` 初始化 |
+| 聊天不碰 `game/rooms/room.ts`、`game/rooms/room-manager.ts`、`game/mcp/tools.ts`、`game/rooms/presence.ts`、`shared/src/game.ts` | 复用棋类对象会把两套契约绑死。棋类侧只允许在 `app.ts` 挂路由、`index.ts` 初始化 |
 | `/chat/mcp` 与 `/game/mcp` 双向不可见，聊天工具不挂到棋类端点 | 共享端点会让两边 instructions 互相污染，只下棋的 agent 也会看到聊天工具 |
 | 开发任务走 `/work/mcp` | 任务独立记录返工轮次、收工确认和用户放行 |
 | 不复用 `PresenceRegistry`；聊天界面**不得显示**「在线 / 离线」 | 它全部按 seat 索引，聊天成员没有座位。伪造 seat 会污染棋类 presence，大改又违反禁改；没有 presence 却显示在线就是编造 |
@@ -56,7 +56,7 @@
 | ko 必须同时满足：恰提一子 + 提子方是独立一子 + 唯一气正好是被提点 | 只判「棋块一气」会把多子块提单子的普通反提误判成劫 |
 | 面积法：黑=子+地，白=子+地+komi（7.5 给白）；`captures` 只展示，不进总分 | 提子计入总分「看起来合理但是错的」；komi 是补偿后手，不是给黑方的优惠 |
 | `boardSize ≠ 9` 或 `koRule ≠ 'simple'` 返回 `UNSUPPORTED_RULE`，不静默接受 | 静默接受会让不支持的规则照跑，结果无意义 |
-| 规则只在 `core/go.ts`，房间层只搬状态，不得重写规则 | 引擎已过独立审计，二次实现会造成规则分叉 |
+| 规则只在 `game/engine/go.ts`，房间层只搬状态，不得重写规则 | 引擎已过独立审计，二次实现会造成规则分叉 |
 | 进 scoring 时 `turn` 保持「下一手本应落子的一方」，不切换、不置 null；`wait_for_turn` 里 **scoring 判断必须在 turn 判断之前** | 数子阶段没有轮次、双方并行确认；用 turn 判「轮到谁」会让已确认方永远收不到唤醒 |
 | `mark_dead` 按**整块** toggle；任何标记变化必须重置双方 `scoreConfirmed` | 按单颗 toggle 会只标半块；一方确认后又改死子，原确认不该作数 |
 | 网页读 `GoState.board` 二维数组，**不得解析** `boardText` | `boardText` 是给 LLM 的字符画，不是前端数据源 |

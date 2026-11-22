@@ -75,7 +75,7 @@
 **两个命名决定，都有硬理由：**
 
 - **`/chats` 而不是 `/chat`。** `/chat/mcp` 是真实 MCP 端点（[chat/mcp.ts:151](../../server/src/chat/mcp.ts)、[207](../../server/src/chat/mcp.ts)），而房间名允许叫 `mcp`（`ROOM_ID_PATTERN = /^[a-zA-Z0-9_-]{1,32}$/`）。用 `/chat/:roomId` 的话，名字为 `mcp` 的聊天室永远打不开——GET 会命中 MCP 的 SSE 而不是页面。改成复数就彻底没有这个面。棋类没这个问题，端点是单数 `/game/mcp`。
-- **归档放 `/replay/:archiveId` 而不是 `/games/replay/:archiveId`。** 归档里同时有五子棋和围棋，不属于棋类子页；同时避开「房间名叫 `replay`」与静态段 `replay` 的歧义。归档 ID 是 `[a-zA-Z0-9_-]{1,80}`（[repository.ts:27](../../server/src/rooms/repository.ts)），放路径段天然安全，不需要额外编码。
+- **归档放 `/replay/:archiveId` 而不是 `/games/replay/:archiveId`。** 归档里同时有五子棋和围棋，不属于棋类子页；同时避开「房间名叫 `replay`」与静态段 `replay` 的歧义。归档 ID 是 `[a-zA-Z0-9_-]{1,80}`（[repository.ts:27](../../server/src/game/rooms/repository.ts)），放路径段天然安全，不需要额外编码。
 
 ### 2.3 旧 URL 兼容层（LegacyRedirector）
 

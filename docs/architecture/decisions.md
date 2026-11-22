@@ -42,7 +42,7 @@
 | v1 快照读到 `schemaVersion: 1` 时补 `game:'gomoku'` 升到 v2 | 方案 B：直接不兼容、旧快照丢弃 | 丢弃旧快照会丢数据 |
 | 迁移用 `schemaVersion === 1` 判别 | 用 `game === undefined` 判别 | 显式版本标记比「字段缺失」可靠 |
 | 非 9 路 / 非 `simple` ko 返回 `UNSUPPORTED_RULE` | 静默接受传入值照跑 | v1 只做 9 路，先拒绝而不是静默接受 |
-| 新建 `core/go-game.ts` 承接围棋状态搬运 | 塞进 `engine.ts`；或在房间层重写规则 | 保持「五子棋引擎」与「围棋状态搬运」边界清晰、职责对等 |
+| 新建 `game/engine/go-game.ts` 承接围棋状态搬运 | 塞进 `gomoku.ts`；或在房间层重写规则 | 保持「五子棋引擎」与「围棋状态搬运」边界清晰、职责对等 |
 | scoring 阶段禁止落子时答 **`NOT_SCORING`** | `GAME_NOT_PLAYING` | 后者会让 agent 以为对局结束了，前者明确告诉它「现在是数子阶段」 |
 | `dead-stones` **先做状态检查再做点位检查** | 先校验点位合法性 | 已结束的对局，不管点位合不合法都该先答「你现在不该做这个」 |
 | 围棋用独立 `GoBoard` 组件，只复用 CSS class | 硬改 15 路 `Board.tsx` 的星位逻辑 | 9 路要 5 个固定星位、无 winLine、要标死子，硬改会让两套规则纠缠 |
