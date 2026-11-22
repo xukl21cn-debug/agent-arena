@@ -1,10 +1,18 @@
 import { useMemo } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigationType,
+  useParams,
+} from 'react-router';
 import { DEFAULT_ROOM_ID, ROOM_ID_PATTERN } from '@arena/shared';
 import { ChatRoomPage } from './components/chat/ChatRoomPage';
 import { GamePage } from './components/game/GamePage';
 import { AppShell } from './components/layout/AppShell';
-import { LobbyPage } from './components/lobby/LobbyPage';
+import { LobbyPage, noteLobbyEntry } from './components/lobby/LobbyPage';
 import { ReplayPage } from './components/replay/ReplayPage';
 import { WorkPage } from './components/work/WorkPage';
 
@@ -51,12 +59,28 @@ function legacyTarget(search: string): string | null {
 }
 
 /** `/` is the lobby, unless an old query string says otherwise. */
+/**
+ * The lobby keeps its tab, filter and page in module memory keyed by history
+ * entry. React reuses this component across `/games` and `/chats` because the
+ * type is the same, and a reused instance never re-reads that memory — so each
+ * entry gets its own instance.
+ */
+function LobbyRoute({ domain }: { domain?: 'games' | 'chats' }) {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  noteLobbyEntry(location.key, location.pathname, navigationType);
+  return <LobbyPage key={location.key} domain={domain} />;
+}
+
 function RootRoute() {
   const target = useMemo(() => legacyTarget(window.location.search), []);
+  const location = useLocation();
+  const navigationType = useNavigationType();
   if (target !== null) {
     return <Navigate replace to={target} />;
   }
-  return <LobbyPage />;
+  noteLobbyEntry(location.key, location.pathname, navigationType);
+  return <LobbyPage key={location.key} />;
 }
 
 function RoomReplayRoute() {
@@ -82,12 +106,12 @@ export default function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route element={<RootRoute />} path="/" />
-          <Route element={<LobbyPage domain="games" />} path="/games" />
+          <Route element={<LobbyRoute domain="games" />} path="/games" />
           <Route element={<GamePage />} path="/games/:roomId" />
           <Route element={<RoomReplayRoute />} path="/games/:roomId/replay" />
           <Route element={<ArchiveReplayRoute />} path="/replay" />
           <Route element={<ArchiveReplayRoute />} path="/replay/:archiveId" />
-          <Route element={<LobbyPage domain="chats" />} path="/chats" />
+          <Route element={<LobbyRoute domain="chats" />} path="/chats" />
           <Route element={<ChatRoomRoute />} path="/chats/:roomId" />
           <Route element={<WorkPage />} path="/work" />
           <Route element={<Navigate replace to="/" />} path="*" />

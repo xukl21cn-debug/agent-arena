@@ -81,6 +81,36 @@ function entryKey(locationKey: string, listKey: string): string {
   return `${locationKey}:${listKey}`;
 }
 
+/** The entry the last render belonged to, for the replace carry-over below. */
+let previousEntry: { key: string; pathname: string } | null = null;
+
+/**
+ * Clicking the tab you are already on is a REPLACE: the browser keeps the same
+ * history position but the router hands out a new key, which would orphan the
+ * remembered tab/filter/page. Carry them over. A REPLACE that lands on another
+ * route starts fresh, and a PUSH or POP always keeps its own memory.
+ */
+export function noteLobbyEntry(
+  key: string,
+  pathname: string,
+  navigationType: string,
+): void {
+  const sameRoute = previousEntry !== null && previousEntry.pathname === pathname;
+  if (navigationType === 'REPLACE' && sameRoute && previousEntry !== null && previousEntry.key !== key) {
+    const from = previousEntry.key;
+    for (const [memoryKey, value] of [...listMemory]) {
+      if (memoryKey.startsWith(`${from}:`)) {
+        listMemory.set(`${key}${memoryKey.slice(from.length)}`, value);
+      }
+    }
+    const tab = gameTabMemory.get(from);
+    if (tab !== undefined) {
+      gameTabMemory.set(key, tab);
+    }
+  }
+  previousEntry = { key, pathname };
+}
+
 /**
  * The two list endpoints name their room differently (`roomId` vs `id`).
  * Normalization happens here, once, so no card component ever sees the

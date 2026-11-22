@@ -2,10 +2,10 @@
 
 > 设计提案 · 2026-11-21（第二版，合并外部评审意见）
 > 状态：**已实现，后端复审通过，待用户验收**（5 个提交见 §6）
-> 基线：`cf3b53b`（`main` 为 `34bd7ef`，两者差异只在部署脚本、README 与 `server/src/index.ts` 一行），383 项测试全绿
+> 方案在 `cf3b53b` 上拟定，实际交付分支以 `main` 的 `31471a4` 为基线。
 > 范围：`server/src/` 的物理结构与 import 路径、`server/test/` 的静态与动态 import、根目录 `scripts/*.mjs` 对编译产物的引用、文档里的源码链接与接入说明，外加**下线棋类 stdio 适配层**。
 > ⚠️ **本提案含一处破坏性变更**：stdio 接入方式下线（§2.3）。除此之外的步骤都是纯移动，函数签名、端点路径、`shared/` 类型、落盘格式一律不动。
-> 兄弟提案：[前端 SPA 外壳与样式现代化](frontend-spa-and-styles.md)。两者互不依赖，各自分支、各自合入。
+> 兄弟提案：[前端 SPA 外壳与样式现代化](frontend-spa-and-styles.md)。两项实现均在 `feat/backend-and-frontend-refactor` 分支交付。
 
 ---
 
