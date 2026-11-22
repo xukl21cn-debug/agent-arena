@@ -139,6 +139,14 @@ function mergeState(
   return incoming;
 }
 
+/**
+ * Bumped every time `connect()` runs. A request captures the value it started
+ * under and drops its reply if the counter moved — which covers both switching
+ * rooms and leaving and re-entering the same room, where the room id alone
+ * would still match.
+ */
+let visitSeq = 0;
+
 export const useRoomStore = create<RoomStore>((set, get) => ({
   roomId: '',
   connection: 'connecting',
@@ -152,6 +160,9 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   resultDismissed: false,
 
   connect(roomId) {
+    // Every entry into a room is a new visit: a reply issued during the last
+    // one must not land here even if it is the same room id.
+    visitSeq += 1;
     set({
       roomId,
       connection: 'connecting',
@@ -162,6 +173,8 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
       commentary: [],
       error: null,
       resultDismissed: false,
+      // A request abandoned by leaving must not leave the new room disabled.
+      busy: false,
     });
     return subscribeToRoom(roomId, set, get);
   },
@@ -309,14 +322,10 @@ type Setter = (
     | ((state: RoomStore) => Partial<RoomStore>),
 ) => void;
 
-function handleError(caught: unknown, set: Setter, roomId: string): void {
-  // A reply from a room the user has already left is dropped: `connect()`
-  // reset the store, so applying it would paint the old board into the new room.
-  if (useRoomStore.getState().roomId !== roomId) {
-    return;
-  }
+function handleError(caught: unknown, set: Setter): void {
   // A rejected mutation still carries the authoritative state, so the board
-  // never shows a move the server refused.
+  // never shows a move the server refused. Callers have already checked that
+  // the reply belongs to the current visit.
   if (caught instanceof ApiError && caught.state) {
     useRoomStore.getState().applyState(caught.state);
   }
@@ -325,12 +334,12 @@ function handleError(caught: unknown, set: Setter, roomId: string): void {
 
 /**
  * Run a room-scoped request and apply its result only while the store still
- * points at the same room.
+ * belongs to the visit that issued it.
  *
- * The route can change while a request is in flight: `connect()` resets the
- * store, and the late reply would otherwise overwrite the new room's board
- * with the previous one. Busy and error state follow the same rule so a stale
- * reply cannot leave the new room stuck as busy.
+ * The route can change while a request is in flight. `connect()` bumps
+ * `visitSeq` and resets the store, so a reply from an earlier visit — same room
+ * or not — is dropped instead of overwriting the current board. Busy and error
+ * state follow the same rule; the new visit resets `busy` itself.
  */
 async function runRoomAction<T>(
   set: Setter,
@@ -338,16 +347,22 @@ async function runRoomAction<T>(
   request: () => Promise<T>,
   apply: (result: T) => void,
 ): Promise<void> {
+  const visit = visitSeq;
+  const current = (): boolean =>
+    visitSeq === visit && useRoomStore.getState().roomId === roomId;
+
   set({ busy: true, error: null });
   try {
     const result = await request();
-    if (useRoomStore.getState().roomId === roomId) {
+    if (current()) {
       apply(result);
     }
   } catch (caught) {
-    handleError(caught, set, roomId);
+    if (current()) {
+      handleError(caught, set);
+    }
   } finally {
-    if (useRoomStore.getState().roomId === roomId) {
+    if (current()) {
       set({ busy: false });
     }
   }

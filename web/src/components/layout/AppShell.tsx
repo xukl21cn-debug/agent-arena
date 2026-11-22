@@ -21,28 +21,33 @@ const TABS: ShellTab[] = [
 ];
 
 /**
- * The header title is the domain, not the page: the page keeps its own compact
- * head for things like the room name or the current game. Keeping one title in
- * the shell is what stops every page from rendering its own topbar.
+ * The header title mirrors the route table in `App.tsx` exactly instead of
+ * matching prefixes. A path that matches no route is redirected to `/`, so it
+ * has to read as the lobby here too — otherwise the header would describe a
+ * page that never renders.
  *
- * Replay is checked first: both `/replay/:id` and `/games/:id/replay` are
- * replay views, and a plain `/games` prefix test would label the latter as a
- * live game.
+ * Two normalizations keep this table honest: a trailing slash is the same
+ * route, and the router matches case-insensitively, so `/GAMES/x/REPLAY` is a
+ * replay even though the pattern here is written in lowercase.
  */
 function titleFor(rawPathname: string): string {
-  // A trailing slash is the same route; `/games/default/replay/` must not fall
-  // through to the live-game branch.
-  const pathname = rawPathname.replace(/\/+$/, '') || '/';
-  if (pathname.startsWith('/replay') || /^\/games\/[^/]+\/replay$/.test(pathname)) {
-    return '棋谱回放';
+  const pathname = rawPathname.replace(/\/+$/, '').toLowerCase() || '/';
+  if (pathname === '/') {
+    return '大厅';
   }
-  if (pathname.startsWith('/games')) {
+  if (pathname === '/games' || /^\/games\/[^/]+$/.test(pathname)) {
     return '棋局对弈';
   }
-  if (pathname.startsWith('/chats')) {
+  if (/^\/games\/[^/]+\/replay$/.test(pathname)) {
+    return '棋谱回放';
+  }
+  if (pathname === '/replay' || /^\/replay\/[^/]+$/.test(pathname)) {
+    return '棋谱回放';
+  }
+  if (pathname === '/chats' || /^\/chats\/[^/]+$/.test(pathname)) {
     return 'AI 聊天室';
   }
-  if (pathname.startsWith('/work')) {
+  if (pathname === '/work') {
     return '开发任务';
   }
   return '大厅';

@@ -471,6 +471,9 @@ const GAME_TABS: Array<{ key: GameTab; label: string }> = [
   { key: 'history', label: '历史对局' },
 ];
 
+/** The game lobby's sub-tab survives leaving and coming back, like the pages do. */
+let rememberedGameTab: GameTab = 'gomoku';
+
 export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
   const {
     data: games,
@@ -493,13 +496,27 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
     load: loadArchives,
   } = useLobbyList(fetchArchives);
 
-  const [gameTab, setGameTab] = useState<GameTab>('gomoku');
+  const [gameTab, setGameTab] = useState<GameTab>(rememberedGameTab);
+  const selectTab = (next: GameTab): void => {
+    rememberedGameTab = next;
+    setGameTab(next);
+  };
+
+  // A single-domain lobby only talks to its own endpoints; the overview loads
+  // all three. Polling a domain the page does not render wastes requests and
+  // surfaces its failures for no reason.
+  const showsGames = domain !== 'chats';
+  const showsChats = domain !== 'games';
 
   const load = useCallback((): void => {
-    void loadRooms();
-    void loadChats();
-    void loadArchives();
-  }, [loadRooms, loadChats, loadArchives]);
+    if (showsGames) {
+      void loadRooms();
+      void loadArchives();
+    }
+    if (showsChats) {
+      void loadChats();
+    }
+  }, [loadRooms, loadChats, loadArchives, showsGames, showsChats]);
 
   useEffect(() => {
     load();
@@ -524,10 +541,6 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
           .map(chatCard)
       : [];
 
-  // Only the domains this route actually shows: a chat outage must not shout
-  // at someone browsing the board-game lobby.
-  const showsGames = domain !== 'chats';
-  const showsChats = domain !== 'games';
   const activeErrors = [
     showsGames && gamesError ? `棋类房间：${gamesError}` : null,
     showsChats && chatsError ? `聊天房间：${chatsError}` : null,
@@ -582,7 +595,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
                   className={
                     gameTab === tab.key ? 'lobby-tab is-active' : 'lobby-tab'
                   }
-                  onClick={() => setGameTab(tab.key)}
+                  onClick={() => selectTab(tab.key)}
                 >
                   {tab.label}
                 </button>

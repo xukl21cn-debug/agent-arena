@@ -40,6 +40,14 @@ export interface ChatStore {
   clearError(): void;
 }
 
+/**
+ * Bumped every time `connect()` runs. A request captures the value it started
+ * under and drops its reply if the counter moved — which covers both switching
+ * rooms and leaving and re-entering the same room, where the room id alone
+ * would still match.
+ */
+let chatVisitSeq = 0;
+
 export const useChatStore = create<ChatStore>((set, get) => ({
   roomId: '',
   connection: 'connecting',
@@ -49,12 +57,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   error: null,
 
   connect(roomId) {
+    // Every entry into a room is a new visit: a reply issued during the last
+    // one must not land here even if it is the same room id.
+    chatVisitSeq += 1;
     set({
       roomId,
       connection: 'connecting',
       room: null,
       messages: [],
       error: null,
+      // A request abandoned by leaving must not leave the new room disabled.
+      busy: false,
     });
     return subscribeToChatRoom(roomId, set, get);
   },
@@ -87,24 +100,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   async send(text, to) {
     const { roomId } = get();
+    const visit = chatVisitSeq;
+    const current = () => chatVisitSeq === visit && get().roomId === roomId;
+
     set({ busy: true, error: null });
     try {
       const { message, room } = await api.chatSend(roomId, text, to);
-      // A reply that lands after the user switched rooms belongs to the room
-      // they left; appending it would put a stranger's line in this timeline.
-      if (get().roomId !== roomId) {
+      // A reply that lands after the user left belongs to the visit they left;
+      // appending it would put a stranger's line in this timeline.
+      if (!current()) {
         return false;
       }
       get().applyMessage(message);
       get().applyRoom(room);
       return true;
     } catch (caught) {
-      if (get().roomId === roomId) {
+      if (current()) {
         set({ error: errorMessage(caught) });
       }
       return false;
     } finally {
-      if (get().roomId === roomId) {
+      if (current()) {
         set({ busy: false });
       }
     }
@@ -139,19 +155,22 @@ async function control(
   get: () => ChatStore,
 ): Promise<void> {
   const { roomId } = get();
+  const visit = chatVisitSeq;
+  const current = () => chatVisitSeq === visit && get().roomId === roomId;
+
   set({ busy: true, error: null });
   try {
     const room = await api.chatControl(roomId, action);
-    // Same rule as `send`: a reply for a room the user already left is dropped.
-    if (get().roomId === roomId) {
+    // Same rule as `send`: a reply for a visit the user already left is dropped.
+    if (current()) {
       get().applyRoom(room);
     }
   } catch (caught) {
-    if (get().roomId === roomId) {
+    if (current()) {
       set({ error: errorMessage(caught) });
     }
   } finally {
-    if (get().roomId === roomId) {
+    if (current()) {
       set({ busy: false });
     }
   }

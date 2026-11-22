@@ -1,7 +1,7 @@
 # 后端领域目录归拢（含 stdio 适配层下线）
 
 > 设计提案 · 2026-11-21（第二版，合并外部评审意见）
-> 状态：**已实现，两轮复审整改完成，待用户验收**（5 个提交见 §6）
+> 状态：**已实现，后端复审通过，待用户验收**（5 个提交见 §6）
 > 基线：`cf3b53b`（`main` 为 `34bd7ef`，两者差异只在部署脚本、README 与 `server/src/index.ts` 一行），383 项测试全绿
 > 范围：`server/src/` 的物理结构与 import 路径、`server/test/` 的静态与动态 import、根目录 `scripts/*.mjs` 对编译产物的引用、文档里的源码链接与接入说明，外加**下线棋类 stdio 适配层**。
 > ⚠️ **本提案含一处破坏性变更**：stdio 接入方式下线（§2.3）。除此之外的步骤都是纯移动，函数签名、端点路径、`shared/` 类型、落盘格式一律不动。
@@ -301,3 +301,11 @@ stdio 桥不是独立服务：它启动后把每个工具调用转成 REST 请�
 | P2 增量打包带上已下线的 stdio 与旧目录 | `scripts/deploy.mjs` 在 `pnpm build` 之前先 `rmSync` 掉 `server/dist` 与 `web/dist`——`tsc` 只增量写、不清理，旧产物会被原样打进包。复验方式与审查一致：在 `server/dist/mcp/stdio.js` 植入假文件后跑 `pnpm bundle`，产物里已无 `dist/mcp`，`dist/game` 正常 |
 
 说明：清理放在**打包入口**而不是 `pnpm build` 本身，因为本地 `pnpm build && node server/dist/index.js` 的旧产物不影响交付；打包是唯一对外产物的出口。
+
+#### 整改后复核（`d892f39`）
+
+以远端 `main` 的 `31471a4` 为基线，本轮由未参与实现的 Codex 复核，执行方的 harness 与模型未记录。后端整改通过。
+
+同一临时 checkout 先在 `31471a4` 构建真实旧产物，确认 `dist/mcp/stdio.js` 以及旧目录存在。切到 `d892f39` 直接执行 `pnpm bundle`，部署包只包含当前的 `chat/`、`game/`、`work/`，旧 `core/`、`http/`、`mcp/`、`rooms/` 均已移除。用部署包实际启动服务，房间 API、回放深链和打包后的前端资源均返回成功。
+
+`pnpm typecheck`、`pnpm build` 和 `pnpm test` 通过（28 个文件，383 项）。用 SDK 连接三域 MCP 并核对工具数量。部署产物检查覆盖本机 Windows。
