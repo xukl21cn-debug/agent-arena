@@ -316,7 +316,13 @@ F1 独立于 F2/F3，可以先合。F4 放最后且允许长期未完成。
 - `useLobbyList` 的竞态控制原样保留，没有退回「比较最新请求」。
 - 验证：CDP 驱动真实 Chrome，预置 16 间五子棋 / 2 间围棋 / 1 间聊天，断言 Tab 数、首页 12 张卡、第二页 4 张且内容不同、筛选后为空并给出正确文案、围棋 Tab 2 张、历史 Tab 空态、总览 4 个分区且无子 Tab；F2 的 17 条路由用例重跑仍全绿。
 
-**待办：** F4（2b 增量 module）。
+**F4（2b 增量 module）本提交**
+
+- 只迁 `AppShell`：它的 `.app` / `.topbar` / `.eyebrow` / `.title` / 导航样式在 F2 之后已无第二个使用者，整体搬进 `AppShell.module.scss`，全局表里对应规则删除。
+- 顺带清掉两处死规则：`.subtitle` 和 `.topbar-meta`（F2 之后 0 处引用），以及 `responsive.scss` 里 640px 的 `.app` / `.topbar` 覆盖——后者已移进模块自己的 640px 查询。
+- 验证：`typecheck` / `build` 通过；CDP 用结构选择器（模块类名已哈希）重跑 17 条路由用例与 SPA 切换，全绿；另用 `getComputedStyle` 断言 header 仍是 flex + 下边框、h1 26px、导航 gap 6px、当前 tab 金色 `rgb(217,166,75)`，确认模块样式真的生效而不是被哈希类名架空。
+
+**全部完成。** 存量组件（`Board`、`Controls`、`ChatComposer` 等）按 §2.5 的约定保持全局类名，后续被重写时再迁。
 
 
 ## 7. 独立审核

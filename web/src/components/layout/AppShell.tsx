@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
+import styles from './AppShell.module.scss';
 
 /** Tabs mirror the three domains; the label is also the document title. */
 const TABS = [
@@ -42,15 +43,15 @@ export function AppShell() {
   }, [title]);
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <Link className="brand brand--link" to="/">
-          <p className="eyebrow">Agent Arena · MCP</p>
-          <h1 className="title">{title}</h1>
+    <div className={styles.app}>
+      <header className={styles.topbar}>
+        <Link className={styles.brandLink} to="/">
+          <p className={styles.eyebrow}>Agent Arena · MCP</p>
+          <h1 className={styles.title}>{title}</h1>
         </Link>
-        <nav className="shell-nav" aria-label="主导航">
+        <nav className={styles.shellNav} aria-label="主导航">
           {TABS.map((tab) => (
-            <NavLink key={tab.to} className="shell-nav-link" to={tab.to}>
+            <NavLink key={tab.to} className={styles.shellNavLink} to={tab.to}>
               {tab.label}
             </NavLink>
           ))}

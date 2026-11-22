@@ -17,20 +17,6 @@
 }
 
 @media (max-width: 640px) {
-  .app {
-    padding: 22px 14px 40px;
-  }
-
-  .topbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 14px;
-  }
-
-  .topbar-meta {
-    justify-content: flex-start;
-  }
-
   .status {
     flex-direction: column;
     align-items: flex-start;
