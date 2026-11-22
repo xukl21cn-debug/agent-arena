@@ -10,7 +10,7 @@ import { ChatManager } from '../src/chat/manager';
 import { ChatError, DEFAULT_CHAT_POLICY } from '../src/chat/model';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
-import { RoomManager } from '../src/rooms/room-manager';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 // pass_turn (HANDOFF-CHAT-PASS): an agent yields the turn without speaking —
 // no hop, no chat message, one system trace, and the passer's timeout streak

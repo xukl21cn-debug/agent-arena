@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import type { PersistedRoom } from '../src/rooms/repository';
-import { FileRoomRepository } from '../src/rooms/repository';
-import { RoomManager } from '../src/rooms/room-manager';
+import type { PersistedRoom } from '../src/game/rooms/repository';
+import { FileRoomRepository } from '../src/game/rooms/repository';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 /**
  * Every test gets a fresh temp directory — never the repo's own data/,

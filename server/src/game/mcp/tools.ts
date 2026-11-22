@@ -13,7 +13,7 @@ import {
   type CommentaryMood,
 } from '@arena/shared';
 import { ArenaApiError, type ArenaApi } from './api.js';
-import { toAnyAgentStateView } from '../core/insights.js';
+import { toAnyAgentStateView } from '../engine/insights.js';
 
 const COMMENTARY_KINDS = [
   'evaluation',

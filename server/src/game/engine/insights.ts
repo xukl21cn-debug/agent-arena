@@ -13,7 +13,7 @@ import type {
   RuleSet,
   StoneColor,
 } from '@arena/shared';
-import { opposite } from './engine.js';
+import { opposite } from './gomoku.js';
 import {
   renderGoBoardText,
   scoreBoard,

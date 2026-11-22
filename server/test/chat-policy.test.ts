@@ -9,7 +9,7 @@ import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
 import { DEFAULT_CHAT_POLICY } from '../src/chat/model';
-import { RoomManager } from '../src/rooms/room-manager';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 // The REST layer used to read only `title` from POST /api/chat/rooms and drop
 // `policy` without a word. These tests pin the wire contract: the policy takes

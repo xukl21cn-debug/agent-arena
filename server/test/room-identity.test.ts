@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PlayerSpec, StoneColor } from '@arena/shared';
-import { GameRoom } from '../src/rooms/room';
+import { GameRoom } from '../src/game/rooms/room';
 
 const SEATS: Record<StoneColor, PlayerSpec> = {
   black: { kind: 'human' },

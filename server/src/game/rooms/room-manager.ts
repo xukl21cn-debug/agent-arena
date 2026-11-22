@@ -3,7 +3,7 @@ import {
   ROOM_ID_PATTERN,
   type RoomSummary,
 } from '@arena/shared';
-import type { PresenceSource } from '../core/presence.js';
+import type { PresenceSource } from './presence.js';
 import { RoomError, GameRoom, type RoomConfig } from './room.js';
 import {
   MemoryRoomRepository,

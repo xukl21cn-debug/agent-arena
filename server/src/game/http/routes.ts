@@ -17,8 +17,8 @@ import {
   type RuleSet,
   type StoneColor,
 } from '@arena/shared';
-import { clampWaitMs, type ServerConfig } from '../config.js';
-import { buildReplay, ReplayError } from '../core/replay.js';
+import { clampWaitMs, type ServerConfig } from '../../config.js';
+import { buildReplay, ReplayError } from '../engine/replay.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
 import {
   ARCHIVE_ID_PATTERN,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AnyGameState, AnyMove, GoPassMove, GoState } from '@arena/shared';
-import { createInitialState } from '../src/core/engine';
-import { migrateSnapshot, type PersistedRoomV1 } from '../src/rooms/repository';
+import { createInitialState } from '../src/game/engine/gomoku';
+import { migrateSnapshot, type PersistedRoomV1 } from '../src/game/rooms/repository';
 
 const NOW = '2026-10-25T00:00:00.000Z';
 

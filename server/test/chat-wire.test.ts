@@ -8,7 +8,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
-import { RoomManager } from '../src/rooms/room-manager';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 let server: Server;
 let baseUrl: string;

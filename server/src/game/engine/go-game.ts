@@ -16,7 +16,7 @@ import {
   playMove,
   scoreBoard,
 } from './go.js';
-import { opposite } from './engine.js';
+import { opposite } from './gomoku.js';
 
 /**
  * Room-level Go state transitions (M2).

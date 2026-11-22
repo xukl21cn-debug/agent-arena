@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ParticipantRoster } from '../src/rooms/participant-roster';
+import { ParticipantRoster } from '../src/game/rooms/participant-roster';
 
 const NOW = 1_800_000_000_000;
 

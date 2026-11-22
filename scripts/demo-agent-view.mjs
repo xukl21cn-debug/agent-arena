@@ -1,9 +1,9 @@
-import { createBoard } from '../server/dist/core/rules.js';
+import { createBoard } from '../server/dist/game/engine/rules.js';
 import {
   findHotPoints,
   renderBoardText,
   toAgentStateView,
-} from '../server/dist/core/insights.js';
+} from '../server/dist/game/engine/insights.js';
 
 // Exact position of game 1 right before black's winning move 47 (9,4):
 // the final board minus (9,4) black and (7,2) white (played afterwards).

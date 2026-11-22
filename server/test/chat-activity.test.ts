@@ -6,8 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
-import { FileRoomRepository } from '../src/rooms/repository';
-import { RoomManager } from '../src/rooms/room-manager';
+import { FileRoomRepository } from '../src/game/rooms/repository';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 /**
  * P5B's pre-fix and its regressions: the chat summary's `updatedAt` is the

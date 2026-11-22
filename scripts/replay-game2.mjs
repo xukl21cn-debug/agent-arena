@@ -9,8 +9,8 @@
 // doubles as the double-threat regression fixture.
 //
 // Run from repo root: node scripts/replay-game2.mjs
-import { createBoard } from '../server/dist/core/rules.js';
-import { toAgentStateView } from '../server/dist/core/insights.js';
+import { createBoard } from '../server/dist/game/engine/rules.js';
+import { toAgentStateView } from '../server/dist/game/engine/insights.js';
 
 const MOVES = [
   [7, 7], [8, 8], [7, 8], [7, 9], [9, 7], [8, 7], [8, 9], [9, 8],

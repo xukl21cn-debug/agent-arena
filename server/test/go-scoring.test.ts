@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GoState, StoneColor } from '@arena/shared';
-import { GameRoom } from '../src/rooms/room';
-import { toAnyAgentStateView } from '../src/core/insights';
+import { GameRoom } from '../src/game/rooms/room';
+import { toAnyAgentStateView } from '../src/game/engine/insights';
 
 /**
  * Go scoring, end to end at the room level (P3b-3): G6/G10/G14/G15/G16 and

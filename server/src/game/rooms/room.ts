@@ -30,8 +30,8 @@ import {
   opposite,
   resignGame,
   startGame,
-} from '../core/engine.js';
-import { resolveRules } from '../core/rules.js';
+} from '../engine/gomoku.js';
+import { resolveRules } from '../engine/rules.js';
 import {
   applyGoPass,
   applyGoPlacement,
@@ -42,8 +42,8 @@ import {
   resumeGoPlay,
   startGoGame,
   type GoScoringResult,
-} from '../core/go-game.js';
-import { seatLabel, type PresenceSource } from '../core/presence.js';
+} from '../engine/go-game.js';
+import { seatLabel, type PresenceSource } from './presence.js';
 import { ParticipantRoster } from './participant-roster.js';
 import type { PersistedRoom, RoomRepository } from './repository.js';
 
@@ -700,7 +700,7 @@ export class GameRoom {
   }
 
   /**
-   * Go placement: the rules (capture / ko / suicide) live in core/go.ts and
+   * Go placement: the rules (capture / ko / suicide) live in engine/go.ts and
    * this only forwards the engine's verdict and moves the bookkeeping along.
    */
   private moveGoAt(seat: StoneColor, row: number, col: number): MoveActionResult {

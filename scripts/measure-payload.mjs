@@ -1,5 +1,5 @@
-import { createBoard } from '../server/dist/core/rules.js';
-import { toAgentStateView } from '../server/dist/core/insights.js';
+import { createBoard } from '../server/dist/game/engine/rules.js';
+import { toAgentStateView } from '../server/dist/game/engine/insights.js';
 
 // Payload-size regression check: the same 46-stone middlegame as
 // demo-agent-view.mjs, with the history padded to 100 moves. Numbers are

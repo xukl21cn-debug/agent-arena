@@ -14,12 +14,12 @@ import type {
   StoneColor,
 } from '@arena/shared';
 import { AGENT_RECENT_MOVES } from '@arena/shared';
-import { clampWaitMs, type ServerConfig } from '../config.js';
+import { clampWaitMs, type ServerConfig } from '../../config.js';
 import {
   toAnyAgentStateView,
   type AgentViewOptions,
-} from '../core/insights.js';
-import { currentSession, SessionBindings, sessionContext } from '../session-context.js';
+} from '../engine/insights.js';
+import { currentSession, SessionBindings, sessionContext } from '../../session-context.js';
 import { RoomError, type ActorRef, type GameRoom, type StateActionResult } from '../rooms/room.js';
 import { assertRoomId, type RoomManager } from '../rooms/room-manager.js';
 import {

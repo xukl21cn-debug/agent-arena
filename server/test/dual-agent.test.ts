@@ -4,9 +4,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
-import { PresenceRegistry } from '../src/core/presence';
-import { MemoryRoomRepository } from '../src/rooms/repository';
-import { RoomManager } from '../src/rooms/room-manager';
+import { PresenceRegistry } from '../src/game/rooms/presence';
+import { MemoryRoomRepository } from '../src/game/rooms/repository';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 let server: Server;
 let baseUrl: string;
@@ -625,7 +625,7 @@ describe('two agents in one room', () => {
 
 
   it('S-07: InProcessApi.clearSession drops session bindings cleanly', async () => {
-    const { InProcessApi } = await import('../src/mcp/http');
+    const { InProcessApi } = await import('../src/game/mcp/http');
     const { SessionBindings } = await import('../src/session-context');
     const bindings = new SessionBindings();
     const testApi = new InProcessApi({} as any, {} as any, bindings);

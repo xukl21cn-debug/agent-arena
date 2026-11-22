@@ -9,8 +9,8 @@ import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
 import { attachWebSocket } from '../src/ws';
-import { MemoryRoomRepository } from '../src/rooms/repository';
-import { RoomManager } from '../src/rooms/room-manager';
+import { MemoryRoomRepository } from '../src/game/rooms/repository';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 /**
  * The chat half of /ws: `?kind=chat` sockets. W1 pins the game default

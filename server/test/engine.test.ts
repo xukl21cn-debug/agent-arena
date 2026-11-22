@@ -12,14 +12,14 @@ import {
   opposite,
   resignGame,
   startGame,
-} from '../src/core/engine';
+} from '../src/game/engine/gomoku';
 import {
   createBoard,
   findWinLine,
   isBoardFull,
   isInside,
   resolveRules,
-} from '../src/core/rules';
+} from '../src/game/engine/rules';
 
 const NOW = '2026-01-01T00:00:00.000Z';
 const GAME_ID = 'game-1';

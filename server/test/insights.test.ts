@@ -4,13 +4,13 @@ import { AGENT_RECENT_MOVES } from '@arena/shared';
 import {
   createBoard,
   findWinLine,
-} from '../src/core/rules';
+} from '../src/game/engine/rules';
 import {
   findHotPoints,
   renderBoardText,
   toAgentStateView,
-} from '../src/core/insights';
-import { applyMove, createInitialState } from '../src/core/engine';
+} from '../src/game/engine/insights';
+import { applyMove, createInitialState } from '../src/game/engine/gomoku';
 
 const RULES = {
   boardSize: 15,

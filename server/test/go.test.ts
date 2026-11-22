@@ -10,7 +10,7 @@ import {
   renderGoBoardText,
   scoreBoard,
   summarizeGroups,
-} from '../src/core/go';
+} from '../src/game/engine/go';
 
 function place(
   board: GoBoard,

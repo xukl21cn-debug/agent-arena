@@ -9,10 +9,10 @@ import type {
   ServerMessage,
 } from '@arena/shared';import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
-import { PresenceRegistry } from '../src/core/presence';
+import { PresenceRegistry } from '../src/game/rooms/presence';
 import { attachWebSocket } from '../src/ws';
-import { MemoryRoomRepository } from '../src/rooms/repository';
-import { RoomManager } from '../src/rooms/room-manager';
+import { MemoryRoomRepository } from '../src/game/rooms/repository';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 let server: Server;
 let wss: WebSocketServer;

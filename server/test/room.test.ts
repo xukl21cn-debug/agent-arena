@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Actor, PlayerSpec, StoneColor } from '@arena/shared';
-import { GameRoom, RoomError } from '../src/rooms/room';
-import { MemoryRoomRepository } from '../src/rooms/repository';
+import { GameRoom, RoomError } from '../src/game/rooms/room';
+import { MemoryRoomRepository } from '../src/game/rooms/repository';
 
 const SEATS: Record<StoneColor, PlayerSpec> = {
   black: { kind: 'human' },

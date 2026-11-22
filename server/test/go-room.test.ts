@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AGENT_RECENT_MOVES } from "@arena/shared";
-import { GameRoom, RoomError } from '../src/rooms/room';
-import { toAnyAgentStateView } from '../src/core/insights';
+import { GameRoom, RoomError } from '../src/game/rooms/room';
+import { toAnyAgentStateView } from '../src/game/engine/insights';
 
 /**
  * Go wired into rooms (P3b-2): G7/G8/G17 and N1-N6 from the work order.

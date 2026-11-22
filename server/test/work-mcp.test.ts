@@ -10,7 +10,7 @@ import { WorkStore } from '../src/work/store.js';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { attachWebSocket } from '../src/ws.js';
-import { RoomManager } from '../src/rooms/room-manager.js';
+import { RoomManager } from '../src/game/rooms/room-manager.js';
 
 let dir: string;
 let server: Server;

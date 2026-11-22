@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ErrorCode } from '@arena/shared';
-import { MemoryRoomRepository } from '../src/rooms/repository';
-import { RoomManager } from '../src/rooms/room-manager';
+import { MemoryRoomRepository } from '../src/game/rooms/repository';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 function expectRoomError(fn: () => unknown, code: ErrorCode): void {
   try {

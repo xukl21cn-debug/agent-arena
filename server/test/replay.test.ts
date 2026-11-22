@@ -12,15 +12,15 @@ import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ErrorResponse } from '@arena/shared';
-import { startGame } from '../src/core/engine.js';
+import { startGame } from '../src/game/engine/gomoku.js';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import {
   FileRoomRepository,
   type RoomRepository,
-} from '../src/rooms/repository';
-import { RoomManager } from '../src/rooms/room-manager';
-import { GameRoom } from '../src/rooms/room';
+} from '../src/game/rooms/repository';
+import { RoomManager } from '../src/game/rooms/room-manager';
+import { GameRoom } from '../src/game/rooms/room';
 
 /**
  * P5A: archives (a new game saves the one it replaces) and replay (the real

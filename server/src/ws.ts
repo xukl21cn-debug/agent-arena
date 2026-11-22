@@ -7,8 +7,8 @@ import type {
 } from '@arena/shared';
 import type { ChatManager } from './chat/manager.js';
 import type { ChatRoomSnapshot } from './chat/model.js';
-import type { PresenceRegistry } from './core/presence.js';
-import type { RoomManager } from './rooms/room-manager.js';
+import type { PresenceRegistry } from './game/rooms/presence.js';
+import type { RoomManager } from './game/rooms/room-manager.js';
 import { isLocalWorkOrigin } from './work/http.js';
 import { isWorkLoopback } from './work/mcp.js';
 import type { WorkStore } from './work/store.js';

@@ -5,7 +5,7 @@ import type {
   GoPassMove,
   GoState,
 } from '@arena/shared';
-import { applyMove, startGame } from './engine.js';
+import { applyMove, startGame } from './gomoku.js';
 import { applyGoPass, applyGoPlacement, startGoGame } from './go-game.js';
 
 /** One replay step: the state after `move`, or the opening when it is null. */

@@ -4,11 +4,11 @@ import WebSocket, { WebSocketServer } from 'ws';
 import type { ServerMessage } from '@arena/shared';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
-import { PresenceRegistry } from '../src/core/presence';
+import { PresenceRegistry } from '../src/game/rooms/presence';
 import { attachWebSocket } from '../src/ws';
-import { GameRoom } from '../src/rooms/room';
-import { MemoryRoomRepository } from '../src/rooms/repository';
-import { RoomManager } from '../src/rooms/room-manager';
+import { GameRoom } from '../src/game/rooms/room';
+import { MemoryRoomRepository } from '../src/game/rooms/repository';
+import { RoomManager } from '../src/game/rooms/room-manager';
 
 /**
  * P1c: the lobby. The phase machine is derived, never stored, so these tests
