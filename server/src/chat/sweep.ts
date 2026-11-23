@@ -3,7 +3,7 @@ import type { ChatManager } from './manager.js';
 /**
  * How often expired chat turn leases are settled without anyone touching
  * the room. 15s, same cadence as the presence sweep: dense enough that a
- * 120s lease settles within ~135s of going dead, sparse enough not to
+ * five-minute lease settles within ~15s of going dead, sparse enough not to
  * churn every room for nothing.
  */
 export const CHAT_SWEEP_MS = 15_000;

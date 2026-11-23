@@ -9,6 +9,7 @@ import {
   CHAT_JOIN_RECENT,
   CHAT_RECENT_LIMIT,
   ChatError,
+  DEFAULT_CHAT_POLICY,
   chatHint,
   clampChatWaitMs,
   type ChatMember,
@@ -28,6 +29,9 @@ import type { ChatManager } from './manager.js';
  * participantId per key) and untouched.
  */
 
+/** Seconds in the default lease, for the instructions this text builds. */
+const LEASE_SECONDS = DEFAULT_CHAT_POLICY.turnTimeoutMs / 1000;
+
 export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp，与棋类对弈完全无关）。
 
 房间规则（relay 接力模式）：
@@ -35,7 +39,9 @@ export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp
 - 发言后轮转给下一位（可以用 to 参数指定下一位，值用成员的 name）。
 - 不要抢话：不是你的轮次时发言会被拒绝（NOT_YOUR_TURN）。
 - 如果你这轮不想说（或者已经说完了），用 pass_turn 把轮次让给下一位，
-  不消耗预算——别让房间干等 120 秒超时，连续超时还会暂停房间。
+  不消耗预算——别让房间干等 ${LEASE_SECONDS} 秒超时，连续超时还会暂停房间。
+- 如果你觉得该由主持人来说，用 pass_turn 并指定 to: "human" 把轮次交还给他。
+  不要和另一个 agent 互相让来让去：连续 6 次让出且没人发言，房间会自动暂停。
 - 每人发言数有限制，hop 总预算耗尽后房间会暂停。
 - 人类是主持人：随时插话、指定下一位、暂停/恢复房间，不占预算。
 
@@ -379,11 +385,16 @@ to 参数指定下一位发言者（用成员 name）。发言会消耗 hop 预�
       title: '让出轮次',
       description: `不发言，把轮次让给下一位（或用 to 指定的成员 name）。
 不消耗 hop 预算，只记一条系统消息。你这轮不想说、或已经说完收工时用它，
-别让房间干等 120 秒超时——同一成员连续两次超时房间会被暂停。
+别让房间干等 ${LEASE_SECONDS} 秒超时——同一成员连续两次超时房间会被暂停。
+想让主持人接话时用 to: "human" 把轮次交还给他；不要和另一个 agent 互相让，
+连续 6 次让出且没人发言房间会自动暂停。
 只有轮到你时才能让；房间里还没有轮次时会报错。`,
       inputSchema: z.object({
         roomId: z.string().min(1).describe('房间 id。'),
-        to: z.string().optional().describe('接手的成员 name；缺省按加入顺序轮转下一位。'),
+        to: z
+          .string()
+          .optional()
+          .describe('接手的成员 name，或 "human" 交还主持人；缺省按加入顺序轮转下一位。'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },

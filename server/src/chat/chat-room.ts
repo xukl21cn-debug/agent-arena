@@ -13,6 +13,16 @@ import { ChatError } from './model.js';
 /** The reserved host identity humans speak through (REST posts as `human`). */
 export const HUMAN_MEMBER_ID = 'human';
 
+/**
+ * How many yields in a row, with no message in between, pause the room.
+ *
+ * `pass_turn` costs no hop, resets the passer's timeout streak and posts only a
+ * system line, so two agents that both think the host should speak would
+ * otherwise trade the turn forever. Six yields is three full rounds for a
+ * two-agent room — long enough that a polite hand-off is never punished.
+ */
+const PASS_PAUSE_THRESHOLD = 6;
+
 interface Waiter {
   participantId: string;
   afterSeq: number;
@@ -32,7 +42,9 @@ export interface WaitOutcome {
  * Relay turn rules (the v1 policy):
  *  - an agent may speak only when the turn is unset or points at it;
  *  - an agent on turn may pass instead of speaking: the turn moves on the
- *    same way, without burning a hop, leaving a system trace behind;
+ *    same way, without burning a hop, leaving a system trace behind; passing
+ *    with `to: "human"` (or as the only agent) hands control back to the host,
+ *    and six yields in a row with no message pause the room;
  *  - a speaker names the next member with `to`, else the turn rotates to the
  *    next agent in join order (humans never hold a turn — they can always
  *    speak and would deadlock a rotation aimed at an absent typist);
@@ -61,6 +73,8 @@ export class ChatRoom {
   readonly members = new Map<string, ChatMember>();
   readonly messages: ChatMessage[] = [];
   private readonly consecutiveTimeouts = new Map<string, number>();
+  /** Yields in a row with no chat message between them; see passTurn. */
+  private consecutivePasses = 0;
   /** Last chat text per member, for the duplicate-message rule. */
   private readonly lastText = new Map<string, string>();
   private readonly waiters = new Set<Waiter>();
@@ -262,6 +276,8 @@ export class ChatRoom {
 
     // Gates passed — the message becomes permanent.
     this.seq += 1;
+    // Somebody actually said something: the pass-loop guard starts over.
+    this.consecutivePasses = 0;
     const message: ChatMessage = {
       seq: this.seq,
       id: chatMessageId(),
@@ -346,10 +362,13 @@ export class ChatRoom {
     let target: ChatMember | null = null;
     if (to !== undefined) {
       target = this.resolveTarget(to);
-      if (target.kind !== 'agent') {
+      // Handing the turn back to the host is how an agent says "you decide
+      // next". Without it, two agents that both wait for the human can only
+      // push the turn at each other.
+      if (target.kind !== 'agent' && target.id !== HUMAN_MEMBER_ID) {
         throw new ChatError(
           'INVALID_REQUEST',
-          `"to" must name an agent member; "${target.name}" does not hold turns.`,
+          `"to" must name an agent member or the host; "${target.name}" does not hold turns.`,
         );
       }
       if (target.id === member.id) {
@@ -368,14 +387,43 @@ export class ChatRoom {
     }
 
     this.consecutiveTimeouts.delete(member.id);
-    const next = target ?? this.nextSpeakerAfter(member.id);
-    this.postSystemMessage(
-      target
-        ? `${member.name} 把轮次交给 ${target.name}`
-        : `${member.name} 让出轮次`,
-      now,
-    );
-    this.turn = this.makeTurn(next, now);
+
+    // Guard against A→B→A→B yields: nothing was said, so nothing earned a hop,
+    // and the transcript would fill with system lines while the room spins.
+    this.consecutivePasses += 1;
+    if (this.consecutivePasses >= PASS_PAUSE_THRESHOLD) {
+      this.postSystemMessage(
+        `连续 ${this.consecutivePasses} 次让出轮次都没人发言，房间暂停，等主持人安排`,
+        now,
+      );
+      this.phase = 'paused';
+      this.turn = null;
+      this.emitChange();
+      this.wakeAll();
+      return null;
+    }
+
+    if (target?.kind === 'human') {
+      this.postSystemMessage(`${member.name} 把轮次交还给主持人`, now);
+      this.turn = null;
+    } else {
+      const next = target ?? this.nextSpeakerAfter(member.id);
+      if (next === null || next.id === member.id) {
+        // The only agent in the room yielding: wait for the host instead of
+        // handing the lease straight back to itself (which did nothing but
+        // post a line and reset the clock).
+        this.postSystemMessage(`${member.name} 让出轮次，等主持人`, now);
+        this.turn = null;
+      } else {
+        this.postSystemMessage(
+          target
+            ? `${member.name} 把轮次交给 ${next.name}`
+            : `${member.name} 让出轮次`,
+          now,
+        );
+        this.turn = this.makeTurn(next, now);
+      }
+    }
     this.emitChange();
     this.wakeAll();
     return this.turn;
@@ -410,6 +458,7 @@ export class ChatRoom {
     // the pause sticky: with a congested provider the next single timeout would
     // be strike three and pause the room again on one strike.
     this.consecutiveTimeouts.clear();
+    this.consecutivePasses = 0;
     this.postSystemMessage('房间已恢复', now);
     this.emitChange();
     this.wakeAll();
@@ -747,6 +796,7 @@ export class ChatRoom {
       members: [...this.members.values()].map((member) => ({ ...member })),
       messages: this.messages.map(cloneMessage),
       consecutiveTimeouts: timeouts,
+      consecutivePasses: this.consecutivePasses,
     };
   }
 
@@ -769,6 +819,7 @@ export class ChatRoom {
     for (const [id, count] of Object.entries(file.consecutiveTimeouts ?? {})) {
       room.consecutiveTimeouts.set(id, count);
     }
+    room.consecutivePasses = file.consecutivePasses ?? 0;
     return room;
   }
 }

@@ -36,7 +36,9 @@ export const DEFAULT_CHAT_POLICY: ChatPolicy = {
   mode: 'relay',
   maxHops: 16,
   maxMessagesPerMember: 8,
-  turnTimeoutMs: 120_000,
+  // Five minutes: a congested model provider regularly needs more than two
+  // minutes between tool calls, and every expiry counts as a strike.
+  turnTimeoutMs: 300_000,
   maxMessageChars: 4000,
 };
 
@@ -105,6 +107,8 @@ export interface ChatRoomSnapshotFile {
   messages: ChatMessage[];
   /** Per-member streak of expired turns, so a restart cannot dodge the pause. */
   consecutiveTimeouts: Record<string, number>;
+  /** Yields in a row with no message between them; the pass-loop guard. */
+  consecutivePasses: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,5 +195,5 @@ export function chatHint(snapshot: ChatRoomSnapshot, yourTurn: boolean): string 
   if (agents.length === 0) {
     return '房间里还没有其他成员，等 agent join_room 后再继续';
   }
-  return '等待轮转确定下一位发言者，继续 wait_for_messages';
+  return '轮次在主持人那里，等他发言后继续 wait_for_messages';
 }

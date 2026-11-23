@@ -7,7 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { ChatRoom } from '../src/chat/chat-room';
 import { ChatManager } from '../src/chat/manager';
-import { ChatError, DEFAULT_CHAT_POLICY } from '../src/chat/model';
+import { ChatError, DEFAULT_CHAT_POLICY, type ChatMember } from '../src/chat/model';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { RoomManager } from '../src/game/rooms/room-manager';
@@ -199,14 +199,26 @@ describe('ChatRoom.passTurn (domain)', () => {
     expect(turn?.expiresAt).toBe(T0 + 4 + DEFAULT_CHAT_POLICY.turnTimeoutMs);
   });
 
-  it('P9: `to` the human host is refused — humans never hold turns', () => {
+  it('P9: passing to the host hands control back — humans never hold a turn', () => {
     const room = manager().create('p9');
     const a = room.join('alpha', undefined, T0);
     room.sendMessage(room.humanMember(), '开始', { to: 'alpha' }, T0 + 1);
 
-    expectChatError(() => room.passTurn(a, 'human', T0 + 2), 'INVALID_REQUEST');
-    // An unknown name answers like send_message's, not with a new code.
-    expectChatError(() => room.passTurn(a, 'nobody', T0 + 3), 'MEMBER_NOT_FOUND');
+    const turn = room.passTurn(a, 'human', T0 + 2);
+    expect(turn).toBeNull();
+    expect(room.snapshot().turn).toBeNull();
+    expect(room.snapshot().phase).toBe('open');
+    expect(room.transcript({ limit: 1 }).messages[0]!.text).toBe(
+      'alpha 把轮次交还给主持人',
+    );
+
+    // The host speaking into the idle room seeds the rotation from the first
+    // agent — the way back in after a hand-off.
+    room.sendMessage(room.humanMember(), '继续', {}, T0 + 3);
+    expect(room.snapshot().turn?.participantId).toBe(a.id);
+
+    // An unknown name still answers like send_message's, not with a new code.
+    expectChatError(() => room.passTurn(a, 'nobody', T0 + 4), 'MEMBER_NOT_FOUND');
   });
 
   it('P10: `to` yourself is refused — yielding to yourself changes nothing', () => {
@@ -234,6 +246,78 @@ describe('ChatRoom.passTurn (domain)', () => {
     room.close(T0 + 2);
 
     expectChatError(() => room.passTurn(a, undefined, T0 + 3), 'ROOM_CLOSED');
+  });
+
+  it('P13: the only agent yielding waits for the host instead of re-leasing itself', () => {
+    const room = manager().create('p13');
+    const a = room.join('alpha', undefined, T0);
+    room.sendMessage(room.humanMember(), '开始', { to: 'alpha' }, T0 + 1);
+
+    const turn = room.passTurn(a, undefined, T0 + 2);
+    // Handing the lease straight back to alpha looked like a yield but did
+    // nothing: the turn never left the same member.
+    expect(turn).toBeNull();
+    expect(room.snapshot().turn).toBeNull();
+    expect(room.transcript({ limit: 1 }).messages[0]!.text).toBe(
+      'alpha 让出轮次，等主持人',
+    );
+
+    // The host speaking wakes the room again and seeds alpha's turn.
+    room.sendMessage(room.humanMember(), '在的', {}, T0 + 3);
+    expect(room.snapshot().turn?.participantId).toBe(a.id);
+  });
+
+  it('P14: six yields in a row with nobody speaking pause the room', () => {
+    const mgr = manager();
+    const room = mgr.create('p14');
+    const a = room.join('alpha', undefined, T0);
+    const b = room.join('beta', undefined, T0 + 1);
+    room.sendMessage(room.humanMember(), '开始', { to: 'alpha' }, T0 + 2);
+
+    const holder = (): ChatMember =>
+      room.snapshot().turn?.participantId === a.id ? a : b;
+
+    let now = T0 + 3;
+    for (let i = 0; i < 5; i += 1) {
+      room.passTurn(holder(), undefined, now);
+      now += 1;
+    }
+    // Five is still a polite hand-off; the room must not punish it.
+    expect(room.snapshot().phase).toBe('open');
+
+    expect(room.passTurn(holder(), undefined, now)).toBeNull();
+    expect(room.snapshot().phase).toBe('paused');
+    expect(room.snapshot().turn).toBeNull();
+    expect(
+      room.transcript({}).messages.some((m) =>
+        m.text.includes('连续 6 次让出轮次都没人发言'),
+      ),
+    ).toBe(true);
+  });
+
+  it('P15: a real message resets the yield streak', () => {
+    const mgr = manager();
+    const room = mgr.create('p15');
+    const a = room.join('alpha', undefined, T0);
+    const b = room.join('beta', undefined, T0 + 1);
+    room.sendMessage(room.humanMember(), '开始', { to: 'alpha' }, T0 + 2);
+
+    const holder = (): ChatMember =>
+      room.snapshot().turn?.participantId === a.id ? a : b;
+
+    let now = T0 + 3;
+    for (let i = 0; i < 5; i += 1) {
+      room.passTurn(holder(), undefined, now);
+      now += 1;
+    }
+    // Somebody finally speaks: the guard starts over.
+    room.sendMessage(holder(), '说一句', {}, now);
+    now += 1;
+    for (let i = 0; i < 5; i += 1) {
+      room.passTurn(holder(), undefined, now);
+      now += 1;
+    }
+    expect(room.snapshot().phase).toBe('open');
   });
 
   it('pass wakes a parked waiter immediately (the domain half of P13)', async () => {

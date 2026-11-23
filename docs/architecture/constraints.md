@@ -103,7 +103,7 @@
 | `snapshot()` 保持**纯读**、返回拷贝；要改计数必须走 `memberRef()` | 让读有副作用会牵连网页轮询、WS 广播、回放；改计数加在副本上正是上限失效的根因 |
 | `onChange` 改订阅式后，**两个赋值点**（`create()` / `loadFile()`）都要接上 | 单槽被落盘占用时，WS 再赋值就把持久化顶掉，而且测试不会报错；漏掉 `loadFile` 只在重启后坏 |
 | 定时器必须 `unref()`，关闭时必须 `clearInterval` | 不 `unref` 进程退不出、测试挂住；不清 interval 会在测试间泄漏 |
-| `pass` 不消耗 hop、不产生 `chat` 消息、必须清 `consecutiveTimeouts`，`turn === null` 时拒绝 | 不清超时计数，偶尔 pass 的 agent 会莫名触发暂停；占 hop 会让预算提前耗尽 |
+| `pass` 不消耗 hop、不产生 `chat` 消息、必须清 `consecutiveTimeouts`，`turn === null` 时拒绝；`pass` 必须能交还主持人（`to: "human"`），单人让出不得把轮次还给同一人，连续 6 次让出且无人发言必须暂停 | 不清超时计数，偶尔 pass 的 agent 会莫名触发暂停；占 hop 会让预算提前耗尽；单 agent 自转会刷屏；两 agent 互让不耗预算也不触发超时，没有硬约束会无限空转 |
 | REST 建房的非法 `policy` 或未知字段一律报 `INVALID_REQUEST`，不回退默认值；且**先校验后创建** | 静默丢弃参数正是这个 bug 的成因；校验放创建之后会留下一个用默认值建的空房间 |
 | 聊天室 `updatedAt` 必须是真实最后活动时间，不得掺 `lastSeenAt` | 每次返回「现在」会让大厅按请求顺序排序；`lastSeenAt` 是「谁看过」，不是「房间变了」 |
 
