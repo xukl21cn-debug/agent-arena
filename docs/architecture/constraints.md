@@ -123,3 +123,13 @@
 | 迁 module 之前必须把**动态类名**改成显式映射（查表取 key），不得用模板字符串拼 | 拼出来的 key 在 module 里不存在时**编译不报错，只是没样式**。全站共 18 处，迁移时逐处核对 |
 | `web/src/styles/index.scss` 的 `@use` 顺序**不得重排** | `.btn--toggle` 与 `.btn` 特异度相同，`responsive.scss` 在 980px 查询里覆盖前者；换顺序会改变窄屏按钮样式，且没有任何测试能发现。[顺序说明](../../web/src/styles/index.scss) |
 | 不顺手引入 `_breakpoints.scss` 之类的 mixin 层 | 抽 mixin 会改变媒体查询的产出形式，破坏「样式拆分前后产物字节级相同」这条验收基线；真要加需单独验收 |
+
+## 10. 房间生命周期
+
+| 约束 | 为什么 |
+|---|---|
+| `POST /api/rooms` 省略 `roomId` 必须生成新 id（`game-<6 hex>`），**不得回落到 `default`** | `default` 启动时已存在，回落必然 409；大厅的新建按钮没有 id 可传 |
+| 删除房间必须同时**解除持久化**（`GameRoom.dispose()` / `ChatManager.remove()` 的 unsubscribe），且删除**不得动归档** | 只删注册表和文件时，挂起的请求会在之后把旧状态写回，房间重启复活；归档是回放的唯一来源 |
+| 棋类只在 `lobby` / `finished` 可删，聊天只在空房或 `closed` 可删；其余一律 `ROOM_BUSY`（409） | 进行中的对局有挂起的对手，未关闭的聊天有唯一转录；删除是唯一不可逆动作 |
+| 房间的**地址只能是 `roomId`**（`^[a-zA-Z0-9_-]{1,32}$`）；显示名不进寻址、不参与 join | 名字可重名、不可解析；MCP 的 `join_room` / `join_game` 只接受 `roomId` |
+| 运行时调 policy 时，`maxHops` / `maxMessagesPerMember` **不得低于已消费值** | 低于已用值时下一次发言立刻又触发同一个暂停，等于假装调整成功 |
