@@ -20,6 +20,7 @@ import {
   type ConnectionStatus,
 } from '../../store/room';
 import { usePageTitle } from '../layout/PageTitle';
+import { RoomChip } from '../layout/RoomChip';
 import { api, errorMessage } from '../../api';
 
 const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
@@ -233,9 +234,7 @@ export function GamePage() {
           </p>
         </div>
         <div className="page-head-meta">
-          <span className="room-chip" title="房间号">
-            room / {roomId}
-          </span>
+          <RoomChip roomId={roomId} />
           <span className={`connection connection--${connection}`}>
             <i className="connection-dot" aria-hidden="true" />
             {CONNECTION_LABELS[connection]}

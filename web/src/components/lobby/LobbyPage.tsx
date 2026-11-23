@@ -155,7 +155,9 @@ function chatCard(summary: ChatRoomSummaryDto) {
     tone: phaseTone(summary.phase),
     bucket: phaseBucket(summary.phase),
     title: summary.title || summary.id,
-    meta: `${summary.messageCount} 条 · hop ${summary.hop}/${summary.maxHops}`,
+    // The name is a label; the id is the address. Show both when they differ,
+    // or the lobby hides the one string you need to hand to an agent.
+    meta: `${summary.title !== summary.id ? `${summary.id} · ` : ''}${summary.messageCount} 条 · hop ${summary.hop}/${summary.maxHops}`,
     people: `${summary.memberCount} 人 · ${summary.agentCount} agent`,
     updatedAt: summary.updatedAt,
   };

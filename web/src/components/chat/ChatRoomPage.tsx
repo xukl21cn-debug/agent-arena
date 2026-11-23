@@ -11,6 +11,7 @@ import { useChatStore, type ChatConnection } from '../../store/chat';
 import { ChatComposer } from './ChatComposer';
 import { authorColor, ChatTimeline } from './ChatTimeline';
 import { usePageTitle } from '../layout/PageTitle';
+import { RoomChip } from '../layout/RoomChip';
 import { api, errorMessage } from '../../api';
 
 const CONNECTION_LABELS: Record<ChatConnection, string> = {
@@ -278,9 +279,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
           </p>
         </div>
         <div className="page-head-meta">
-          <span className="room-chip" title="房间号">
-            room / {roomId}
-          </span>
+          <RoomChip roomId={roomId} />
           <span className={`chat-phase chat-phase--${phase}`}>
             {PHASE_LABELS[phase]}
           </span>
