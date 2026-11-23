@@ -59,6 +59,7 @@ function chatRoomFrame(snapshot: ChatRoomSnapshot): ChatRoomFrame {
     hop: snapshot.hop,
     maxHops: snapshot.policy.maxHops,
     maxMessagesPerMember: snapshot.policy.maxMessagesPerMember,
+    turnTimeoutMs: snapshot.policy.turnTimeoutMs,
     turn: snapshot.turn
       ? { participantId: snapshot.turn.participantId, name: snapshot.turn.name }
       : null,

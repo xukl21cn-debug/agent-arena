@@ -240,6 +240,8 @@ export interface ChatRoomFrame {
   /** The policy numbers the UI renders; the full policy stays server-side. */
   maxHops: number;
   maxMessagesPerMember: number;
+  /** How long one member's speaking turn may last before it is skipped. */
+  turnTimeoutMs: number;
   turn: { participantId: string; name: string } | null;
   members: ChatMemberFrame[];
   messageCount: number;

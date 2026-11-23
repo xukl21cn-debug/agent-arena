@@ -231,6 +231,22 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
     setBudgetDraft(null);
   };
 
+  // Seconds on screen, milliseconds on the wire; the field mirrors the live
+  // value until the host types, same rule as the budget above.
+  const [leaseDraft, setLeaseDraft] = useState<string | null>(null);
+  const applyLease = (event: FormEvent): void => {
+    event.preventDefault();
+    if (room === null) {
+      return;
+    }
+    const seconds = Number(leaseDraft ?? room.turnTimeoutMs / 1000);
+    if (!Number.isInteger(seconds)) {
+      return;
+    }
+    void setPolicy({ turnTimeoutMs: seconds * 1000 });
+    setLeaseDraft(null);
+  };
+
   const navigate = useNavigate();
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -379,6 +395,29 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
                     disabled={busy}
                     value={budgetDraft ?? String(room.maxHops)}
                     onChange={(event) => setBudgetDraft(event.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn--ghost"
+                    disabled={busy}
+                  >
+                    应用
+                  </button>
+                </form>
+              ) : null}
+              {room !== null && room.phase !== 'closed' ? (
+                <form className="chat-hop-adjust" onSubmit={applyLease}>
+                  <label htmlFor="turn-lease">发言租约（秒）</label>
+                  <input
+                    id="turn-lease"
+                    type="number"
+                    min={1}
+                    max={600}
+                    step={1}
+                    required
+                    disabled={busy}
+                    value={leaseDraft ?? String(room.turnTimeoutMs / 1000)}
+                    onChange={(event) => setLeaseDraft(event.target.value)}
                   />
                   <button
                     type="submit"

@@ -116,7 +116,11 @@ interface ChatRoomRestSnapshot {
   id: string;
   title: string;
   phase: 'open' | 'paused' | 'closed';
-  policy: { maxHops: number; maxMessagesPerMember: number };
+  policy: {
+    maxHops: number;
+    maxMessagesPerMember: number;
+    turnTimeoutMs: number;
+  };
   seq: number;
   hop: number;
   turn: { participantId: string; name: string } | null;
@@ -133,6 +137,7 @@ function chatRoomFrameOf(rest: ChatRoomRestSnapshot): ChatRoomFrame {
     hop: rest.hop,
     maxHops: rest.policy.maxHops,
     maxMessagesPerMember: rest.policy.maxMessagesPerMember,
+    turnTimeoutMs: rest.policy.turnTimeoutMs,
     turn: rest.turn,
     members: rest.members,
     messageCount: rest.messageCount,
@@ -293,7 +298,7 @@ export const api = {
   },
 
   /**
-   * Create a chat room. `title` and the two caps are optional: an empty title
+   * Create a chat room. `title` and the caps are optional: an empty title
    * falls back to the generated id, and omitted caps take the domain defaults.
    */
   createChatRoom(
@@ -301,6 +306,8 @@ export const api = {
       title?: string;
       maxHops?: number;
       maxMessagesPerMember?: number;
+      /** Seconds one member may hold the turn before it is skipped. */
+      turnTimeoutMs?: number;
     } = {},
   ): Promise<string> {
     const policy: Record<string, number> = {};
@@ -309,6 +316,9 @@ export const api = {
     }
     if (options.maxMessagesPerMember !== undefined) {
       policy.maxMessagesPerMember = options.maxMessagesPerMember;
+    }
+    if (options.turnTimeoutMs !== undefined) {
+      policy.turnTimeoutMs = options.turnTimeoutMs;
     }
     const title = options.title?.trim() ?? '';
     return request<{ room: ChatRoomRestSnapshot }>('/api/chat/rooms', {
@@ -323,7 +333,11 @@ export const api = {
   /** Host tuning of the caps; the room comes back as the wire frame. */
   chatSetPolicy(
     roomId: string,
-    policy: { maxHops?: number; maxMessagesPerMember?: number },
+    policy: {
+      maxHops?: number;
+      maxMessagesPerMember?: number;
+      turnTimeoutMs?: number;
+    },
   ): Promise<ChatRoomFrame> {
     return request<{ room: ChatRoomRestSnapshot }>(
       chatPath(roomId, '/policy'),

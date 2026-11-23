@@ -41,6 +41,7 @@ export interface ChatStore {
   setPolicy(policy: {
     maxHops?: number;
     maxMessagesPerMember?: number;
+    turnTimeoutMs?: number;
   }): Promise<void>;
   clearError(): void;
 }

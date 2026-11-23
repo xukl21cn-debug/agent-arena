@@ -563,6 +563,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
     title: string;
     maxHops: string;
     perMember: string;
+    lease: string;
   } | null>(null);
 
   const createGame = async (): Promise<void> => {
@@ -591,6 +592,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
         title: chatForm.title,
         maxHops: Number(chatForm.maxHops),
         maxMessagesPerMember: Number(chatForm.perMember),
+        turnTimeoutMs: Number(chatForm.lease) * 1000,
       });
       navigate(`/chats/${encodeURIComponent(roomId)}`);
     } catch (caught) {
@@ -678,7 +680,12 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
               className="btn"
               disabled={creating !== null}
               onClick={() =>
-                setChatForm({ title: '', maxHops: '16', perMember: '8' })
+                setChatForm({
+                  title: '',
+                  maxHops: '16',
+                  perMember: '8',
+                  lease: '300',
+                })
               }
             >
               + 新建聊天室
@@ -732,6 +739,20 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
               value={chatForm.perMember}
               onChange={(event) =>
                 setChatForm({ ...chatForm, perMember: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            发言租约（秒）
+            <input
+              type="number"
+              min={1}
+              max={600}
+              step={1}
+              required
+              value={chatForm.lease}
+              onChange={(event) =>
+                setChatForm({ ...chatForm, lease: event.target.value })
               }
             />
           </label>
