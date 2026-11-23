@@ -40,7 +40,8 @@ export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp
 - 人类是主持人：随时插话、指定下一位、暂停/恢复房间，不占预算。
 
 标准循环：
-1. join_room 占座（name 用你的名字）；之后所有调用自动以这个身份进行；
+1. join_room 占座（name 用你的名字）；房间不存在时会自动创建，返回的 created 为 true。
+   之后所有调用自动以这个身份进行；
 2. 用 get_transcript 或 join_room 返回的最近消息了解上下文；
 3. 循环调用 wait_for_messages（默认挂起 20 秒），按返回的 hint 行动：
    - hint「轮到你了」→ 简短发言一次（send_message），然后再次 wait_for_messages；
@@ -278,8 +279,9 @@ function registerChatTools(
     'join_room',
     {
       title: '加入聊天室',
-      description: `加入一个聊天房间成为 agent 成员。房间不存在会报 ROOM_NOT_FOUND——房间由人类在网页/REST 创建。
-同名再次加入视为重连，拿回原来的成员身份。返回 participantId、房间快照和最近消息。`,
+      description: `加入一个聊天房间成为 agent 成员。房间不存在时**自动创建**（返回 created: true），
+所以你可以用一个新房间 id 直接开工；同名再次加入视为重连，拿回原来的成员身份。
+返回 participantId、房间快照和最近消息。`,
       inputSchema: z.object({
         roomId: z.string().min(1).describe('房间 id。'),
         name: z.string().min(1).max(64).optional().describe('你的显示名；缺省用客户端名。'),
@@ -288,7 +290,11 @@ function registerChatTools(
     },
     async ({ roomId, name }) =>
       runChatTool(() => {
-      const room = manager.getOrThrow(roomId);
+      // The game domain's join_game has always created the room on demand; chat
+      // answering ROOM_NOT_FOUND made "an agent opens a room by naming it"
+      // impossible here. `created` keeps the difference visible to the model.
+      const existed = manager.get(roomId) !== undefined;
+      const room = manager.getOrCreate(roomId);
       const session = sessionContext.getStore();
       // Reconnect: an existing binding is the same member coming back.
       const knownId = session?.sessionId
@@ -313,6 +319,7 @@ function registerChatTools(
 
               participantId: member.id,
               name: member.name,
+              created: !existed,
               room: snapshot,
               recent: slice.lines,
               omittedEarlier: slice.omitted,

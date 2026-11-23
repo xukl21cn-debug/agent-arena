@@ -113,6 +113,21 @@ export class ChatManager {
     return this.rooms.get(roomId);
   }
 
+  /**
+   * The room if it exists, otherwise a fresh one.
+   *
+   * The game domain has always created rooms on demand — an agent naming a new
+   * id gets a room. Chat only ever answered ROOM_NOT_FOUND, which made
+   * "an agent opens a room by saying so" impossible in this domain. Both
+   * domains now behave the same; `created` tells the caller which happened.
+   */
+  getOrCreate(
+    roomId: string,
+    options: { title?: string; policy?: Partial<ChatPolicy> } = {},
+  ): ChatRoom {
+    return this.rooms.get(roomId) ?? this.create(roomId, options);
+  }
+
   getOrThrow(roomId: string): ChatRoom {
     const room = this.rooms.get(roomId);
     if (!room) {

@@ -3,6 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
@@ -59,6 +61,31 @@ function roomFile(roomId: string): string {
 
 function chatFile(roomId: string): string {
   return path.join(dataDir, 'chat', `${roomId}.json`);
+}
+
+function payloadOf(result: Awaited<ReturnType<Client['callTool']>>): any {
+  const content = result.content as Array<{ type: string; text?: string }>;
+  const text = content.find((item) => item.type === 'text')?.text;
+  if (!text) {
+    throw new Error('tool returned no text content');
+  }
+  return JSON.parse(text);
+}
+
+async function call(
+  client: Client,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<any> {
+  return payloadOf(await client.callTool({ name, arguments: args }));
+}
+
+async function connect(name: string): Promise<Client> {
+  const client = new Client({ name, version: '0.0.1' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`${baseUrl}/chat/mcp`)),
+  );
+  return client;
 }
 
 beforeAll(async () => {
@@ -248,6 +275,33 @@ describe('deleting a chat room', () => {
       expect(existsSync(file)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('chat MCP joins', () => {
+  it('J1: join_room creates the room and reports it', async () => {
+    const client = await connect('lifecycle-joiner');
+    try {
+      const first = await call(client, 'join_room', {
+        roomId: 'mcp-made',
+        name: 'joiner',
+      });
+      expect(first.created).toBe(true);
+      expect(first.room.id).toBe('mcp-made');
+
+      // Rejoining the same room is a reconnect, not a second creation.
+      const again = await call(client, 'join_room', {
+        roomId: 'mcp-made',
+        name: 'joiner',
+      });
+      expect(again.created).toBe(false);
+      expect(again.participantId).toBe(first.participantId);
+
+      const listed = (await get('/api/chat/rooms')) as Array<{ id: string }>;
+      expect(listed.some((room) => room.id === 'mcp-made')).toBe(true);
+    } finally {
+      await client.close().catch(() => undefined);
     }
   });
 });
