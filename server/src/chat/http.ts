@@ -24,6 +24,9 @@ export function statusForChatCode(code: ChatErrorCode): number {
     case 'ROOM_EXISTS':
     case 'ROOM_CLOSED':
     case 'ROOM_PAUSED':
+    // The transcript is not closed yet: deleting it would throw away the only
+    // copy of the conversation.
+    case 'ROOM_BUSY':
     case 'NOT_YOUR_TURN':
     case 'MEMBER_LIMIT_REACHED':
       return 409;
@@ -236,6 +239,27 @@ export function createChatRouter(manager: ChatManager): Router {
   router.post('/rooms/:roomId/pause', phaseAction('pause'));
   router.post('/rooms/:roomId/resume', phaseAction('resume'));
   router.post('/rooms/:roomId/close', phaseAction('close'));
+
+  /**
+   * Delete a chat room.
+   *
+   * An empty room goes straight away — it was probably created by mistake.
+   * A room that has said something must be closed first: the transcript is the
+   * whole point of the domain, and deleting it silently would be the one
+   * irreversible action in the app.
+   */
+  router.delete('/rooms/:roomId', (req, res) => {
+    const room = manager.getOrThrow(req.params.roomId);
+    const snapshot = room.snapshot();
+    if (snapshot.messageCount > 0 && snapshot.phase !== 'closed') {
+      throw new ChatError(
+        'ROOM_BUSY',
+        `Chat room "${room.id}" holds ${snapshot.messageCount} messages and is ${snapshot.phase}; close it before deleting.`,
+      );
+    }
+    manager.remove(room.id);
+    res.status(204).end();
+  });
 
   router.get('/rooms/:roomId/transcript', (req, res) => {
     const room = manager.getOrThrow(req.params.roomId);

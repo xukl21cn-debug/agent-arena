@@ -115,6 +115,8 @@ export interface ChatRoomSnapshotFile {
 export type ChatErrorCode =
   | 'ROOM_NOT_FOUND'
   | 'ROOM_EXISTS'
+  /** The room still holds messages and is not closed; it cannot be deleted. */
+  | 'ROOM_BUSY'
   | 'INVALID_ROOM_ID'
   | 'INVALID_REQUEST'
   | 'ROOM_CLOSED'

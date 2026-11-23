@@ -83,6 +83,7 @@ export class RoomManager {
   }
 
   remove(roomId: string): void {
+    this.rooms.get(roomId)?.dispose();
     this.rooms.delete(roomId);
     this.repository.delete(roomId);
   }

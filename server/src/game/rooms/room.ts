@@ -183,6 +183,8 @@ export class GameRoom {
   private commentaryLog: Commentary[] = [];
   /** Last phase listeners were told about, so repeats stay silent. */
   private lastPhase: RoomPhase = 'lobby';
+  /** Set once the room is deleted; a detached room must never persist again. */
+  private disposed = false;
 
   constructor(id: string, options: GameRoomOptions = {}) {
     this.id = id;
@@ -238,6 +240,17 @@ export class GameRoom {
     return this.roster.list().some((participant) => participant.ready)
       ? 'waiting'
       : 'lobby';
+  }
+
+  /**
+   * Detach the room from its repository after deletion.
+   *
+   * A parked long poll or an in-flight request can still hold this object;
+   * without the flag its next save would recreate `data/rooms/<id>.json` and
+   * the room would come back on the next restart.
+   */
+  dispose(): void {
+    this.disposed = true;
   }
 
   /**
@@ -1072,6 +1085,9 @@ export class GameRoom {
   }
 
   private save(): void {
+    if (this.disposed) {
+      return;
+    }
     this.repository?.save(this);
   }
 }

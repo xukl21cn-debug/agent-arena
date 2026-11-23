@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   type ErrorRequestHandler,
   Router,
@@ -52,6 +53,9 @@ export function statusForCode(code: ErrorCode): number {
     case 'ARCHIVE_NOT_FOUND':
       return 404;
     case 'ROOM_EXISTS':
+    // The room still holds a live game: deleting it would strand the parked
+    // opponent and throw away the transcript.
+    case 'ROOM_BUSY':
     case 'GAME_NOT_PLAYING':
     case 'NOT_YOUR_TURN':
     case 'SEAT_TAKEN':
@@ -146,14 +150,16 @@ function integerOf(value: unknown, name: string): number {
   return value;
 }
 
-function roomIdOf(value: unknown, fallback: string): string {
-  if (value === undefined) {
-    return fallback;
-  }
+function roomIdOf(value: unknown): string {
   if (typeof value !== 'string') {
     throw new RoomError('INVALID_ROOM_ID', 'roomId must be a string.');
   }
   return value;
+}
+
+/** A fresh, human-friendly id for a room the caller did not name. */
+function generatedRoomId(): string {
+  return `game-${randomBytes(3).toString('hex')}`;
 }
 
 function seatOf(value: unknown, color: StoneColor): PlayerSpec {
@@ -392,16 +398,57 @@ export function createApiRouter(
     res.json(manager.list());
   });
 
+  /**
+   * Create a room. An explicit `roomId` is honoured; without one the server
+   * hands out a fresh `game-<6 hex>` so the lobby's 新建 button never has to
+   * invent an id — and never lands on `default` (which always exists).
+   */
   router.post('/rooms', (req, res) => {
     const body = bodyOf(req);
-    const roomId = roomIdOf(body.roomId, manager.defaultRoomId);
-
-    const room = createRoomOrThrow(manager, roomId, {
+    const config = {
       seats: seatsOf(body.seats),
       rules: rulesOf(body.rules),
-    });
+    };
 
-    res.status(201).json(room.getView());
+    if (body.roomId !== undefined) {
+      const room = createRoomOrThrow(manager, roomIdOf(body.roomId), config);
+      res.status(201).json(room.getView());
+      return;
+    }
+
+    // A collision needs two identical 24-bit draws; retry rather than answer
+    // 409 to a caller that never asked for a specific id.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const roomId = generatedRoomId();
+      if (manager.get(roomId)) {
+        continue;
+      }
+      res.status(201).json(manager.create(roomId, config).getView());
+      return;
+    }
+    throw new RoomError('INTERNAL_ERROR', 'Could not allocate a free room id.');
+  });
+
+  /**
+   * Delete a room.
+   *
+   * Refused while the room is `waiting` or `playing`: the opponent is parked
+   * in a long poll and the transcript is the only evidence of the game.
+   * `lobby` (nobody ready) and `finished` (previous game over) are safe.
+   * Archives are kept — they live in their own directory and are the room's
+   * only lasting value.
+   */
+  router.delete('/rooms/:roomId', (req, res) => {
+    const room = roomOrThrow(manager, req.params.roomId);
+    const phase = room.getPhase();
+    if (phase === 'waiting' || phase === 'playing') {
+      throw new RoomError(
+        'ROOM_BUSY',
+        `Room "${room.id}" is ${phase}; finish or abandon the game before deleting it.`,
+      );
+    }
+    manager.remove(room.id);
+    res.status(204).end();
   });
 
   router.get('/rooms/:roomId', (req, res) => {

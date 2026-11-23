@@ -43,6 +43,8 @@ export interface ChatRoomSummary {
  */
 export class ChatManager {
   private readonly rooms = new Map<string, ChatRoom>();
+  /** Detaches each room's persistence listener; a deleted room must not save. */
+  private readonly unsubscribes = new Map<string, () => void>();
   private readonly chatDir: string;
 
   constructor(dataDir: string) {
@@ -94,11 +96,17 @@ export class ChatManager {
       ...DEFAULT_CHAT_POLICY,
       ...options.policy,
     });
-    room.subscribe(() => this.save(room));
+    this.track(room);
     room.humanMember();
     this.rooms.set(roomId, room);
     this.save(room);
     return room;
+  }
+
+  /** Wire a room's mutations to its snapshot file. Both creation paths need it. */
+  private track(room: ChatRoom): void {
+    this.unsubscribes.get(room.id)?.();
+    this.unsubscribes.set(room.id, room.subscribe(() => this.save(room)));
   }
 
   get(roomId: string): ChatRoom | undefined {
@@ -138,6 +146,8 @@ export class ChatManager {
 
   /** Remove the persisted file and the room from memory. */
   remove(roomId: string): void {
+    this.unsubscribes.get(roomId)?.();
+    this.unsubscribes.delete(roomId);
     this.rooms.delete(roomId);
     const file = this.fileFor(roomId);
     if (existsSync(file)) {
@@ -205,7 +215,7 @@ export class ChatManager {
       const room = ChatRoom.fromSnapshotFile(parsed);
       // Both wiring points (create and this one) must subscribe, or a room
       // recovered on boot stops persisting its later messages.
-      room.subscribe(() => this.save(room));
+      this.track(room);
       return room;
     } catch (error) {
       console.error(

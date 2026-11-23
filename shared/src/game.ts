@@ -34,6 +34,8 @@ export type WaitReason =
 export type ErrorCode =
   | 'ROOM_NOT_FOUND'
   | 'ROOM_EXISTS'
+  /** The room still holds a live game; it cannot be deleted right now. */
+  | 'ROOM_BUSY'
   | 'INVALID_ROOM_ID'
   | 'GAME_NOT_PLAYING'
   | 'NOT_YOUR_TURN'
