@@ -1,5 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo } from 'react';
-import { useParams } from 'react-router';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import {
   DEFAULT_ROOM_ID,
   ROOM_ID_PATTERN,
@@ -20,6 +20,7 @@ import {
   type ConnectionStatus,
 } from '../../store/room';
 import { usePageTitle } from '../layout/PageTitle';
+import { api, errorMessage } from '../../api';
 
 const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
   connecting: '连接中',
@@ -62,6 +63,36 @@ export function GamePage() {
   // paint would show one frame of the previous room's board after a route
   // change. Running before paint keeps room switches clean.
   useLayoutEffect(() => connect(roomId), [connect, roomId]);
+
+  const navigate = useNavigate();
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Same 4s window as the other two-step buttons: arming expires on its own.
+  useEffect(() => {
+    if (!deleteArmed) {
+      return;
+    }
+    const timer = setTimeout(() => setDeleteArmed(false), 4_000);
+    return () => clearTimeout(timer);
+  }, [deleteArmed]);
+
+  // The server owns the rule (waiting/playing answer ROOM_BUSY); the page only
+  // mirrors it so the button explains itself before it is pressed.
+  const deletable = phase === 'lobby' || phase === 'finished';
+  const removeRoom = async (): Promise<void> => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteRoom(roomId);
+      navigate('/games');
+    } catch (caught) {
+      setDeleteError(errorMessage(caught));
+      setDeleting(false);
+      setDeleteArmed(false);
+    }
+  };
 
   const goState = state?.game === 'go' ? state : null;
   const gomokuState = state?.game === 'gomoku' ? state : null;
@@ -209,13 +240,39 @@ export function GamePage() {
             <i className="connection-dot" aria-hidden="true" />
             {CONNECTION_LABELS[connection]}
           </span>
+          <button
+            type="button"
+            className={`btn btn--danger ${deleteArmed ? 'is-confirming' : ''}`}
+            disabled={deleting || !deletable}
+            title={
+              deletable
+                ? '删除这间房；已结束的对局仍可在历史里回放'
+                : '对局进行中，先结束或认输再删'
+            }
+            onClick={() => {
+              if (deleteArmed) {
+                void removeRoom();
+              } else {
+                setDeleteArmed(true);
+              }
+            }}
+          >
+            {deleting ? '删除中…' : deleteArmed ? '再点一次删除' : '删除房间'}
+          </button>
         </div>
       </div>
 
-      {error ? (
+      {deleteError !== null || error ? (
         <div className="error-bar" role="alert">
-          <span>{error}</span>
-          <button type="button" className="error-dismiss" onClick={clearError}>
+          <span>{deleteError ?? error}</span>
+          <button
+            type="button"
+            className="error-dismiss"
+            onClick={() => {
+              setDeleteError(null);
+              clearError();
+            }}
+          >
             知道了
           </button>
         </div>

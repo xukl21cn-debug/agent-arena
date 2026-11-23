@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useReducer, useState } from 'react';
+import { useNavigate } from 'react-router';
 import type { ChatMemberFrame } from '@arena/shared';
 import { useChatStore, type ChatConnection } from '../../store/chat';
 import { ChatComposer } from './ChatComposer';
 import { authorColor, ChatTimeline } from './ChatTimeline';
 import { usePageTitle } from '../layout/PageTitle';
+import { api, errorMessage } from '../../api';
 
 const CONNECTION_LABELS: Record<ChatConnection, string> = {
   connecting: '连接中',
@@ -201,6 +203,37 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   const phase = room?.phase ?? 'open';
   const agents = room?.members.filter((member) => member.kind === 'agent') ?? [];
 
+  const navigate = useNavigate();
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Same 4s window as the other two-step buttons: arming expires on its own.
+  useEffect(() => {
+    if (!deleteArmed) {
+      return;
+    }
+    const timer = setTimeout(() => setDeleteArmed(false), 4_000);
+    return () => clearTimeout(timer);
+  }, [deleteArmed]);
+
+  // Mirrors the server rule: an empty room goes at once, a room with a
+  // transcript must be closed first.
+  const deletable =
+    room !== null && (room.messageCount === 0 || room.phase === 'closed');
+  const removeRoom = async (): Promise<void> => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteChatRoom(roomId);
+      navigate('/chats');
+    } catch (caught) {
+      setDeleteError(errorMessage(caught));
+      setDeleting(false);
+      setDeleteArmed(false);
+    }
+  };
+
   const composerDisabled = busy || room === null || phase === 'closed';
   const composerHint =
     room === null
@@ -229,13 +262,39 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
             <i className="connection-dot" aria-hidden="true" />
             {CONNECTION_LABELS[connection]}
           </span>
+          <button
+            type="button"
+            className={`btn btn--danger ${deleteArmed ? 'is-confirming' : ''}`}
+            disabled={deleting || !deletable}
+            title={
+              deletable
+                ? '删除这间聊天室，记录一并删除'
+                : '还有消息未关闭，先点「关闭」再删'
+            }
+            onClick={() => {
+              if (deleteArmed) {
+                void removeRoom();
+              } else {
+                setDeleteArmed(true);
+              }
+            }}
+          >
+            {deleting ? '删除中…' : deleteArmed ? '再点一次删除' : '删除房间'}
+          </button>
         </div>
       </div>
 
-      {error ? (
+      {deleteError !== null || error ? (
         <div className="error-bar" role="alert">
-          <span>{error}</span>
-          <button type="button" className="error-dismiss" onClick={clearError}>
+          <span>{deleteError ?? error}</span>
+          <button
+            type="button"
+            className="error-dismiss"
+            onClick={() => {
+              setDeleteError(null);
+              clearError();
+            }}
+          >
             知道了
           </button>
         </div>

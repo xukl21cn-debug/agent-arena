@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import type { ArchiveSummary, RoomSummary } from '@arena/shared';
 import { api, errorMessage, type ChatRoomSummaryDto } from '../../api';
 import { endLabel, timeAgo } from '../../labels';
@@ -543,10 +543,32 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
   } = useLobbyList(fetchArchives);
 
   const entry = useLocation().key;
+  const navigate = useNavigate();
   const [gameTab, setGameTab] = useState<GameTab>(() => gameTabMemory.get(entry) ?? 'gomoku');
   const selectTab = (next: GameTab): void => {
     gameTabMemory.set(entry, next);
     setGameTab(next);
+  };
+
+  // The id comes back from the server, so a failed creation is the only way to
+  // stay on this page — surface its message instead of a silent no-op.
+  const [creating, setCreating] = useState<'game' | 'chat' | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createRoom = async (kind: 'game' | 'chat'): Promise<void> => {
+    if (creating !== null) {
+      return;
+    }
+    setCreating(kind);
+    setCreateError(null);
+    try {
+      const roomId =
+        kind === 'game' ? await api.createRoom() : await api.createChatRoom();
+      const path = kind === 'game' ? '/games/' : '/chats/';
+      navigate(`${path}${encodeURIComponent(roomId)}`);
+    } catch (caught) {
+      setCreateError(errorMessage(caught));
+      setCreating(null);
+    }
   };
 
   // A single-domain lobby only talks to its own endpoints; the overview loads
@@ -612,9 +634,42 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
           <p className="page-subtitle">{subtitle}</p>
         </div>
         <div className="page-head-meta">
+          {showsGames ? (
+            <button
+              type="button"
+              className="btn"
+              disabled={creating !== null}
+              onClick={() => void createRoom('game')}
+            >
+              {creating === 'game' ? '创建中…' : '+ 新建对局'}
+            </button>
+          ) : null}
+          {showsChats ? (
+            <button
+              type="button"
+              className="btn"
+              disabled={creating !== null}
+              onClick={() => void createRoom('chat')}
+            >
+              {creating === 'chat' ? '创建中…' : '+ 新建聊天室'}
+            </button>
+          ) : null}
           <span className="room-chip">每 {POLL_MS / 1000} 秒自动刷新</span>
         </div>
       </div>
+
+      {createError !== null ? (
+        <div className="error-bar" role="alert">
+          <span>{createError}</span>
+          <button
+            type="button"
+            className="error-dismiss"
+            onClick={() => setCreateError(null)}
+          >
+            知道了
+          </button>
+        </div>
+      ) : null}
 
       {topError !== null ? (
         <div className="error-bar" role="alert">
@@ -652,7 +707,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
               <Group
                 title="五子棋"
                 unit="间"
-                emptyHint="暂无房间。打开 /games/<房间名> 即可开一间。"
+                emptyHint="暂无房间。点右上角「新建对局」，或让 agent 用房间号加入。"
                 cards={gomoku}
                 loading={gamesLoading}
                 error={gamesError}
@@ -663,7 +718,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
               <Group
                 title="围棋"
                 unit="间"
-                emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
+                emptyHint="暂无围棋房间。进一间房选围棋开局后会出现。"
                 cards={go}
                 loading={gamesLoading}
                 error={gamesError}
@@ -684,7 +739,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
           <Group
             title="聊天"
             unit="间"
-            emptyHint="暂无房间。POST /api/chat/rooms 或 MCP 建房。"
+            emptyHint="暂无聊天室。点右上角「新建聊天室」。"
             cards={chatCards}
             loading={chatsLoading}
             error={chatsError}
@@ -697,7 +752,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
             <Group
               title="五子棋"
               unit="间"
-              emptyHint="暂无房间。打开 /games/<房间名> 即可开一间。"
+              emptyHint="暂无房间。点右上角「新建对局」，或让 agent 用房间号加入。"
               cards={gomoku}
               loading={gamesLoading}
               error={gamesError}
@@ -706,7 +761,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
             <Group
               title="围棋"
               unit="间"
-              emptyHint="暂无房间。在棋类页面选围棋开局后会出现。"
+              emptyHint="暂无围棋房间。进一间房选围棋开局后会出现。"
               cards={go}
               loading={gamesLoading}
               error={gamesError}
@@ -715,7 +770,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
             <Group
               title="聊天"
               unit="间"
-              emptyHint="暂无房间。POST /api/chat/rooms 或 MCP 建房。"
+              emptyHint="暂无聊天室。点右上角「新建聊天室」。"
               cards={chatCards}
               loading={chatsLoading}
               error={chatsError}

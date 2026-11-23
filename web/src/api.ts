@@ -283,6 +283,34 @@ export const api = {
   },
 
   /**
+   * Create a room. The server picks the id (`game-<6 hex>`), so the lobby never
+   * has to invent one — and never lands on `default`, which always exists.
+   */
+  createRoom(): Promise<string> {
+    return request<RoomView>('/api/rooms', { method: 'POST', body: '{}' }).then(
+      (view) => view.state.roomId,
+    );
+  },
+
+  /** Same for a chat room; the chat domain answers `{ room }`. */
+  createChatRoom(): Promise<string> {
+    return request<{ room: ChatRoomRestSnapshot }>('/api/chat/rooms', {
+      method: 'POST',
+      body: '{}',
+    }).then(({ room }) => room.id);
+  },
+
+  /** Delete a game room. Its archived games survive, so replays keep working. */
+  deleteRoom(roomId: string): Promise<void> {
+    return request<void>(roomPath(roomId), { method: 'DELETE' });
+  },
+
+  /** Delete a chat room; the server refuses an unclosed transcript. */
+  deleteChatRoom(roomId: string): Promise<void> {
+    return request<void>(chatPath(roomId), { method: 'DELETE' });
+  },
+
+  /**
    * Archived games, newest played first — the server already ordered them,
    * so the caller must not re-sort. Null when the surface is absent or
    * failing: the lobby degrades to "no history" instead of breaking, which
