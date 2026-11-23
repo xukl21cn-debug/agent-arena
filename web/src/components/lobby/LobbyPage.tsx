@@ -554,17 +554,43 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
   // stay on this page — surface its message instead of a silent no-op.
   const [creating, setCreating] = useState<'game' | 'chat' | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
-  const createRoom = async (kind: 'game' | 'chat'): Promise<void> => {
+
+  // A chat room takes a name and two caps, so it gets a form instead of being
+  // created on the spot. The defaults mirror DEFAULT_CHAT_POLICY on the server.
+  const [chatForm, setChatForm] = useState<{
+    title: string;
+    maxHops: string;
+    perMember: string;
+  } | null>(null);
+
+  const createGame = async (): Promise<void> => {
     if (creating !== null) {
       return;
     }
-    setCreating(kind);
+    setCreating('game');
     setCreateError(null);
     try {
-      const roomId =
-        kind === 'game' ? await api.createRoom() : await api.createChatRoom();
-      const path = kind === 'game' ? '/games/' : '/chats/';
-      navigate(`${path}${encodeURIComponent(roomId)}`);
+      const roomId = await api.createRoom();
+      navigate(`/games/${encodeURIComponent(roomId)}`);
+    } catch (caught) {
+      setCreateError(errorMessage(caught));
+      setCreating(null);
+    }
+  };
+
+  const createChat = async (): Promise<void> => {
+    if (creating !== null || chatForm === null) {
+      return;
+    }
+    setCreating('chat');
+    setCreateError(null);
+    try {
+      const roomId = await api.createChatRoom({
+        title: chatForm.title,
+        maxHops: Number(chatForm.maxHops),
+        maxMessagesPerMember: Number(chatForm.perMember),
+      });
+      navigate(`/chats/${encodeURIComponent(roomId)}`);
     } catch (caught) {
       setCreateError(errorMessage(caught));
       setCreating(null);
@@ -639,7 +665,7 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
               type="button"
               className="btn"
               disabled={creating !== null}
-              onClick={() => void createRoom('game')}
+              onClick={() => void createGame()}
             >
               {creating === 'game' ? '创建中…' : '+ 新建对局'}
             </button>
@@ -649,14 +675,80 @@ export function LobbyPage({ domain }: { domain?: LobbyDomain } = {}) {
               type="button"
               className="btn"
               disabled={creating !== null}
-              onClick={() => void createRoom('chat')}
+              onClick={() =>
+                setChatForm({ title: '', maxHops: '16', perMember: '8' })
+              }
             >
-              {creating === 'chat' ? '创建中…' : '+ 新建聊天室'}
+              + 新建聊天室
             </button>
           ) : null}
           <span className="room-chip">每 {POLL_MS / 1000} 秒自动刷新</span>
         </div>
       </div>
+
+      {chatForm !== null ? (
+        <form
+          className="lobby-create"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createChat();
+          }}
+        >
+          <label>
+            名称
+            <input
+              value={chatForm.title}
+              maxLength={40}
+              placeholder="留空则用房间号"
+              onChange={(event) =>
+                setChatForm({ ...chatForm, title: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            hop 预算
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              step={1}
+              required
+              value={chatForm.maxHops}
+              onChange={(event) =>
+                setChatForm({ ...chatForm, maxHops: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            每人发言上限
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              step={1}
+              required
+              value={chatForm.perMember}
+              onChange={(event) =>
+                setChatForm({ ...chatForm, perMember: event.target.value })
+              }
+            />
+          </label>
+          <button
+            type="submit"
+            className="btn btn--primary"
+            disabled={creating !== null}
+          >
+            {creating === 'chat' ? '创建中…' : '创建聊天室'}
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setChatForm(null)}
+          >
+            取消
+          </button>
+        </form>
+      ) : null}
 
       {createError !== null ? (
         <div className="error-bar" role="alert">

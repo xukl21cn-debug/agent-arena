@@ -37,6 +37,11 @@ export interface ChatStore {
   pause(): Promise<void>;
   resume(): Promise<void>;
   closeRoom(): Promise<void>;
+  /** Host tuning of the caps; raising the hop budget can lift a budget pause. */
+  setPolicy(policy: {
+    maxHops?: number;
+    maxMessagesPerMember?: number;
+  }): Promise<void>;
   clearError(): void;
 }
 
@@ -136,6 +141,31 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   async closeRoom() {
     await control('close', set, get);
+  },
+
+  async setPolicy(policy) {
+    const { roomId } = get();
+    const visit = chatVisitSeq;
+    const current = () => chatVisitSeq === visit && get().roomId === roomId;
+
+    set({ busy: true, error: null });
+    try {
+      const room = await api.chatSetPolicy(roomId, policy);
+      // Same rule as `control`: a reply for a visit the user already left is
+      // dropped rather than painted onto the new room.
+      if (!current()) {
+        return;
+      }
+      get().applyRoom(room);
+    } catch (caught) {
+      if (current()) {
+        set({ error: errorMessage(caught) });
+      }
+    } finally {
+      if (current()) {
+        set({ busy: false });
+      }
+    }
   },
 
   clearError() {

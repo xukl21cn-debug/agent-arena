@@ -292,12 +292,43 @@ export const api = {
     );
   },
 
-  /** Same for a chat room; the chat domain answers `{ room }`. */
-  createChatRoom(): Promise<string> {
+  /**
+   * Create a chat room. `title` and the two caps are optional: an empty title
+   * falls back to the generated id, and omitted caps take the domain defaults.
+   */
+  createChatRoom(
+    options: {
+      title?: string;
+      maxHops?: number;
+      maxMessagesPerMember?: number;
+    } = {},
+  ): Promise<string> {
+    const policy: Record<string, number> = {};
+    if (options.maxHops !== undefined) {
+      policy.maxHops = options.maxHops;
+    }
+    if (options.maxMessagesPerMember !== undefined) {
+      policy.maxMessagesPerMember = options.maxMessagesPerMember;
+    }
+    const title = options.title?.trim() ?? '';
     return request<{ room: ChatRoomRestSnapshot }>('/api/chat/rooms', {
       method: 'POST',
-      body: '{}',
+      body: JSON.stringify({
+        ...(title === '' ? {} : { title }),
+        ...(Object.keys(policy).length === 0 ? {} : { policy }),
+      }),
     }).then(({ room }) => room.id);
+  },
+
+  /** Host tuning of the caps; the room comes back as the wire frame. */
+  chatSetPolicy(
+    roomId: string,
+    policy: { maxHops?: number; maxMessagesPerMember?: number },
+  ): Promise<ChatRoomFrame> {
+    return request<{ room: ChatRoomRestSnapshot }>(
+      chatPath(roomId, '/policy'),
+      { method: 'POST', body: JSON.stringify({ policy }) },
+    ).then(({ room }) => chatRoomFrameOf(room));
   },
 
   /** Delete a game room. Its archived games survive, so replays keep working. */

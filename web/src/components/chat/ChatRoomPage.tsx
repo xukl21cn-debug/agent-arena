@@ -1,4 +1,10 @@
-import { useEffect, useLayoutEffect, useReducer, useState } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useState,
+  type FormEvent,
+} from 'react';
 import { useNavigate } from 'react-router';
 import type { ChatMemberFrame } from '@arena/shared';
 import { useChatStore, type ChatConnection } from '../../store/chat';
@@ -61,7 +67,9 @@ function HopMeter({
       <div className="chat-hop-bar">
         <i style={{ width: `${ratio * 100}%` }} />
       </div>
-      {ratio >= 1 ? <p className="chat-hop-note">预算用完，房间已暂停</p> : null}
+      {ratio >= 1 ? (
+        <p className="chat-hop-note">预算用完，房间已暂停；调高预算会自动继续</p>
+      ) : null}
     </div>
   );
 }
@@ -187,6 +195,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   const pause = useChatStore((store) => store.pause);
   const resume = useChatStore((store) => store.resume);
   const closeRoom = useChatStore((store) => store.closeRoom);
+  const setPolicy = useChatStore((store) => store.setPolicy);
   const clearError = useChatStore((store) => store.clearError);
 
   // Layout effect: connect() resets the store, and an ordinary effect would
@@ -202,6 +211,23 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
 
   const phase = room?.phase ?? 'open';
   const agents = room?.members.filter((member) => member.kind === 'agent') ?? [];
+
+  // Null means "not editing": the field then mirrors the room's live budget, so
+  // a socket frame or another tab changing it shows up without clobbering what
+  // is being typed.
+  const [budgetDraft, setBudgetDraft] = useState<string | null>(null);
+  const applyBudget = (event: FormEvent): void => {
+    event.preventDefault();
+    if (room === null) {
+      return;
+    }
+    const value = Number(budgetDraft ?? room.maxHops);
+    if (!Number.isInteger(value)) {
+      return;
+    }
+    void setPolicy({ maxHops: value });
+    setBudgetDraft(null);
+  };
 
   const navigate = useNavigate();
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -339,6 +365,29 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
               ) : (
                 <p className="chat-hint">连接中…</p>
               )}
+              {room !== null && room.phase !== 'closed' ? (
+                <form className="chat-hop-adjust" onSubmit={applyBudget}>
+                  <label htmlFor="hop-budget">调整预算</label>
+                  <input
+                    id="hop-budget"
+                    type="number"
+                    min={1}
+                    max={1000}
+                    step={1}
+                    required
+                    disabled={busy}
+                    value={budgetDraft ?? String(room.maxHops)}
+                    onChange={(event) => setBudgetDraft(event.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn--ghost"
+                    disabled={busy}
+                  >
+                    应用
+                  </button>
+                </form>
+              ) : null}
               <HostControls
                 phase={phase}
                 busy={busy}

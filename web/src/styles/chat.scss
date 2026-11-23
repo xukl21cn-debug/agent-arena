@@ -341,6 +341,31 @@
   color: #e0a294;
 }
 
+/* Host tuning: the hop budget is the only cap that stops a room mid-flow. */
+.chat-hop-adjust {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.chat-hop-adjust input {
+  width: 5.5em;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(12, 14, 10, 0.8);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.chat-hop-adjust .btn {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
 .chat-host-controls {
   display: flex;
   gap: 8px;
