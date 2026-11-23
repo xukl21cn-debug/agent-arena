@@ -406,6 +406,10 @@ export class ChatRoom {
     this.phase = 'open';
     // Rotation restarts from the top: whatever lease was interrupted is gone.
     this.turn = null;
+    // A manual resume is the host saying "start over". Keeping the streak makes
+    // the pause sticky: with a congested provider the next single timeout would
+    // be strike three and pause the room again on one strike.
+    this.consecutiveTimeouts.clear();
     this.postSystemMessage('房间已恢复', now);
     this.emitChange();
     this.wakeAll();

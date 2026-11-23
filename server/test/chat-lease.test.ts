@@ -156,6 +156,31 @@ describe('ChatManager.sweep (domain)', () => {
     ).toBe(true);
   });
 
+  it('T7b: resuming after a timeout-pause clears the streak', () => {
+    // A congested provider can blow the 120s lease twice in a row, which pauses
+    // the room. Without clearing the counter on resume, the very next single
+    // timeout would be strike three and pause it again — the host's 恢复 would
+    // look broken.
+    const mgr = manager();
+    const room = mgr.create('t8', { policy: { turnTimeoutMs: 1_000 } });
+    room.join('solo', undefined, T0);
+    room.sendMessage(room.humanMember(), '开始', { to: 'solo' }, T0);
+
+    mgr.sweep(T0 + 2_500); // strike 1 → skip
+    mgr.sweep(T0 + 4_500); // strike 2 → paused
+    expect(room.snapshot().phase).toBe('paused');
+
+    room.resume(T0 + 5_000);
+    expect(room.snapshot().phase).toBe('open');
+
+    room.sendMessage(room.humanMember(), '继续', { to: 'solo' }, T0 + 5_100);
+    mgr.sweep(T0 + 7_000); // one timeout after the resume: skip, not pause
+    expect(room.snapshot().phase).toBe('open');
+    expect(
+      room.transcript({}).messages.filter((m) => m.text === 'solo 超时，跳过'),
+    ).toHaveLength(2);
+  });
+
   it('one room throwing in the sweep does not stop the others from settling', () => {
     const mgr = manager();
     const boom = mgr.create('sweep-boom'); // iterated first: inserted first
