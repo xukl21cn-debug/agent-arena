@@ -176,7 +176,7 @@
   color: var(--text-dim);
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 6px 14px;
   cursor: pointer;
 }
@@ -204,7 +204,7 @@
   color: var(--text-faint);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 3px 10px;
   cursor: pointer;
 }

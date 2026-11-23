@@ -61,7 +61,7 @@
   text-decoration: none;
   padding: 6px 12px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
 }
 
