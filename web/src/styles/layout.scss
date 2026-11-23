@@ -12,7 +12,7 @@
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 5px 11px;
-  background: rgba(20, 23, 15, 0.6);
+  background: var(--panel-soft);
 }
 
 /* Copying the id is how a room gets handed to an agent. */

@@ -1,24 +1,64 @@
 /* ------------------------------------------------------------------
-   五子棋 · design tokens
-   Dark room, kaya wood board, lacquer gold, vermilion seal.
+   Design tokens
+   Graphite room, kaya wood board, lacquer gold, vermilion seal.
+   Theme changes start here: components only read these variables, so
+   swapping the room's colour means editing this block, not the pages.
 ------------------------------------------------------------------ */
 :root {
   color-scheme: dark;
-  --bg: #0c0d09;
-  --bg-raised: #12140f;
-  --panel: #14170f;
-  --line: #24281d;
-  --line-strong: #373d2c;
-  --text: #ece5d5;
-  --text-dim: #9b988a;
-  --text-faint: #6d6b5e;
+
+  /* Surfaces: neutral graphite. Warmth belongs to the board, not the UI. */
+  --bg: #0b0c0d;
+  --bg-raised: #111214;
+  --panel: #141519;
+  --panel-soft: rgba(20, 22, 24, 0.6);
+  --panel-translucent: rgba(22, 24, 26, 0.72);
+  --panel-solid: rgba(22, 24, 26, 0.96);
+  --surface-high: rgba(24, 26, 28, 0.94);
+  --surface-low: rgba(15, 16, 18, 0.94);
+  --field: rgba(10, 11, 12, 0.8);
+  --scrim: rgba(8, 9, 10, 0.62);
+
+  --line: #25272b;
+  --line-strong: #35383d;
+
+  --text: #edeef0;
+  --text-dim: #9da0a5;
+  --text-faint: #6e7178;
+
+  /* Board and stones: the board stays warm; the stones stay neutral. */
   --wood: #c99a5c;
   --wood-light: #ddb67f;
   --wood-deep: #aa7c43;
   --grid: rgba(56, 35, 14, 0.42);
+  --stone-black-hi: #5a5b60;
+  --stone-black-mid: #222327;
+  --stone-black-deep: #0f1012;
+  --stone-white-hi: #fffdf8;
+  --stone-white-mid: #efe9dc;
+  --stone-white-deep: #c9c3b4;
+
+  /* Accents: lacquer gold, seal red, and the one semantic green. */
   --gold: #d9a64b;
+  --gold-soft: rgba(217, 166, 75, 0.08);
+  --gold-line: rgba(217, 166, 75, 0.4);
+  --gold-line-strong: rgba(217, 166, 75, 0.5);
+  --gold-high: #e2b361;
+  --gold-deep: #c9953d;
+  --gold-hover: #ecc078;
+  --gold-hover-deep: #d29e46;
+  --gold-border: #e9c37e;
+  --gold-border-hover: #f2d498;
+  --on-gold: #221806;
   --seal: #b4422e;
   --ok: #7faf6a;
+
+  /* Neutral controls, so buttons do not reintroduce a colour cast. */
+  --control-top: #1c1e21;
+  --control-bottom: #141619;
+  --control-hover-top: #23262a;
+  --control-hover-bottom: #181a1d;
+
   --radius: 14px;
   --radius-sm: 8px;
   --board-pad: 7px;

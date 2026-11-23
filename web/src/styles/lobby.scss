@@ -17,7 +17,7 @@
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  background: rgba(20, 23, 15, 0.6);
+  background: var(--panel-soft);
 }
 
 .lobby-create label {
@@ -33,7 +33,7 @@
   padding: 6px 9px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-sm);
-  background: rgba(12, 14, 10, 0.8);
+  background: var(--field);
   color: var(--text);
   font-family: var(--font-body);
   font-size: 13px;
@@ -89,8 +89,8 @@
   border-radius: var(--radius-sm);
   background: linear-gradient(
     180deg,
-    rgba(23, 26, 19, 0.9),
-    rgba(15, 17, 12, 0.9)
+    var(--surface-high),
+    var(--surface-low)
   );
   color: var(--text);
   text-decoration: none;
@@ -100,7 +100,7 @@
 }
 
 .lobby-card:hover {
-  border-color: rgba(217, 166, 75, 0.5);
+  border-color: var(--gold-line-strong);
   transform: translateY(-1px);
 }
 
@@ -225,8 +225,8 @@
 
 .lobby-tab.is-active {
   color: var(--gold);
-  border-color: rgba(217, 166, 75, 0.5);
-  background: rgba(217, 166, 75, 0.08);
+  border-color: var(--gold-line-strong);
+  background: var(--gold-soft);
 }
 
 .lobby-filters {
@@ -254,7 +254,7 @@
 .filter-chip.is-active {
   color: var(--text);
   border-color: var(--line-strong);
-  background: rgba(20, 23, 15, 0.6);
+  background: var(--panel-soft);
 }
 
 .pager {
@@ -284,8 +284,8 @@
 
 .pager-page.is-current {
   color: var(--gold);
-  border-color: rgba(217, 166, 75, 0.5);
-  background: rgba(217, 166, 75, 0.08);
+  border-color: var(--gold-line-strong);
+  background: var(--gold-soft);
 }
 
 .pager-step {

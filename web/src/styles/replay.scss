@@ -49,9 +49,9 @@
 .replay-scoring {
   display: inline-flex;
   padding: 2px 9px;
-  border: 1px solid rgba(217, 166, 75, 0.4);
+  border: 1px solid var(--gold-line);
   border-radius: 999px;
-  background: rgba(217, 166, 75, 0.08);
+  background: var(--gold-soft);
   color: var(--gold);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -70,7 +70,7 @@
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.1em;
-  border: 1px solid rgba(217, 166, 75, 0.4);
+  border: 1px solid var(--gold-line);
   border-radius: 999px;
   padding: 5px 11px;
   color: var(--gold);
