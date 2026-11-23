@@ -241,6 +241,25 @@ export function createChatRouter(manager: ChatManager): Router {
   router.post('/rooms/:roomId/close', phaseAction('close'));
 
   /**
+   * Host tuning of the room's caps — the way a budget-paused conversation gets
+   * going again. The room lifts its own pause when the new budget clears what
+   * was already spent, and records both the change and the resume as system
+   * messages so the timeline explains itself.
+   */
+  router.post('/rooms/:roomId/policy', (req, res) => {
+    const room = manager.getOrThrow(req.params.roomId);
+    const policy = chatPolicyOf(bodyOf(req).policy);
+    if (Object.keys(policy).length === 0) {
+      throw new ChatError(
+        'INVALID_REQUEST',
+        'policy must carry at least one field.',
+      );
+    }
+    room.setPolicy(policy, Date.now());
+    res.json({ room: room.snapshot() });
+  });
+
+  /**
    * Delete a chat room.
    *
    * An empty room goes straight away — it was probably created by mistake.

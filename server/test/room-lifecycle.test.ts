@@ -8,6 +8,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { ChatManager } from '../src/chat/manager';
+import { ChatRoom } from '../src/chat/chat-room';
+import { ChatError, DEFAULT_CHAT_POLICY } from '../src/chat/model';
 import { FileRoomRepository } from '../src/game/rooms/repository';
 import { RoomManager } from '../src/game/rooms/room-manager';
 
@@ -303,5 +305,88 @@ describe('chat MCP joins', () => {
     } finally {
       await client.close().catch(() => undefined);
     }
+  });
+});
+
+describe('chat policy tuning', () => {
+  it('P1: raising the budget lifts the pause it caused', async () => {
+    // maxHops 1 so a single agent line spends the whole budget.
+    const created = await post('/api/chat/rooms', {
+      roomId: 'budget-room',
+      policy: { maxHops: 1 },
+    });
+    expect(created.status).toBe(201);
+
+    const client = await connect('budget-spender');
+    try {
+      await call(client, 'join_room', { roomId: 'budget-room', name: 'spender' });
+      await call(client, 'send_message', {
+        roomId: 'budget-room',
+        text: '预算就这么点',
+      });
+
+      const paused = (await get('/api/chat/rooms/budget-room')).room;
+      expect(paused.phase).toBe('paused');
+      expect(paused.hop).toBe(1);
+
+      const raised = await post('/api/chat/rooms/budget-room/policy', {
+        policy: { maxHops: 6 },
+      });
+      expect(raised.status).toBe(200);
+      expect(raised.json.room.phase).toBe('open');
+      expect(raised.json.room.hop).toBe(1);
+      expect(raised.json.room.policy.maxHops).toBe(6);
+    } finally {
+      await client.close().catch(() => undefined);
+    }
+  });
+
+  it('P2: refuses to cut a cap under what was already consumed', () => {
+    const room = new ChatRoom('caps', 'caps', {
+      ...DEFAULT_CHAT_POLICY,
+      maxHops: 5,
+    });
+    const agent = room.join('a', undefined, 1_000);
+    room.sendMessage(agent, '第一条', {}, 2_000);
+    room.sendMessage(agent, '第二条', {}, 3_000);
+
+    expect(room.hop).toBe(2);
+    // Lower than the spent hop: the room would stop again on the next line.
+    expect(() => room.setPolicy({ maxHops: 1 }, 4_000)).toThrow(ChatError);
+    expect(room.policy.maxHops).toBe(5);
+
+    // Same rule for the per-member cap, measured against the busiest member.
+    expect(() => room.setPolicy({ maxMessagesPerMember: 1 }, 4_000)).toThrow(
+      ChatError,
+    );
+    expect(room.policy.maxMessagesPerMember).toBe(
+      DEFAULT_CHAT_POLICY.maxMessagesPerMember,
+    );
+  });
+
+  it('P3: rejects an empty, unknown or out-of-range policy', async () => {
+    await post('/api/chat/rooms', { roomId: 'policy-room' });
+
+    const empty = await post('/api/chat/rooms/policy-room/policy', {
+      policy: {},
+    });
+    expect(empty.status).toBe(400);
+
+    const unknown = await post('/api/chat/rooms/policy-room/policy', {
+      policy: { hopBudget: 10 },
+    });
+    expect(unknown.status).toBe(400);
+
+    const outOfRange = await post('/api/chat/rooms/policy-room/policy', {
+      policy: { maxHops: 0 },
+    });
+    expect(outOfRange.status).toBe(400);
+
+    await post('/api/chat/rooms/policy-room/close', {});
+    const closed = await post('/api/chat/rooms/policy-room/policy', {
+      policy: { maxHops: 20 },
+    });
+    expect(closed.status).toBe(409);
+    expect(closed.json.error.code).toBe('ROOM_CLOSED');
   });
 });

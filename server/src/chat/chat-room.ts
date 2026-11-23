@@ -46,11 +46,16 @@ export class ChatRoom {
   readonly id: string;
   title: string;
   phase: ChatPhase = 'open';
-  readonly policy: ChatPolicy;
+  /** Mutable through setPolicy; read through the getter below. */
+  private policyValue: ChatPolicy;
   seq = 0;
   hop = 0;
   readonly createdAt: string;
   turn: ChatTurn | null = null;
+
+  get policy(): ChatPolicy {
+    return this.policyValue;
+  }
 
   /** Insertion order is the rotation order. */
   readonly members = new Map<string, ChatMember>();
@@ -68,7 +73,7 @@ export class ChatRoom {
   ) {
     this.id = id;
     this.title = title;
-    this.policy = policy;
+    this.policyValue = policy;
     this.createdAt = createdAt;
   }
 
@@ -413,6 +418,69 @@ export class ChatRoom {
     this.phase = 'closed';
     this.turn = null;
     this.postSystemMessage('房间已关闭', now);
+    this.emitChange();
+    this.wakeAll();
+  }
+
+  /**
+   * Host tuning of the caps that stop a room.
+   *
+   * Raising `maxHops` above the consumed hop is the only way out of a
+   * budget-paused room: `resume()` alone would pause again on the very next
+   * message, because the budget is still spent. So exactly that case resumes by
+   * itself, and a room the host paused by hand stays paused.
+   *
+   * Lowering a cap under what was already consumed is refused rather than
+   * accepted-then-immediately-violated.
+   */
+  setPolicy(patch: Partial<ChatPolicy>, now: number): void {
+    if (this.phase === 'closed') {
+      throw new ChatError('ROOM_CLOSED', `Chat room "${this.id}" is closed.`);
+    }
+
+    const next: ChatPolicy = { ...this.policyValue, ...patch };
+    if (next.maxHops < this.hop) {
+      throw new ChatError(
+        'INVALID_REQUEST',
+        `maxHops 不能低于已用 hop（${this.hop}）。`,
+      );
+    }
+    const busiest = Math.max(
+      0,
+      ...[...this.members.values()].map((member) => member.messages),
+    );
+    if (next.maxMessagesPerMember < busiest) {
+      throw new ChatError(
+        'INVALID_REQUEST',
+        `maxMessagesPerMember 不能低于已有成员发言数（${busiest}）。`,
+      );
+    }
+
+    // Only a pause that the spent budget caused is lifted here; a manual pause
+    // is the host's decision and survives a budget change.
+    const wasBudgetPaused =
+      this.phase === 'paused' && this.hop >= this.policyValue.maxHops;
+
+    const changes: string[] = [];
+    if (next.maxHops !== this.policyValue.maxHops) {
+      changes.push(`hop 预算 ${this.policyValue.maxHops} → ${next.maxHops}`);
+    }
+    if (next.maxMessagesPerMember !== this.policyValue.maxMessagesPerMember) {
+      changes.push(
+        `每人发言上限 ${this.policyValue.maxMessagesPerMember} → ${next.maxMessagesPerMember}`,
+      );
+    }
+    this.policyValue = next;
+
+    if (changes.length > 0) {
+      this.postSystemMessage(`主持人调整：${changes.join('，')}`, now);
+    }
+    if (wasBudgetPaused && this.hop < next.maxHops) {
+      this.phase = 'open';
+      this.turn = null;
+      this.postSystemMessage('预算已调高，房间继续', now);
+    }
+
     this.emitChange();
     this.wakeAll();
   }
