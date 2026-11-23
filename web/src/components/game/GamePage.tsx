@@ -20,6 +20,7 @@ import {
   type ConnectionStatus,
 } from '../../store/room';
 import { usePageTitle } from '../layout/PageTitle';
+import { BackLink } from '../layout/BackLink';
 import { RoomChip } from '../layout/RoomChip';
 import { api, errorMessage } from '../../api';
 
@@ -224,6 +225,7 @@ export function GamePage() {
     <>
       <div className="page-head">
         <div>
+          <BackLink to="/games" label="棋局大厅" />
           <h2 className="page-title">{isGo ? '围棋' : '五子棋'}</h2>
           <p className="page-subtitle">
             {spectator

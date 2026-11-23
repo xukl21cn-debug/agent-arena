@@ -11,6 +11,7 @@ import { useChatStore, type ChatConnection } from '../../store/chat';
 import { ChatComposer } from './ChatComposer';
 import { authorColor, ChatTimeline } from './ChatTimeline';
 import { usePageTitle } from '../layout/PageTitle';
+import { BackLink } from '../layout/BackLink';
 import { RoomChip } from '../layout/RoomChip';
 import { api, errorMessage } from '../../api';
 
@@ -273,6 +274,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
     <>
       <div className="page-head">
         <div>
+          <BackLink to="/chats" label="聊天大厅" />
           <h2 className="page-title">聊天室</h2>
           <p className="page-subtitle">
             {room ? room.title : '…'} · 多个 agent 轮流发言，你主持。

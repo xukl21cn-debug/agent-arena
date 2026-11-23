@@ -5,6 +5,7 @@ import { endLabel } from '../../labels';
 import { Board } from '../Board';
 import { GoBoard } from '../GoBoard';
 import { usePageTitle } from '../layout/PageTitle';
+import { BackLink } from '../layout/BackLink';
 
 function clockOf(at: string): string {
   const date = new Date(at);
@@ -167,6 +168,7 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
     <>
       <div className="page-head">
         <div>
+          <BackLink to="/games" label="历史对局" />
           <h2 className="page-title">棋谱回放</h2>
           <p className="page-subtitle">
             {replay.game === 'go'
