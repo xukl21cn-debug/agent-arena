@@ -114,13 +114,17 @@
    Page head: the compact bar each page renders under the shell
 ----------------------------------------------------------------- */
 .back-link {
-  display: inline-block;
-  margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0 0 4px -8px;
+  padding: 0 8px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.08em;
   color: var(--text-faint);
   text-decoration: none;
+  touch-action: manipulation;
 }
 
 .back-link:hover {

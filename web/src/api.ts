@@ -254,6 +254,20 @@ export const api = {
     }));
   },
 
+  /** Closed-room export: the server renders the transcript as Markdown text. */
+  chatTranscript(
+    roomId: string,
+    limit: number,
+  ): Promise<{ format: 'md'; omitted: number; text: string }> {
+    const query = new URLSearchParams({
+      format: 'md',
+      limit: String(Math.max(1, Math.floor(limit))),
+    });
+    return request<{ format: 'md'; omitted: number; text: string }>(
+      `${chatPath(roomId, '/transcript')}?${query.toString()}`,
+    );
+  },
+
   /** Host phase controls; the room comes back as the wire frame. */
   chatControl(
     roomId: string,
@@ -374,12 +388,4 @@ export const api = {
   },
 };
 
-export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return '发生未知错误。';
-}
+export { errorMessage } from './errors';

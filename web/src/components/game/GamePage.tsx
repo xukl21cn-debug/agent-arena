@@ -297,6 +297,7 @@ export function GamePage() {
                 state={goState}
                 humanColor={humanColor}
                 busy={busy}
+                spectator={spectator}
                 overlay={overlay}
                 onPlay={handlePlay}
                 onToggleDead={handleToggleDead}

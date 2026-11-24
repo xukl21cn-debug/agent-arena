@@ -18,9 +18,9 @@ interface ComposerProps {
   onSend(text: string, to?: string): Promise<boolean>;
 }
 
-/** The `@token` ending at the caret, if any. */
+/** The `@token` ending at the caret, if any. Accepts the full-width ＠ too. */
 function mentionAt(text: string, caret: number): MentionState | null {
-  const match = /@([^\s@]*)$/.exec(text.slice(0, caret));
+  const match = /[@＠]([^\s@＠]*)$/.exec(text.slice(0, caret));
   if (!match) {
     return null;
   }
@@ -56,7 +56,7 @@ export function ChatComposer({
 
   const syncMention = (nextText: string, caret: number): void => {
     const found = mentionAt(nextText, caret);
-    if (!found || agents.length === 0) {
+    if (!found) {
       setMention(null);
       return;
     }
@@ -177,27 +177,35 @@ export function ChatComposer({
             onKeyDown={handleKeyDown}
             onBlur={() => setMention(null)}
           />
-          {mention !== null && candidates.length > 0 ? (
-            <ul className="chat-mention" role="listbox">
-              {candidates.map((member, index) => (
-                <li
-                  key={member.id}
-                  role="option"
-                  aria-selected={index === mention.active}
-                  className={index === mention.active ? 'is-active' : ''}
-                  // mousedown, not click: the textarea must not lose focus.
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    choose(index);
-                  }}
-                >
-                  <span className="chat-mention-name">@{member.name}</span>
-                  <span className="chat-mention-meta">
-                    agent · {member.messages} 条
-                  </span>
-                </li>
-              ))}
-            </ul>
+          {mention !== null ? (
+            candidates.length > 0 ? (
+              <ul className="chat-mention" role="listbox">
+                {candidates.map((member, index) => (
+                  <li
+                    key={member.id}
+                    role="option"
+                    aria-selected={index === mention.active}
+                    className={index === mention.active ? 'is-active' : ''}
+                    // mousedown, not click: the textarea must not lose focus.
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      choose(index);
+                    }}
+                  >
+                    <span className="chat-mention-name">@{member.name}</span>
+                    <span className="chat-mention-meta">
+                      agent · {member.messages} 条
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="chat-mention-empty" role="status">
+                {agents.length === 0
+                  ? '房间里还没有 agent，暂时无法点名。'
+                  : '没有匹配的 agent，换个名字试试。'}
+              </p>
+            )
           ) : null}
         </div>
         <button

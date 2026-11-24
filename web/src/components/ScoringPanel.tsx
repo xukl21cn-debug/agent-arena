@@ -43,7 +43,9 @@ export function ScoringPanel({
       <div className="scoring-head">
         <h3 className="scoring-title">数子阶段</h3>
         <p className="scoring-hint">
-          点击棋子标记或取消死子（整块生效）——双方各自确认后出分
+          {spectator
+            ? '观战中：由对局双方标记死子和确认，你无需操作。'
+            : '点击棋子标记或取消死子（整块生效）——双方各自确认后出分'}
         </p>
       </div>
 
@@ -68,7 +70,7 @@ export function ScoringPanel({
       </p>
       <p className="scoring-note">预览随死子标记实时更新，终局分数以双方确认为准。</p>
 
-      {!spectator ? (
+      {!spectator && humanColor !== null ? (
         <div className="scoring-actions">
           <button
             type="button"

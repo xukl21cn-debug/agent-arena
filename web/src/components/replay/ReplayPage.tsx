@@ -134,6 +134,7 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
       <>
         <div className="page-head">
           <div>
+            <BackLink to="/games" label="历史对局" />
             <h2 className="page-title">棋谱回放</h2>
             <p className="page-subtitle">历史对局，逐手重放。</p>
           </div>
@@ -150,6 +151,7 @@ export function ReplayPage({ roomId, archiveId }: ReplayPageProps) {
       <>
         <div className="page-head">
           <div>
+            <BackLink to="/games" label="历史对局" />
             <h2 className="page-title">棋谱回放</h2>
             <p className="page-subtitle">读取中…</p>
           </div>
