@@ -234,34 +234,36 @@ export function registerTools(server: McpServer, api: ArenaApi): void {
 - 省略 game：15×15 五子棋（黑先，无禁手，五连或长连获胜）——与旧版本行为完全一致；
 - game="go"：围棋，9×9 棋盘，黑先，贴目 7.5 计入白方，简单劫，中国规则数子。
 围棋参数：boardSize v1 只接受 9，传其他值会返回 UNSUPPORTED_RULE（不会静默接受）；komi 默认 7.5（仅围棋可传）；koRule 只支持 "simple"（仅围棋可传）。
+错误契约：类型/枚举/格式错误返回 INVALID_REQUEST；格式合法但 v1 不支持的规则返回 UNSUPPORTED_RULE。五子棋 boardSize 必须在 3-36 之间。
 用 agentColor 选择 AI 执黑还是执白（默认 white），另一种颜色由人类执子。网页棋盘会立即重置。
 roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖当前对局，旧局作废。一个房间的对局绑定一种游戏，切换游戏等于开新局。
 若网页已经开局，通常不需要调用此工具。`,
       inputSchema: z.object({
         roomId: roomIdSchema,
+        // Value validation is deliberately loose at the schema layer and
+        // explicit in normalizeNewGameOptions, so a bad value answers with a
+        // JSON code (INVALID_REQUEST / UNSUPPORTED_RULE) instead of a bare
+        // -32602 protocol error that has no code for the model to branch on.
         game: z
-          .enum(['gomoku', 'go'])
+          .unknown()
           .optional()
-          .describe('游戏类型，默认 gomoku。下围棋必须显式传 "go"。'),
+          .describe('游戏类型："gomoku"（默认）或 "go"。下围棋必须显式传 "go"。'),
         agentColor: z
-          .enum(['black', 'white'])
+          .unknown()
           .optional()
-          .describe('AI 执子颜色，默认 white。'),
+          .describe('AI 执子颜色："black" 或 "white"，默认 white。'),
         boardSize: z
-          .number()
-          .int()
-          .min(1)
-          .max(36)
+          .unknown()
           .optional()
-          .describe('棋盘大小；围棋 v1 只接受 9，省略即 9；五子棋沿用房间规则。'),
+          .describe('棋盘大小：五子棋 3-36；围棋 v1 只接受 9，省略即 9。'),
         komi: z
-          .number()
+          .unknown()
           .optional()
-          .describe('围棋贴目，默认 7.5，计入白方。仅围棋可用。'),
+          .describe('围棋贴目（有限数字），默认 7.5，计入白方。仅围棋可用。'),
         koRule: z
-          .literal('simple')
+          .unknown()
           .optional()
-          .describe('劫规则，v1 只支持 simple，省略即 simple。仅围棋可用。'),
+          .describe('劫规则：v1 只支持 "simple"，省略即 simple。仅围棋可用。'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },

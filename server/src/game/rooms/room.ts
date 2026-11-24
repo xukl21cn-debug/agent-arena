@@ -118,6 +118,98 @@ export type IdentityResult =
   | { ok: true; participant: Participant; seat: StoneColor }
   | IdentityFailure;
 
+/**
+ * Normalize `new_game` inputs before any side effect.
+ *
+ * REST and MCP share this so the same value yields the same code and message:
+ * - `INVALID_REQUEST`: wrong type / enum / format, or a gomoku board size
+ *   outside 3..36.
+ * - `UNSUPPORTED_RULE`: well-formed values v1 does not implement (a Go board
+ *   other than 9, a ko rule other than simple, Go-only parameters on gomoku).
+ */
+export function normalizeNewGameOptions(
+  raw: NewGameRequest | Record<string, unknown> = {},
+): NewGameRequest {
+  const input = raw as Record<string, unknown>;
+  const options: NewGameRequest = {};
+
+  const game = input.game;
+  if (game !== undefined) {
+    if (game !== 'gomoku' && game !== 'go') {
+      throw new RoomError('INVALID_REQUEST', 'game must be "gomoku" or "go".');
+    }
+    options.game = game;
+  }
+  const selectedGame = options.game ?? 'gomoku';
+
+  const agentColor = input.agentColor;
+  if (agentColor !== undefined) {
+    if (agentColor !== 'black' && agentColor !== 'white') {
+      throw new RoomError(
+        'INVALID_REQUEST',
+        'agentColor must be "black" or "white".',
+      );
+    }
+    options.agentColor = agentColor;
+  }
+
+  const boardSize = input.boardSize;
+  if (boardSize !== undefined) {
+    if (typeof boardSize !== 'number' || !Number.isInteger(boardSize)) {
+      throw new RoomError('INVALID_REQUEST', 'boardSize must be an integer.');
+    }
+    if (selectedGame === 'gomoku' && (boardSize < 3 || boardSize > 36)) {
+      throw new RoomError(
+        'INVALID_REQUEST',
+        `boardSize must be an integer between 3 and 36, got ${boardSize}.`,
+      );
+    }
+    if (selectedGame === 'go' && (boardSize < 1 || boardSize > 36)) {
+      throw new RoomError(
+        'INVALID_REQUEST',
+        `boardSize must be an integer between 1 and 36, got ${boardSize}.`,
+      );
+    }
+    options.boardSize = boardSize;
+  }
+
+  const komi = input.komi;
+  if (komi !== undefined) {
+    if (selectedGame !== 'go') {
+      throw new RoomError(
+        'UNSUPPORTED_RULE',
+        'komi and koRule are Go-only parameters.',
+      );
+    }
+    if (typeof komi !== 'number' || !Number.isFinite(komi)) {
+      throw new RoomError('INVALID_REQUEST', 'komi must be a finite number.');
+    }
+    options.komi = komi;
+  }
+
+  const koRule = input.koRule;
+  if (koRule !== undefined) {
+    if (selectedGame !== 'go') {
+      throw new RoomError(
+        'UNSUPPORTED_RULE',
+        'komi and koRule are Go-only parameters.',
+      );
+    }
+    if (typeof koRule !== 'string') {
+      throw new RoomError('INVALID_REQUEST', 'koRule must be a string.');
+    }
+    if (koRule !== 'simple') {
+      throw new RoomError(
+        'UNSUPPORTED_RULE',
+        `v1 supports koRule "simple" only, got "${koRule}".`,
+      );
+    }
+    options.koRule = 'simple';
+  }
+
+  return options;
+}
+
 interface GameRoomOptions extends RoomConfig {
   repository?: RoomRepository;
   /** Presence source for `participants`; omitted in pure-logic tests. */
@@ -496,7 +588,10 @@ export class GameRoom {
    * v1 envelope (anything but 9×9 / simple ko) are rejected with
    * UNSUPPORTED_RULE instead of silently accepted.
    */
-  newGame(options: NewGameRequest = {}): AnyGameState {
+  newGame(raw: NewGameRequest | Record<string, unknown> = {}): AnyGameState {
+    // Validation comes first: a rejected request must not archive the live
+    // game, clear history, or otherwise mutate the room.
+    const options = normalizeNewGameOptions(raw);
     const game = options.game ?? 'gomoku';
     const agentColor = options.agentColor ?? this.getAgentSeat() ?? 'white';
     const humanColor = opposite(agentColor);
@@ -512,6 +607,48 @@ export class GameRoom {
     };
 
     const prev = this.state;
+
+    // Resolve the rules and build the replacement state before any side
+    // effect. Everything that can reject the request happens here, so the
+    // archive below only records games actually being replaced.
+    let next: AnyGameState;
+    if (game === 'go') {
+      const resolved = resolveGoRules({
+        ...(options.boardSize === undefined ? {} : { boardSize: options.boardSize }),
+        ...(options.komi === undefined ? {} : { komi: options.komi }),
+        ...(options.koRule === undefined ? {} : { koRule: options.koRule }),
+      });
+      if (!resolved.ok) {
+        throw new RoomError('UNSUPPORTED_RULE', resolved.message);
+      }
+      next = startGoGame(prev, seats, { rules: resolved.rules });
+    } else {
+      // Gomoku rules carry over from the previous gomoku game; a Go state has
+      // none to inherit, so the defaults apply.
+      const baseRules = prev.game === 'gomoku' ? prev.rules : undefined;
+      let rules: RuleSet;
+      try {
+        rules = resolveRules({
+          ...(baseRules ?? {}),
+          ...(options.boardSize === undefined ? {} : { boardSize: options.boardSize }),
+        });
+      } catch (error) {
+        // resolveRules predates RoomError; a bad board/win combination is a
+        // client error, never an internal one.
+        if (error instanceof RoomError) {
+          throw error;
+        }
+        throw new RoomError(
+          'INVALID_REQUEST',
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      next = startGame(
+        { roomId: prev.roomId, version: prev.version },
+        seats,
+        { rules },
+      );
+    }
 
     // Archive the game we are leaving before anything overwrites it: from
     // here on `this.state` is the new game and `this.history` is about to be
@@ -535,36 +672,7 @@ export class GameRoom {
       }
     }
 
-    if (game === 'go') {
-      const resolved = resolveGoRules({
-        ...(options.boardSize === undefined ? {} : { boardSize: options.boardSize }),
-        ...(options.komi === undefined ? {} : { komi: options.komi }),
-        ...(options.koRule === undefined ? {} : { koRule: options.koRule }),
-      });
-      if (!resolved.ok) {
-        throw new RoomError('UNSUPPORTED_RULE', resolved.message);
-      }
-      this.state = startGoGame(prev, seats, { rules: resolved.rules });
-    } else {
-      if (options.komi !== undefined || options.koRule !== undefined) {
-        throw new RoomError(
-          'UNSUPPORTED_RULE',
-          'komi and koRule are Go-only parameters.',
-        );
-      }
-      // Gomoku rules carry over from the previous gomoku game; a Go state has
-      // none to inherit, so the defaults apply.
-      const baseRules = prev.game === 'gomoku' ? prev.rules : undefined;
-      const rules = resolveRules({
-        ...(baseRules ?? {}),
-        ...(options.boardSize === undefined ? {} : { boardSize: options.boardSize }),
-      });
-      this.state = startGame(
-        { roomId: prev.roomId, version: prev.version },
-        seats,
-        { rules },
-      );
-    }
+    this.state = next;
     this.history = [];
     this.commentaryLog = [];
 

@@ -199,14 +199,22 @@ export class InProcessApi implements ArenaApi {
 
   async newGame(
     roomId: string,
-    options: NewGameRequest = {},
+    options: NewGameRequest | Record<string, unknown> = {},
   ): Promise<AgentStateResponse> {
+    // `new_game` creates a room on demand for old clients. Remember whether
+    // this request created it: a rejected request must not leave an empty
+    // room behind.
+    const existed = this.manager.get(roomId) !== undefined;
     const room = this.getOrCreateRoom(roomId);
     try {
       room.newGame(options);
     } catch (error) {
-      // Unsupported rule shapes (non-9 board, non-simple ko) are model-facing
-      // answers, not crashes.
+      // Invalid inputs and unsupported rule shapes are model-facing answers,
+      // not crashes; both arrive as RoomError with the shared code and leave
+      // no state behind, so a room created only for this request goes away.
+      if (!existed && error instanceof RoomError) {
+        this.manager.remove(roomId);
+      }
       if (error instanceof RoomError) {
         throw new ArenaApiError(
           error.code,

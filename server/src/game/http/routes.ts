@@ -113,36 +113,6 @@ function colorOf(value: unknown): StoneColor | undefined {
   throw new RoomError('INVALID_REQUEST', 'agentColor must be "black" or "white".');
 }
 
-function gameOf(value: unknown): 'gomoku' | 'go' | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === 'gomoku' || value === 'go') {
-    return value;
-  }
-  throw new RoomError('INVALID_REQUEST', 'game must be "gomoku" or "go".');
-}
-
-function koRuleOf(value: unknown): 'simple' | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === 'simple') {
-    return value;
-  }
-  throw new RoomError('INVALID_REQUEST', 'koRule only supports "simple" in v1.');
-}
-
-function komiOf(value: unknown): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new RoomError('INVALID_REQUEST', 'komi must be a finite number.');
-  }
-  return value;
-}
-
 function integerOf(value: unknown, name: string): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     throw new RoomError('INVALID_REQUEST', `${name} must be an integer.`);
@@ -290,13 +260,29 @@ function asInvalidRequest(error: unknown): never {
 }
 
 /**
- * Record activity for whichever seat the actor occupies, so REST callers count
- * as present even without an MCP session.
+ * Record activity for the seat a resolved caller occupies.
+ *
+ * Only call this after the mutation succeeded: a rejected request must not
+ * make any seat look alive. Both identity forms go through `room.resolve`, so
+ * `X-Arena-Participant` / body `participantId` refresh presence exactly like
+ * the legacy `actor` path.
  */
-function touchActor(manager: RoomManager, room: GameRoom, actor: Actor): void {
-  const seat = room.getSeatFor(actor);
-  if (seat) {
-    manager.presenceSource?.touch(room.id, seat);
+function touchRef(manager: RoomManager, room: GameRoom, ref: ActorRef): void {
+  const identity = room.resolve(ref);
+  if (identity.ok) {
+    manager.presenceSource?.touch(room.id, identity.seat);
+  }
+}
+
+/** Record activity for a participant the route itself just resolved. */
+function touchParticipant(
+  manager: RoomManager,
+  room: GameRoom,
+  participantId: string,
+): void {
+  const participant = room.getRoster().find((item) => item.id === participantId);
+  if (participant?.seat) {
+    manager.presenceSource?.touch(room.id, participant.seat);
   }
 }
 
@@ -547,6 +533,9 @@ export function createApiRouter(
       ...(body.ready === undefined ? {} : { ready: body.ready }),
     });
 
+    // Joining is the first proof of life for a REST-only participant.
+    touchParticipant(manager, room, participant.id);
+
     const view = room.getView();
     res.status(201).json({
       participantId: participant.id,
@@ -615,6 +604,8 @@ export function createApiRouter(
       return;
     }
 
+    touchParticipant(manager, room, participantId);
+
     const view = room.getView();
     res.json({
       state: view.state,
@@ -642,21 +633,10 @@ export function createApiRouter(
     const room = roomOrThrow(manager, req.params.roomId);
     const body = bodyOf(req);
     // Omitted game stays gomoku — the exact pre-Go behaviour for old clients.
-    // Unsupported rule shapes throw UNSUPPORTED_RULE (never silently
-    // accepted); the error handler turns it into a 400.
-    const state = room.newGame({
-      ...(gameOf(body.game) === undefined ? {} : { game: gameOf(body.game) }),
-      ...(colorOf(body.agentColor) === undefined
-        ? {}
-        : { agentColor: colorOf(body.agentColor) }),
-      ...(body.boardSize === undefined
-        ? {}
-        : { boardSize: integerOf(body.boardSize, 'boardSize') }),
-      ...(komiOf(body.komi) === undefined ? {} : { komi: komiOf(body.komi) }),
-      ...(koRuleOf(body.koRule) === undefined
-        ? {}
-        : { koRule: koRuleOf(body.koRule) }),
-    });
+    // room.newGame shares its validation with the MCP tool: INVALID_REQUEST
+    // for type/format errors, UNSUPPORTED_RULE for well-formed v1 gaps. The
+    // error handler turns both into a 400.
+    const state = room.newGame(body);
     res.json({ state, history: [...room.getHistory()] });
   });
 
@@ -666,10 +646,6 @@ export function createApiRouter(
     const body = bodyOf(req);
 
     const ref = actorRefOf(req, body);
-    if ('actor' in ref) {
-      touchActor(manager, room, ref.actor);
-    }
-
     const result = room.passAs(ref);
     if (!result.ok) {
       const payload: ErrorResponse = {
@@ -681,6 +657,7 @@ export function createApiRouter(
       return;
     }
 
+    touchRef(manager, room, ref);
     res.json({ state: result.state, history: [...room.getHistory()] });
   });
 
@@ -693,10 +670,6 @@ export function createApiRouter(
     // Prefer the participant the caller claims (header or body); fall back to
     // the legacy actor kind, which the room resolves only while unambiguous.
     const ref = actorRefOf(req, body);
-    if ('actor' in ref) {
-      touchActor(manager, room, ref.actor);
-    }
-
     const result = room.moveAs(ref, row, col);
     if (!result.ok) {
       const payload: ErrorResponse = {
@@ -708,6 +681,7 @@ export function createApiRouter(
       return;
     }
 
+    touchRef(manager, room, ref);
     res.json({ state: result.state, history: [...room.getHistory()] });
   });
 
@@ -716,10 +690,6 @@ export function createApiRouter(
     const body = bodyOf(req);
 
     const ref = actorRefOf(req, body);
-    if ('actor' in ref) {
-      touchActor(manager, room, ref.actor);
-    }
-
     const result = room.resignAs(ref);
     if (!result.ok) {
       const payload: ErrorResponse = {
@@ -731,6 +701,7 @@ export function createApiRouter(
       return;
     }
 
+    touchRef(manager, room, ref);
     res.json({ state: result.state, history: [...room.getHistory()] });
   });
 
@@ -742,10 +713,6 @@ export function createApiRouter(
     const col = integerOf(body.col, 'col');
 
     const ref = actorRefOf(req, body);
-    if ('actor' in ref) {
-      touchActor(manager, room, ref.actor);
-    }
-
     const result = room.markDeadAs(ref, row, col);
     if (!result.ok) {
       const payload: ErrorResponse = {
@@ -757,6 +724,7 @@ export function createApiRouter(
       return;
     }
 
+    touchRef(manager, room, ref);
     res.json({ state: result.state, history: [...room.getHistory()] });
   });
 
@@ -766,10 +734,6 @@ export function createApiRouter(
     const body = bodyOf(req);
 
     const ref = actorRefOf(req, body);
-    if ('actor' in ref) {
-      touchActor(manager, room, ref.actor);
-    }
-
     const result = room.confirmScoreAs(ref);
     if (!result.ok) {
       const payload: ErrorResponse = {
@@ -781,6 +745,7 @@ export function createApiRouter(
       return;
     }
 
+    touchRef(manager, room, ref);
     res.json({ state: result.state, history: [...room.getHistory()] });
   });
 
@@ -790,10 +755,6 @@ export function createApiRouter(
     const body = bodyOf(req);
 
     const ref = actorRefOf(req, body);
-    if ('actor' in ref) {
-      touchActor(manager, room, ref.actor);
-    }
-
     const result = room.resumePlayAs(ref);
     if (!result.ok) {
       const payload: ErrorResponse = {
@@ -805,6 +766,7 @@ export function createApiRouter(
       return;
     }
 
+    touchRef(manager, room, ref);
     res.json({ state: result.state, history: [...room.getHistory()] });
   });
 
