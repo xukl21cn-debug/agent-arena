@@ -283,8 +283,8 @@ export function createChatRouter(manager: ChatManager): Router {
   router.get('/rooms/:roomId/transcript', (req, res) => {
     const room = manager.getOrThrow(req.params.roomId);
     const format = req.query.format === 'md' ? 'md' : 'json';
-    const limit = numberQuery(req.query.limit) ?? CHAT_RECENT_LIMIT;
-    const afterSeq = numberQuery(req.query.afterSeq);
+    const limit = numberQuery(req.query.limit, 'limit', 1) ?? CHAT_RECENT_LIMIT;
+    const afterSeq = numberQuery(req.query.afterSeq, 'afterSeq', 0);
 
     const { messages, omitted } = room.transcript({
       limit,
@@ -315,14 +315,18 @@ export function createChatRouter(manager: ChatManager): Router {
   return router;
 }
 
-function numberQuery(value: unknown): number | undefined {
+function numberQuery(
+  value: unknown,
+  name: 'limit' | 'afterSeq',
+  min: number,
+): number | undefined {
   if (value === undefined) {
     return undefined;
   }
   const raw = Array.isArray(value) ? value[0] : value;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new ChatError('INVALID_REQUEST', 'limit/afterSeq must be a number.');
+  if (!Number.isFinite(parsed) || parsed < min) {
+    throw new ChatError('INVALID_REQUEST', `${name} must be a number >= ${min}.`);
   }
   return Math.floor(parsed);
 }

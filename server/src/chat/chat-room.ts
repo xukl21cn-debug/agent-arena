@@ -768,11 +768,18 @@ export class ChatRoom {
     messages: ChatMessage[];
     omitted: number;
   } {
+    const requested = options.limit;
+    // `slice(-0)` is `slice(0)` in JS and would silently return the whole
+    // history; refuse non-positive limits instead of leaking all messages.
+    // An omitted limit still means "everything" for internal callers.
+    if (requested !== undefined && (!Number.isInteger(requested) || requested < 1)) {
+      throw new ChatError('INVALID_REQUEST', 'limit must be a positive integer.');
+    }
+    const limit = requested ?? Number.POSITIVE_INFINITY;
     const pool =
       options.afterSeq === undefined
         ? this.messages
         : this.messages.filter((message) => message.seq > options.afterSeq!);
-    const limit = options.limit ?? Number.POSITIVE_INFINITY;
     const kept = pool.slice(-limit);
     return {
       messages: kept.map(cloneMessage),

@@ -12,6 +12,8 @@ interface GoBoardProps {
   onToggleDead: (row: number, col: number) => void;
   /** Replay view: render the position, accept no input — not even dead-marking. */
   readOnly?: boolean;
+  /** Watching two agents: never offer dead-stone marking to the bystander. */
+  spectator?: boolean;
 }
 
 /** The five hoshi points of a 9×9 board, fixed by the proposal. */
@@ -60,6 +62,7 @@ export function GoBoard({
   onPlay,
   onToggleDead,
   readOnly = false,
+  spectator = false,
 }: GoBoardProps) {
   const size = state?.rules.boardSize ?? 9;
   const indexes = Array.from({ length: size }, (_, index) => index);
@@ -73,7 +76,7 @@ export function GoBoard({
     humanColor !== null &&
     state.turn === humanColor &&
     !busy;
-  const canMark = !readOnly && scoring && !busy;
+  const canMark = !readOnly && !spectator && scoring && !busy;
 
   const dead = new Set(
     (scoring ? (state?.deadStones ?? []) : []).map(

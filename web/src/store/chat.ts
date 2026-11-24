@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ChatMessageFrame, ChatRoomFrame } from '@arena/shared';
 import { api, errorMessage } from '../api';
+import { errorText } from '../errors';
 
 /** This browser's own socket, same meaning as the game store's status. */
 export type ChatConnection =
@@ -25,6 +26,8 @@ export interface ChatStore {
   busy: boolean;
   /** Last user-facing error, already formatted. */
   error: string | null;
+  /** Last error code; lets the page tell "room gone" apart from a network blip. */
+  errorCode: string | null;
 
   /** Wire the socket for a room; returns the teardown. */
   connect(roomId: string): () => void;
@@ -61,6 +64,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   busy: false,
   error: null,
+  errorCode: null,
 
   connect(roomId) {
     // Every entry into a room is a new visit: a reply issued during the last
@@ -72,6 +76,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       room: null,
       messages: [],
       error: null,
+      errorCode: null,
       // A request abandoned by leaving must not leave the new room disabled.
       busy: false,
     });
@@ -294,7 +299,12 @@ function subscribeToChatRoom(
           break;
         case 'error': {
           const err = frame as { message?: string; code?: string };
-          set({ connection: 'offline', error: err.message ?? err.code ?? 'Chat error' });
+          console.warn('[ws]', err.code, err.message);
+          set({
+            connection: 'offline',
+            error: errorText(err.code, err.message),
+            errorCode: err.code ?? null,
+          });
           break;
         }
         default:
@@ -307,7 +317,12 @@ function subscribeToChatRoom(
         return;
       }
       if (event.code === 1008) {
-        set({ connection: 'offline', error: event.reason || 'ROOM_NOT_FOUND' });
+        const code = event.reason || 'ROOM_NOT_FOUND';
+        set({
+          connection: 'offline',
+          error: errorText(code),
+          errorCode: code,
+        });
         return;
       }
       set({ connection: 'reconnecting' });

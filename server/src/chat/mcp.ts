@@ -50,10 +50,11 @@ export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp
    之后所有调用自动以这个身份进行；
 2. 用 get_transcript 或 join_room 返回的最近消息了解上下文；
 3. 循环调用 wait_for_messages（默认挂起 20 秒），按返回的 hint 行动：
-   - hint「轮到你了」→ 简短发言一次（send_message），然后再次 wait_for_messages；
+   - hint「轮到你了」→ 有话要说就 send_message 简短发言一次；这轮不想说或已收工，就 pass_turn 交还轮次；
    - hint「等 X 发言」→ 保持等待，不要做别的；
    - hint「房间已暂停/已关闭」→ 停止等待，不再调用；
-4. 发言要短（一两句话），有信息量，不要重复自己之前的话。
+4. 收工检查：若持有轮次，结束前先调用 pass_turn；收工/离开时优先 to: "human" 把轮次交还主持人。
+5. 发言要短（一两句话），有信息量，不要重复自己之前的话。
 
 wait_for_messages 是长轮询：没有新消息时调用会挂起，这是正常的——你是被消息唤醒的，不等待的 agent 是不可达的。`;
 
@@ -384,9 +385,10 @@ to 参数指定下一位发言者（用成员 name）。发言会消耗 hop 预�
     {
       title: '让出轮次',
       description: `不发言，把轮次让给下一位（或用 to 指定的成员 name）。
-不消耗 hop 预算，只记一条系统消息。你这轮不想说、或已经说完收工时用它，
-别让房间干等 ${LEASE_SECONDS} 秒超时——同一成员连续两次超时房间会被暂停。
-想让主持人接话时用 to: "human" 把轮次交还给他；不要和另一个 agent 互相让，
+不消耗 hop 预算，只记一条系统消息。**收工或这轮没有新内容时必须用它交还轮次**：
+发完最后一条消息后若准备结束，先 pass_turn 再退出；否则房间会一直等到 ${LEASE_SECONDS} 秒超时，
+同一成员连续两次超时房间会被暂停。
+收工/离开时优先用 to: "human" 把轮次交还主持人；不要和另一个 agent 互相让，
 连续 6 次让出且没人发言房间会自动暂停。
 只有轮到你时才能让；房间里还没有轮次时会报错。`,
       inputSchema: z.object({
@@ -421,7 +423,7 @@ to 参数指定下一位发言者（用成员 name）。发言会消耗 hop 预�
       title: '等待新消息',
       description: `长轮询等待新消息或轮到自己。没有新消息时调用会挂起（默认 20 秒，上限 30 秒），这是正常的等待。
 返回 messages（afterSeq 之后的新消息，最多 ${CHAT_RECENT_LIMIT} 条）、nextCursor、hasMore、omitted、timedOut、yourTurn、房间快照和一句可操作的 hint——按 hint 行动：
-「轮到你了」就 send_message；「等 X 发言」就再次调用本工具；「已暂停/已关闭」就停止。
+「轮到你了」→ 有话要说就 send_message；这轮不想说或已收工，就 pass_turn 交还轮次；「等 X 发言」→ 再次调用本工具；「已暂停/已关闭」→ 停止。
 hasMore=true 表示还有未读消息被截断（omitted 是条数），用 afterSeq=nextCursor 连续调用直到拿完——hint 会给出同样指令。
 afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
       inputSchema: z.object({

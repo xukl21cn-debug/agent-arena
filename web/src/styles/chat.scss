@@ -159,7 +159,8 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
-  padding: 5px 10px;
+  padding: 2px 4px 2px 12px;
+  min-height: 44px;
   width: fit-content;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
@@ -173,14 +174,22 @@
   font-weight: 600;
 }
 
+/* 44×44 touch target even though the glyph itself stays small. */
 .chat-target-clear {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
   border: 0;
+  border-radius: 50%;
   background: transparent;
   color: var(--text-faint);
-  font-size: 14px;
+  font-size: 18px;
   line-height: 1;
   cursor: pointer;
-  padding: 0 2px;
+  touch-action: manipulation;
 }
 
 .chat-target-clear:hover {
@@ -254,11 +263,29 @@
 
 .chat-mention li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
-  padding: 7px 10px;
+  min-height: 44px;
+  padding: 10px;
   border-radius: 6px;
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+.chat-mention-empty {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 6;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-solid);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
 }
 
 .chat-mention li.is-active {
@@ -470,6 +497,60 @@
   border-color: rgba(180, 66, 46, 0.4);
 }
 
+/* Persistent phase banner inside the chat panel: on mobile the sidebar is
+   below the timeline, so paused/resume and closed/export must live here. */
+.chat-phase-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--text-dim);
+  background: var(--panel-soft);
+}
+
+.chat-phase-banner--paused {
+  color: #e6d28a;
+  border-bottom-color: rgba(217, 193, 90, 0.35);
+  background: rgba(217, 193, 90, 0.09);
+}
+
+.chat-phase-banner--closed {
+  color: #e0a294;
+  border-bottom-color: rgba(180, 66, 46, 0.35);
+  background: rgba(180, 66, 46, 0.08);
+}
+
+.chat-phase-banner .btn {
+  padding: 8px 14px;
+}
+
+/* A room that no longer exists: a real empty state, not "连接中…". */
+.chat-not-found.panel {
+  position: static;
+  height: auto;
+  align-items: center;
+  gap: 10px;
+  padding: 44px 24px;
+  text-align: center;
+}
+
+.chat-not-found strong {
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+
+.chat-not-found p {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
 @media (max-width: 980px) {
   .chat-arena {
     grid-template-columns: minmax(0, 1fr);
@@ -477,6 +558,31 @@
 
   .chat-main.panel {
     height: min(72vh, 680px);
+  }
+}
+
+@media (max-width: 640px) {
+  /* Keep the composer in the first screen: the panel is measured against the
+     visible viewport, not the page, so the timeline scrolls instead. */
+  .chat-main.panel {
+    height: calc(100vh - 400px);
+    height: calc(100dvh - 400px);
+    min-height: 360px;
+  }
+
+  .chat-composer {
+    padding: 10px 12px 12px;
+  }
+
+  /* 16px stops iOS Safari from zooming when the textarea gets focus. */
+  .chat-input-wrap textarea {
+    font-size: 16px;
+  }
+
+  .chat-phase-banner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
   }
 }
 

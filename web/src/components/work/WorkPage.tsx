@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { ArtifactRef, TestEvidence, WorkStatus, WorkTask } from '@arena/shared';
 import { useWorkStore } from '../../store/work';
 import { usePageTitle } from '../layout/PageTitle';
+import { BackLink } from '../layout/BackLink';
 
 const labels: Record<WorkStatus, string> = {
   queued: '待领取', working: '执行中', pending_review: '待复审', reviewing: '复审中',
@@ -110,6 +111,7 @@ export function WorkPage() {
     <>
       <div className="page-head">
         <div>
+          <BackLink to="/" label="返回大厅" />
           <h2 className="page-title">开发任务</h2>
           <p className="page-subtitle">本机看板：领取、复审、收工确认与放行合并。</p>
         </div>

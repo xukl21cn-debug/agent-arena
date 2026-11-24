@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ServerMessage, WorkTask, WorkTaskSummary } from '@arena/shared';
 import { api, errorMessage } from '../api';
+import { errorText } from '../errors';
 
 interface WorkBoard {
   tasks: WorkTaskSummary[];
@@ -79,7 +80,7 @@ export const useWorkStore = create<WorkBoard>((set, get) => {
             apply(frame.task);
             if (!get().selected) set({ selected: frame.task.id, detail: frame.task });
           }
-          if (frame.type === 'error') set({ loading: false, error: frame.message });
+          if (frame.type === 'error') set({ loading: false, error: errorText(frame.code, frame.message) });
         };
         socket.onclose = ({ code }) => {
           if (closed || code === 1008) return;

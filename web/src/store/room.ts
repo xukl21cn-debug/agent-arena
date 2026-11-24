@@ -8,6 +8,7 @@ import {
   type StoneColor,
 } from '@arena/shared';
 import { ApiError, api, errorMessage } from '../api';
+import { errorText } from '../errors';
 
 /**
  * This browser's own socket connection, not any seat's presence.
@@ -52,6 +53,8 @@ export interface RoomStore {
   busy: boolean;
   /** Last user-facing error, already formatted. */
   error: string | null;
+  /** Last error code; lets the page tell "room gone" apart from a network blip. */
+  errorCode: string | null;
   /** The result overlay was dismissed for the current game. */
   resultDismissed: boolean;
 
@@ -96,14 +99,6 @@ export function seatColors(state: AnyGameState | null): {
   if (!state) {
     return { human: null, agent: null, spectator: false };
   }
-  if (
-    state.seats.black.kind === 'agent' &&
-    state.seats.white.kind === 'agent'
-  ) {
-    // Neither color is "the agent's" and none is the local player's; picking
-    // one would answer every downstream question wrongly.
-    return { human: null, agent: null, spectator: true };
-  }
   const human =
     state.seats.black.kind === 'human'
       ? 'black'
@@ -116,7 +111,11 @@ export function seatColors(state: AnyGameState | null): {
       : state.seats.white.kind === 'agent'
         ? 'white'
         : null;
-  return { human, agent, spectator: false };
+  // No human seat means this browser holds no seat at all — including the
+  // remote + agent combination, which must not be mistaken for "the local
+  // player is the remote seat" (that used to show confirm buttons that the
+  // server then rejected with IDENTITY_REQUIRED).
+  return { human, agent, spectator: human === null };
 }
 
 /** Commentary for the current game, trimmed to the visible log length. */
@@ -157,6 +156,7 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   commentary: [],
   busy: false,
   error: null,
+  errorCode: null,
   resultDismissed: false,
 
   connect(roomId) {
@@ -172,6 +172,7 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
       participants: [],
       commentary: [],
       error: null,
+      errorCode: null,
       resultDismissed: false,
       // A request abandoned by leaving must not leave the new room disabled.
       busy: false,
@@ -476,7 +477,11 @@ function subscribeToRoom(
             message?: string;
           };
           console.warn('[ws]', code, text);
-          set({ connection: 'offline', error: text ?? code ?? 'Room error' });
+          set({
+            connection: 'offline',
+            error: errorText(code, text),
+            errorCode: code ?? null,
+          });
           break;
         }
         default:
@@ -489,7 +494,12 @@ function subscribeToRoom(
         return;
       }
       if (event.code === 1008) {
-        set({ connection: 'offline', error: event.reason || 'ROOM_NOT_FOUND' });
+        const code = event.reason || 'ROOM_NOT_FOUND';
+        set({
+          connection: 'offline',
+          error: errorText(code),
+          errorCode: code,
+        });
         return;
       }
       set({ connection: 'reconnecting' });
@@ -518,8 +528,16 @@ function subscribeToRoom(
       }
       store.applyPhase(view.phase);
     })
-    .catch(() => {
-      // The socket keeps retrying; a failed first fetch is not fatal.
+    .catch((caught: unknown) => {
+      if (disposed) {
+        return;
+      }
+      // The socket keeps retrying; a failed first fetch is not fatal. But a
+      // definitive "room gone" answer is worth recording so the page can show
+      // its empty state even before the socket gives up.
+      if (caught instanceof ApiError && caught.code === 'ROOM_NOT_FOUND') {
+        set({ errorCode: 'ROOM_NOT_FOUND' });
+      }
     });
 
   return () => {

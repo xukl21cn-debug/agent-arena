@@ -118,6 +118,44 @@ describe('chat over the wire', () => {
     expect(((await missing.json()) as any).error.code).toBe('ROOM_NOT_FOUND');
   });
 
+  it('REST transcript rejects non-positive limits instead of returning everything', async () => {
+    await fetch(`${baseUrl}/api/chat/rooms`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ roomId: 'limit-wire' }),
+    });
+    for (let i = 0; i < 3; i += 1) {
+      const spoke = await fetch(`${baseUrl}/api/chat/rooms/limit-wire/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: `第 ${i} 条` }),
+      });
+      expect(spoke.status).toBe(201);
+    }
+
+    for (const query of ['limit=0', 'limit=-1', 'limit=-5', 'limit=abc', 'format=md&limit=0']) {
+      const response = await fetch(
+        `${baseUrl}/api/chat/rooms/limit-wire/transcript?${query}`,
+      );
+      expect(response.status, query).toBe(400);
+      expect(((await response.json()) as any).error.code, query).toBe(
+        'INVALID_REQUEST',
+      );
+    }
+
+    const one = (await (
+      await fetch(`${baseUrl}/api/chat/rooms/limit-wire/transcript?limit=1`)
+    ).json()) as any;
+    expect(one.messages).toHaveLength(1);
+    expect(one.omitted).toBe(2);
+
+    // afterSeq still accepts 0: it is a cursor, not a count.
+    const fromStart = (await (
+      await fetch(`${baseUrl}/api/chat/rooms/limit-wire/transcript?afterSeq=0`)
+    ).json()) as any;
+    expect(fromStart.messages).toHaveLength(3);
+  });
+
   it('/chat/mcp: three agents join, take relay turns, and read the transcript', async () => {
     await fetch(`${baseUrl}/api/chat/rooms`, {
       method: 'POST',

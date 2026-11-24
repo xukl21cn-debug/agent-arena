@@ -5,7 +5,7 @@ import {
   useState,
   type FormEvent,
 } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, Link } from 'react-router';
 import type { ChatMemberFrame } from '@arena/shared';
 import { useChatStore, type ChatConnection } from '../../store/chat';
 import { ChatComposer } from './ChatComposer';
@@ -126,7 +126,7 @@ function HostControls({
   }, [armed]);
 
   if (phase === 'closed') {
-    return <p className="chat-closed-note">房间已关闭，记录仍可导出。</p>;
+    return <p className="chat-closed-note">房间已关闭，记录仍保存在本机。</p>;
   }
 
   return (
@@ -193,6 +193,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   const messages = useChatStore((store) => store.messages);
   const busy = useChatStore((store) => store.busy);
   const error = useChatStore((store) => store.error);
+  const errorCode = useChatStore((store) => store.errorCode);
   const send = useChatStore((store) => store.send);
   const pause = useChatStore((store) => store.pause);
   const resume = useChatStore((store) => store.resume);
@@ -251,6 +252,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Same 4s window as the other two-step buttons: arming expires on its own.
   useEffect(() => {
@@ -278,13 +280,76 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
     }
   };
 
+  // The transcript endpoint returns the Markdown rendering inside JSON; turn
+  // it into a real file download so the closed-room hint has a working entry.
+  const exportTranscript = async (): Promise<void> => {
+    setExporting(true);
+    setDeleteError(null);
+    try {
+      const payload = await api.chatTranscript(
+        roomId,
+        Math.max(1, room?.messageCount ?? 1),
+      );
+      const blob = new Blob([payload.text], {
+        type: 'text/markdown;charset=utf-8',
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `chat-${roomId}.md`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch (caught) {
+      setDeleteError(errorMessage(caught));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // A 1008 close with ROOM_NOT_FOUND is not a transient network failure: the
+  // room is gone, so the page shows an empty state instead of "连接中…".
+  if (room === null && errorCode === 'ROOM_NOT_FOUND') {
+    return (
+      <>
+        <div className="page-head">
+          <div>
+            <BackLink to="/chats" label="聊天大厅" />
+            <h2 className="page-title">聊天室</h2>
+            <p className="page-subtitle">房间不存在或已删除。</p>
+          </div>
+        </div>
+        <section className="chat-not-found panel" role="status">
+          <strong>房间不存在或已删除</strong>
+          <p>请检查房间号，或返回聊天大厅重新选择一间聊天室。</p>
+          <Link className="btn btn--primary" to="/chats">
+            返回聊天大厅
+          </Link>
+        </section>
+      </>
+    );
+  }
+
   const composerDisabled = busy || room === null || phase === 'closed';
   const composerHint =
     room === null
       ? '连接中…'
       : phase === 'closed'
-        ? '房间已关闭'
-        : null;
+        ? '房间已关闭，记录仍保存在本机。'
+        : phase === 'paused'
+          ? '房间已暂停，agent 不会收到轮次；点上方「恢复」继续。'
+          : null;
+  const turnLabel =
+    room === null
+      ? '连接中…'
+      : phase === 'paused'
+        ? '房间已暂停'
+        : phase === 'closed'
+          ? '房间已关闭'
+          : room.turn
+            ? `轮到 ${room.turn.name}`
+            : '等待轮转';
 
   return (
     <>
@@ -354,10 +419,34 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
                   : '等待连接'}
               </p>
             </div>
-            <div className="chat-turn">
-              {room?.turn ? `轮到 ${room.turn.name}` : '等待轮转'}
-            </div>
+            <div className="chat-turn">{turnLabel}</div>
           </div>
+          {phase === 'paused' ? (
+            <div className="chat-phase-banner chat-phase-banner--paused" role="status">
+              <span>房间已暂停，agent 不会收到轮次；点「恢复」继续。</span>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={busy}
+                onClick={() => void resume()}
+              >
+                恢复
+              </button>
+            </div>
+          ) : null}
+          {phase === 'closed' ? (
+            <div className="chat-phase-banner chat-phase-banner--closed" role="status">
+              <span>房间已关闭，记录仍保存在本机。</span>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={exporting}
+                onClick={() => void exportTranscript()}
+              >
+                {exporting ? '导出中…' : '导出记录（Markdown）'}
+              </button>
+            </div>
+          ) : null}
           <ChatTimeline messages={messages} members={room?.members ?? []} />
           <ChatComposer
             agents={agents}

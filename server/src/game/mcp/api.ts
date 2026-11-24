@@ -35,7 +35,10 @@ export interface ArenaApi {
   ): Promise<AgentJoinResponse>;
   /** Leave the room, freeing the seat. */
   leaveGame(roomId: string): Promise<{ ok: boolean }>;
-  newGame(roomId: string, options?: NewGameRequest): Promise<AgentStateResponse>;
+  newGame(
+    roomId: string,
+    options?: NewGameRequest | Record<string, unknown>,
+  ): Promise<AgentStateResponse>;
   getState(roomId: string): Promise<AgentStateResponse>;
   waitForTurn(
     roomId: string,
