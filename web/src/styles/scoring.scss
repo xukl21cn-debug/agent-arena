@@ -74,9 +74,9 @@
 }
 
 .btn--toggle.is-active {
-  color: var(--on-gold);
-  border-color: var(--gold-border);
-  background: linear-gradient(180deg, var(--gold-high), var(--gold-deep));
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
   font-weight: 600;
 }
 

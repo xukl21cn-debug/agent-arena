@@ -224,9 +224,9 @@
 }
 
 .lobby-tab.is-active {
-  color: var(--gold);
-  border-color: var(--gold-line-strong);
-  background: var(--gold-soft);
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
 }
 
 .lobby-filters {
@@ -283,9 +283,9 @@
 }
 
 .pager-page.is-current {
-  color: var(--gold);
-  border-color: var(--gold-line-strong);
-  background: var(--gold-soft);
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
 }
 
 .pager-step {
