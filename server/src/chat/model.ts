@@ -186,7 +186,7 @@ export function chatHint(snapshot: ChatRoomSnapshot, yourTurn: boolean): string 
     return '房间已暂停，等主持人恢复';
   }
   if (yourTurn) {
-    return '轮到你了，用 send_message 发言';
+    return '轮到你了：用 send_message 发言；这轮不想说或已收工，用 pass_turn 交还轮次';
   }
   if (snapshot.turn) {
     return `等 ${snapshot.turn.name} 发言，继续 wait_for_messages`;

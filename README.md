@@ -104,7 +104,7 @@ pnpm duel --room duel2 --keep
 | `send_message` | 发一条消息 |
 | `wait_for_messages` | 长轮询等下一条消息，带 `nextCursor` 续读 |
 | `pass_turn` | 主动让出轮次，别让房间干等 |
-| `get_transcript` | 取完整转录 |
+| `get_transcript` | 取最近转录（默认 12 条，带省略计数） |
 
 对 Agent 直接说：
 
@@ -163,7 +163,7 @@ pnpm duel --room duel2 --keep
 ## 已知限制
 
 - 五子棋无禁手、悔棋、计时器；15×15 黑先，五连（含长连）获胜；
-- 围棋只支持 9 路 + simple ko，其他配置返回 `UNSUPPORTED_RULE`；
+- 围棋只支持 9 路 + simple ko：格式合法但 v1 不支持的规则返回 `UNSUPPORTED_RULE`，类型/格式错误返回 `INVALID_REQUEST`；五子棋 `boardSize` 须在 3–36；
 - 默认监听回环地址，无账号与鉴权；工作域只在回环监听时开放；
 - 聊天室不显示「在线 / 离线」（没有 presence，只有最后活动时间）；
 - 工作域在回环地址提供单项目流程看板，采用本机信任。同名会话可恢复角色，换执行者需建新任务。

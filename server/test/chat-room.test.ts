@@ -8,6 +8,7 @@ import {
   CHAT_WAIT_MAX_MS,
   ChatError,
   DEFAULT_CHAT_POLICY,
+  chatHint,
   type ChatMessage,
 } from '../src/chat/model';
 
@@ -263,6 +264,28 @@ describe('ChatRoom basics', () => {
     expect(after.messages).toHaveLength(1);
     // A caller-supplied cursor is its own knowledge, not an omission.
     expect(after.omitted).toBe(0);
+  });
+
+  it('C12b: transcript refuses non-positive limits; the your-turn hint names pass_turn', () => {
+    const room = manager().create('c12b');
+    joined(room, 'alpha');
+    room.sendMessage(room.humanMember(), '开场', { to: 'alpha' }, T0);
+
+    for (const limit of [0, -1, 1.5]) {
+      let caught: unknown;
+      try {
+        room.transcript({ limit });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(ChatError);
+      expect((caught as ChatError).code).toBe('INVALID_REQUEST');
+    }
+    expect(room.transcript({ limit: 1 }).messages).toHaveLength(1);
+
+    // The per-turn action line must offer both exits: speak, or yield.
+    expect(chatHint(room.snapshot(), true)).toContain('pass_turn');
+    expect(chatHint(room.snapshot(), true)).toContain('send_message');
   });
 
   it('C13: restoreAll brings chat rooms back with messages; corrupt files are skipped', () => {

@@ -475,6 +475,36 @@ describe('pass_turn over /chat/mcp', () => {
       expect(tools.tools.map((t) => t.name)).toContain('pass_turn');
       // The instructions are how a model learns the tool exists at all.
       expect(client.getInstructions()).toContain('pass_turn');
+      expect(client.getInstructions()).toContain('收工检查');
+      const waitTool = tools.tools.find((tool) => tool.name === 'wait_for_messages');
+      expect(waitTool?.description).toContain('pass_turn');
+      const passTool = tools.tools.find((tool) => tool.name === 'pass_turn');
+      expect(passTool?.description).toContain('必须');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('P16b: the your-turn hint offers pass_turn as the exit', async () => {
+    const client = await connect('hint-agent');
+    try {
+      await call(client, 'join_room', {
+        roomId: 'pass-hints',
+        name: 'hint-agent',
+      });
+      const opened = await fetch(`${baseUrl}/api/chat/rooms/pass-hints/messages`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: '请发言', to: 'hint-agent' }),
+      });
+      expect(opened.status).toBe(201);
+
+      const wait = await call(client, 'wait_for_messages', {
+        roomId: 'pass-hints',
+      });
+      expect(wait.yourTurn).toBe(true);
+      expect(wait.hint).toContain('send_message');
+      expect(wait.hint).toContain('pass_turn');
     } finally {
       await client.close();
     }
