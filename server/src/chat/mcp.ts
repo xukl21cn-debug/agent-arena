@@ -38,6 +38,8 @@ export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp
 - 成员轮流发言：轮到你时 wait_for_messages 会告诉你「轮到你了」，用 send_message 发言。
 - 发言后轮转给下一位（可以用 to 参数指定下一位，值用成员的 name）。
 - 不要抢话：不是你的轮次时发言会被拒绝（NOT_YOUR_TURN）。
+- 轮到你但这一轮没有新内容、或者你已收工时，必须调用 pass_turn 交还轮次，再结束本次工作。
+  不要直接停止调用工具——轮次会压在别人身上直到超时，同一成员连续两次超时房间会被暂停。
 - 如果你这轮不想说（或者已经说完了），用 pass_turn 把轮次让给下一位，
   不消耗预算——别让房间干等 ${LEASE_SECONDS} 秒超时，连续超时还会暂停房间。
 - 如果你觉得该由主持人来说，用 pass_turn 并指定 to: "human" 把轮次交还给他。
@@ -53,7 +55,8 @@ export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp
    - hint「轮到你了」→ 有话要说就 send_message 简短发言一次；这轮不想说或已收工，就 pass_turn 交还轮次；
    - hint「等 X 发言」→ 保持等待，不要做别的；
    - hint「房间已暂停/已关闭」→ 停止等待，不再调用；
-4. 收工检查：若持有轮次，结束前先调用 pass_turn；收工/离开时优先 to: "human" 把轮次交还主持人。
+4. 收工检查：轮到你但没有新内容或已收工时，必须用 pass_turn 交还轮次，再结束本次工作；
+   收工/离开时优先 to: "human" 把轮次交还主持人，轮次不在你身上时直接结束即可。
 5. 发言要短（一两句话），有信息量，不要重复自己之前的话。
 
 wait_for_messages 是长轮询：没有新消息时调用会挂起，这是正常的——你是被消息唤醒的，不等待的 agent 是不可达的。`;
@@ -101,6 +104,27 @@ function transcriptSlice(
       at: message.at,
     })),
   };
+}
+
+/**
+ * `get_transcript`'s `limit`, validated in the handler so a bad value answers
+ * as a JSON `{code, message}` tool error (the `new_game` contract) instead of
+ * a bare -32602 protocol error with no domain code for the model to branch
+ * on. The REST endpoint keeps its own 400 contract.
+ */
+function transcriptLimitOf(value: unknown): number {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > 100
+  ) {
+    throw new ChatError(
+      'INVALID_REQUEST',
+      `limit must be an integer between 1 and 100, got ${JSON.stringify(value)}.`,
+    );
+  }
+  return value;
 }
 
 /** Tool results are JSON text; errors are JSON too, so the model can branch on code. */
@@ -341,7 +365,7 @@ function registerChatTools(
     {
       title: '发送聊天消息',
       description: `在聊天室发言。relay 模式下只有轮到你才能发；人类主持人随时可以。
-to 参数指定下一位发言者（用成员 name）。发言会消耗 hop 预算。`,
+to 参数指定下一位发言者（用成员 name）。发言会消耗 hop 预算。发完若不再继续发言，记得用 pass_turn 交还轮次。`,
       inputSchema: z.object({
         roomId: z.string().min(1).describe('房间 id。'),
         text: z.string().min(1).describe('消息内容，一两句话即可。'),
@@ -480,7 +504,11 @@ afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
 用于了解上下文；想拿增量用 wait_for_messages。`,
       inputSchema: z.object({
         roomId: z.string().min(1).describe('房间 id。'),
-        limit: z.number().int().min(1).max(100).optional().describe('最多返回多少条。'),
+        // Value validation is deliberately loose at the schema layer and
+        // explicit in the handler, so a bad `limit` answers with a JSON code
+        // (INVALID_REQUEST) instead of a bare -32602 (same contract as
+        // new_game). 1-100 的整数。
+        limit: z.unknown().optional().describe('最多返回多少条，1-100 的整数。'),
         afterSeq: z.number().int().min(0).optional().describe('只返回该序号之后的消息。'),
       }),
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
@@ -497,7 +525,11 @@ afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
       }
 
       const snapshot = room.snapshot();
-      const slice = transcriptSlice(room, limit ?? CHAT_RECENT_LIMIT, afterSeq);
+      const slice = transcriptSlice(
+        room,
+        limit === undefined ? CHAT_RECENT_LIMIT : transcriptLimitOf(limit),
+        afterSeq,
+      );
       return {
 
               messages: slice.lines,

@@ -25,7 +25,13 @@ import {
   ARCHIVE_ID_PATTERN,
   type PersistedRoom,
 } from '../rooms/repository.js';
-import { RoomError, type ActorRef, type GameRoom } from '../rooms/room.js';
+import {
+  RoomError,
+  type ActorRef,
+  type GameRoom,
+  type MoveActionResult,
+  type StateActionResult,
+} from '../rooms/room.js';
 
 const COMMENTARY_KINDS: readonly CommentaryKind[] = [
   'evaluation',
@@ -263,15 +269,20 @@ function asInvalidRequest(error: unknown): never {
  * Record activity for the seat a resolved caller occupies.
  *
  * Only call this after the mutation succeeded: a rejected request must not
- * make any seat look alive. Both identity forms go through `room.resolve`, so
- * `X-Arena-Participant` / body `participantId` refresh presence exactly like
- * the legacy `actor` path.
+ * make any seat look alive. `identity` is what the mutation result already
+ * resolved and acted on — resolving the ref again here could land on a
+ * different seat (or silently none) once the roster moved, so the result is
+ * the single source of truth for who just acted.
  */
-function touchRef(manager: RoomManager, room: GameRoom, ref: ActorRef): void {
-  const identity = room.resolve(ref);
-  if (identity.ok) {
-    manager.presenceSource?.touch(room.id, identity.seat);
+function touchRef(
+  manager: RoomManager,
+  room: GameRoom,
+  identity: { seat: StoneColor | null },
+): void {
+  if (identity.seat === null) {
+    return;
   }
+  manager.presenceSource?.touch(room.id, identity.seat);
 }
 
 /** Record activity for a participant the route itself just resolved. */
@@ -281,9 +292,36 @@ function touchParticipant(
   participantId: string,
 ): void {
   const participant = room.getRoster().find((item) => item.id === participantId);
-  if (participant?.seat) {
-    manager.presenceSource?.touch(room.id, participant.seat);
+  if (participant) {
+    touchRef(manager, room, participant);
   }
+}
+
+/**
+ * The shared shape of every seat-acting route (moves / pass / resign / the
+ * three Go scoring calls): a failure answers with code + state + history, a
+ * success touches presence for the seat the result carries and answers with
+ * state + history. Keeping this in one place is what makes the touch
+ * impossible to forget or misroute on a new route.
+ */
+function respondToSeatAction(
+  manager: RoomManager,
+  room: GameRoom,
+  res: Response,
+  result: MoveActionResult | StateActionResult,
+): void {
+  if (!result.ok) {
+    const payload: ErrorResponse = {
+      error: { code: result.code, message: result.message },
+      state: result.state,
+      history: [...room.getHistory()],
+    };
+    res.status(statusForCode(result.code)).json(payload);
+    return;
+  }
+
+  touchRef(manager, room, result);
+  res.json({ state: result.state, history: [...room.getHistory()] });
 }
 
 /**
@@ -558,9 +596,11 @@ export function createApiRouter(
    * Ready for the lobby flow: one side says it is set; both sides ready with
    * both seats filled starts the game.
    *
-   * Without a participantId the caller is the web human, who never joined
-   * through any API — the server seats a human participant at the human seat
-   * on first press, so "clicking ready" stays one step.
+   * Identity works exactly like moves/pass/resign: the `X-Arena-Participant`
+   * header or body `participantId` wins (see `actorRefOf`). Only a caller
+   * that gave neither is the web human, who never joined through any API —
+   * the server seats a human participant at the human seat on first press,
+   * so "clicking ready" stays one step.
    */
   router.post('/rooms/:roomId/ready', (req, res) => {
     const room = roomOrThrow(manager, req.params.roomId);
@@ -572,9 +612,11 @@ export function createApiRouter(
       throw new RoomError('INVALID_REQUEST', 'ready must be a boolean.');
     }
 
-    let participantId =
-      typeof body.participantId === 'string' ? body.participantId : undefined;
-    if (participantId === undefined) {
+    const ref = actorRefOf(req, body);
+    let participantId: string | undefined;
+    if ('participantId' in ref) {
+      participantId = ref.participantId;
+    } else {
       const humanSeat = room.getHumanSeat();
       const existing =
         humanSeat === null
@@ -604,7 +646,9 @@ export function createApiRouter(
       return;
     }
 
-    touchParticipant(manager, room, participantId);
+    // setReady already resolved the participant; its seat is the identity to
+    // touch, no second lookup.
+    touchRef(manager, room, result.participant);
 
     const view = room.getView();
     res.json({
@@ -645,20 +689,10 @@ export function createApiRouter(
     const room = roomOrThrow(manager, req.params.roomId);
     const body = bodyOf(req);
 
+    // Prefer the participant the caller claims (header or body); fall back to
+    // the legacy actor kind, which the room resolves only while unambiguous.
     const ref = actorRefOf(req, body);
-    const result = room.passAs(ref);
-    if (!result.ok) {
-      const payload: ErrorResponse = {
-        error: { code: result.code, message: result.message },
-        state: result.state,
-        history: [...room.getHistory()],
-      };
-      res.status(statusForCode(result.code)).json(payload);
-      return;
-    }
-
-    touchRef(manager, room, ref);
-    res.json({ state: result.state, history: [...room.getHistory()] });
+    respondToSeatAction(manager, room, res, room.passAs(ref));
   });
 
   router.post('/rooms/:roomId/moves', (req, res) => {
@@ -670,19 +704,7 @@ export function createApiRouter(
     // Prefer the participant the caller claims (header or body); fall back to
     // the legacy actor kind, which the room resolves only while unambiguous.
     const ref = actorRefOf(req, body);
-    const result = room.moveAs(ref, row, col);
-    if (!result.ok) {
-      const payload: ErrorResponse = {
-        error: { code: result.code, message: result.message },
-        state: result.state,
-        history: [...room.getHistory()],
-      };
-      res.status(statusForCode(result.code)).json(payload);
-      return;
-    }
-
-    touchRef(manager, room, ref);
-    res.json({ state: result.state, history: [...room.getHistory()] });
+    respondToSeatAction(manager, room, res, room.moveAs(ref, row, col));
   });
 
   router.post('/rooms/:roomId/resign', (req, res) => {
@@ -690,19 +712,7 @@ export function createApiRouter(
     const body = bodyOf(req);
 
     const ref = actorRefOf(req, body);
-    const result = room.resignAs(ref);
-    if (!result.ok) {
-      const payload: ErrorResponse = {
-        error: { code: result.code, message: result.message },
-        state: result.state,
-        history: [...room.getHistory()],
-      };
-      res.status(statusForCode(result.code)).json(payload);
-      return;
-    }
-
-    touchRef(manager, room, ref);
-    res.json({ state: result.state, history: [...room.getHistory()] });
+    respondToSeatAction(manager, room, res, room.resignAs(ref));
   });
 
   /** Toggle a dead-stone block (Go scoring only). */
@@ -713,19 +723,7 @@ export function createApiRouter(
     const col = integerOf(body.col, 'col');
 
     const ref = actorRefOf(req, body);
-    const result = room.markDeadAs(ref, row, col);
-    if (!result.ok) {
-      const payload: ErrorResponse = {
-        error: { code: result.code, message: result.message },
-        state: result.state,
-        history: [...room.getHistory()],
-      };
-      res.status(statusForCode(result.code)).json(payload);
-      return;
-    }
-
-    touchRef(manager, room, ref);
-    res.json({ state: result.state, history: [...room.getHistory()] });
+    respondToSeatAction(manager, room, res, room.markDeadAs(ref, row, col));
   });
 
   /** Confirm the score as the caller's seat (Go scoring only). */
@@ -734,19 +732,7 @@ export function createApiRouter(
     const body = bodyOf(req);
 
     const ref = actorRefOf(req, body);
-    const result = room.confirmScoreAs(ref);
-    if (!result.ok) {
-      const payload: ErrorResponse = {
-        error: { code: result.code, message: result.message },
-        state: result.state,
-        history: [...room.getHistory()],
-      };
-      res.status(statusForCode(result.code)).json(payload);
-      return;
-    }
-
-    touchRef(manager, room, ref);
-    res.json({ state: result.state, history: [...room.getHistory()] });
+    respondToSeatAction(manager, room, res, room.confirmScoreAs(ref));
   });
 
   /** Leave scoring and keep playing (Go scoring only). */
@@ -755,19 +741,7 @@ export function createApiRouter(
     const body = bodyOf(req);
 
     const ref = actorRefOf(req, body);
-    const result = room.resumePlayAs(ref);
-    if (!result.ok) {
-      const payload: ErrorResponse = {
-        error: { code: result.code, message: result.message },
-        state: result.state,
-        history: [...room.getHistory()],
-      };
-      res.status(statusForCode(result.code)).json(payload);
-      return;
-    }
-
-    touchRef(manager, room, ref);
-    res.json({ state: result.state, history: [...room.getHistory()] });
+    respondToSeatAction(manager, room, res, room.resumePlayAs(ref));
   });
 
   router.post('/rooms/:roomId/commentary', (req, res) => {

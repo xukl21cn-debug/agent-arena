@@ -18,8 +18,9 @@ interface SeatSignals {
   sessions: Map<string, number>;
   /**
    * Whether an MCP session ever attached here. Once one has, its expiry is a
-   * confirmed disconnect; only seats that never had a session (a human playing
-   * over REST) fall back to recent-call freshness.
+   * confirmed disconnect — until the seat proves itself alive over plain REST
+   * again (see `touch`): only seats without a surviving session fall back to
+   * recent-call freshness.
    */
   sessionSeen: boolean;
   /** Long-polls parked on this seat. */
@@ -174,12 +175,28 @@ export class PresenceRegistry implements PresenceSource {
     }
   }
 
-  /** Record activity on a seat without changing its connection set. */
+  /**
+   * Record activity on a seat without changing its connection set.
+   *
+   * A touch with no surviving session behind it means the seat is being
+   * driven over plain REST again — a REST-only agent, or one that came back
+   * after its MCP session died. Re-evaluate the session latch here so the
+   * recent-call freshness fallback works for that agent too; without this,
+   * one departed session left `sessionSeen` latched and the seat read
+   * `disconnected` however active its REST calls were.
+   */
   touch(roomId: string, seat: StoneColor, client?: string): void {
     const signals = this.ensure(roomId, seat);
-    signals.lastSeenAt = this.now();
+    const now = this.now();
+    signals.lastSeenAt = now;
     if (client) {
       signals.client = client;
+    }
+    const hasLiveSession = [...signals.sessions.values()].some(
+      (at) => now - at <= this.sessionIdleMs,
+    );
+    if (!hasLiveSession) {
+      signals.sessionSeen = false;
     }
     this.emit(roomId);
   }
@@ -281,8 +298,9 @@ export class PresenceRegistry implements PresenceSource {
       // calling for the idle window — the SDK's client.close() never sends a
       // DELETE, so silence is the only signal a vanished client gives us.
       //
-      // A seat that never had an MCP session at all (a human playing over
-      // REST) falls back to recent-call freshness.
+      // A seat with no surviving MCP session (a human playing over REST, or
+      // an agent that came back over REST after its session died — `touch`
+      // re-arms the latch) falls back to recent-call freshness.
       const lastSeenAt =
         spec.kind === 'human'
           ? watchers > 0

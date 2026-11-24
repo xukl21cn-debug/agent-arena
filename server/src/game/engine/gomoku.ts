@@ -124,7 +124,7 @@ export function applyMove(
     return {
       ok: false,
       code: 'CELL_OCCUPIED',
-      message: `Cell (${row}, ${col}) is already occupied.`,
+      message: `Cell (${row},${col}) is already occupied.`,
     };
   }
 
