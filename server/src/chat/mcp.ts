@@ -64,7 +64,19 @@ wait_for_messages 是长轮询：没有新消息时调用会挂起，这是正�
 interface ChatMcpSession {
   server: McpServer;
   transport: StreamableHTTPServerTransport;
+  /** Open standing SSE streams (GET) — the client's lifeline. */
+  streams: number;
+  /** Tool calls being processed right now (a parked wait counts as one). */
+  inflight: number;
 }
+
+/**
+ * How long a session may stay dark (stream dropped, nothing in flight)
+ * before its member is declared gone. Long enough to ride out an SSE
+ * reconnect, short enough to free a parked turn within seconds instead of
+ * burning full leases on a member that will never answer.
+ */
+const GONE_GRACE_MS = 5_000;
 
 function jsonRpcError(code: number, message: string): unknown {
   return { jsonrpc: '2.0', error: { code, message }, id: null };
@@ -164,8 +176,92 @@ export function mountChatMcp(
   app: Express,
   manager: ChatManager,
   bindings: SessionBindings,
+  options: { goneGraceMs?: number } = {},
 ): void {
   const sessions = new Map<string, ChatMcpSession>();
+  const goneTimers = new Map<string, NodeJS.Timeout>();
+  const goneGraceMs = options.goneGraceMs ?? GONE_GRACE_MS;
+
+  const cancelGoneCheck = (sessionId: string): void => {
+    const timer = goneTimers.get(sessionId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      goneTimers.delete(sessionId);
+    }
+  };
+
+  /**
+   * The session looks dead (stream dropped, nothing in flight, grace
+   * expired): mark every member it drives as gone so a held turn is handed
+   * back at once instead of burning leases on an unreachable member. The
+   * session itself stays resumable — a client that comes back after a long
+   * blip revives its member on the next call (touch/join) instead of being
+   * locked out.
+   */
+  const markSessionGone = (sessionId: string): void => {
+    const claimed = bindings.roomsOf(sessionId);
+    if (claimed === undefined) {
+      return;
+    }
+    const now = Date.now();
+    for (const [roomKey, participantId] of claimed) {
+      if (!roomKey.startsWith('chat:')) {
+        continue;
+      }
+      const roomId = roomKey.slice('chat:'.length);
+      // Another live session may still drive the same member (reconnect).
+      let stillDriven = false;
+      for (const otherId of sessions.keys()) {
+        if (otherId !== sessionId && bindings.participantOf(otherId, roomKey) === participantId) {
+          stillDriven = true;
+          break;
+        }
+      }
+      if (!stillDriven) {
+        manager.get(roomId)?.memberGone(participantId, now);
+      }
+    }
+  };
+
+  /**
+   * Explicit session end (DELETE / transport close): full teardown —
+   * bindings dropped, members marked gone, the session id retired.
+   */
+  const releaseSession = (sessionId: string): void => {
+    cancelGoneCheck(sessionId);
+    const session = sessions.get(sessionId);
+    if (session === undefined) {
+      return;
+    }
+    sessions.delete(sessionId);
+    markSessionGone(sessionId);
+    bindings.clear(sessionId);
+  };
+
+  /**
+   * A connection dropped without the session ending (SSE blip, aborted
+   * request). Give the client `goneGraceMs` to come back — any new request
+   * cancels — then mark its members gone if the session is still dark.
+   */
+  const scheduleGoneCheck = (sessionId: string): void => {
+    if (goneTimers.has(sessionId)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      goneTimers.delete(sessionId);
+      const session = sessions.get(sessionId);
+      if (session === undefined) {
+        return;
+      }
+      if (session.streams > 0 || session.inflight > 0) {
+        // A standing stream or a parked wait means the client is still there.
+        return;
+      }
+      markSessionGone(sessionId);
+    }, goneGraceMs);
+    timer.unref();
+    goneTimers.set(sessionId, timer);
+  };
 
   const createMcpServer = (): McpServer => {
     const server = new McpServer(
@@ -189,6 +285,18 @@ export function mountChatMcp(
           res.status(404).json(jsonRpcError(-32001, 'Session not found'));
           return;
         }
+        // Any request proves the client is alive — and a long-polling wait
+        // keeps `inflight` up while it parks, so no gone check fires under a
+        // healthy parked waiter.
+        cancelGoneCheck(sessionId);
+        existing.inflight += 1;
+        res.on('close', () => {
+          existing.inflight -= 1;
+          if (!res.writableEnded) {
+            // The connection died mid-call (process exit, network cut).
+            scheduleGoneCheck(sessionId);
+          }
+        });
         await sessionContext.run(
           {
             sessionId,
@@ -217,12 +325,11 @@ export function mountChatMcp(
       });
 
       const server = createMcpServer();
-      session = { server, transport };
+      session = { server, transport, streams: 0, inflight: 0 };
       transport.onclose = () => {
         const closedId = transport.sessionId;
         if (closedId) {
-          sessions.delete(closedId);
-          bindings.clear(closedId);
+          releaseSession(closedId);
         }
       };
 
@@ -239,10 +346,18 @@ export function mountChatMcp(
   app.get('/chat/mcp', async (req: Request, res: Response) => {
     const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
-    if (!session) {
+    if (!session || sessionId === undefined) {
       sendBadRequest(res, 'Bad Request: Invalid or missing session ID');
       return;
     }
+    // The standing SSE stream is the client's lifeline: when it drops and
+    // nothing takes its place within the grace, the session is over.
+    cancelGoneCheck(sessionId);
+    session.streams += 1;
+    res.on('close', () => {
+      session.streams -= 1;
+      scheduleGoneCheck(sessionId);
+    });
     try {
       await session.transport.handleRequest(req, res);
     } catch (error) {
@@ -256,14 +371,15 @@ export function mountChatMcp(
   app.delete('/chat/mcp', async (req: Request, res: Response) => {
     const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
-    if (!session) {
+    if (!session || sessionId === undefined) {
       sendBadRequest(res, 'Bad Request: Invalid or missing session ID');
       return;
     }
     try {
       await session.transport.handleRequest(req, res);
-      sessions.delete(sessionId!);
-      bindings.clear(sessionId!);
+      // Graceful termination: hand held turns back now instead of waiting
+      // out the grace window. (transport.onclose releases too — idempotent.)
+      releaseSession(sessionId);
     } catch (error) {
       console.error('[chat-mcp] DELETE /chat/mcp failed', error);
       if (!res.headersSent) {

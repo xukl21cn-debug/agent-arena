@@ -54,6 +54,11 @@ export class SessionBindings {
     return this.bySession.get(sessionId)?.get(roomId);
   }
 
+  /** Every room binding a session holds (roomId → participantId). */
+  roomsOf(sessionId: string): ReadonlyMap<string, string> | undefined {
+    return this.bySession.get(sessionId);
+  }
+
   /** Drop every binding for a session (transport closed). */
   clear(sessionId: string): void {
     this.bySession.delete(sessionId);

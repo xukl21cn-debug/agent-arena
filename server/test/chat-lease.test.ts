@@ -335,8 +335,10 @@ describe('lease sweep end-to-end (spawned server)', () => {
         });
         expect(sent.room.turn.name).toBe('bob');
 
-        // Everyone leaves. The lease dies 1s later and nobody is left to
-        // touch the room — before the sweep, it stayed stuck on bob forever.
+        // Everyone leaves. The turn holder's session close now hands the
+        // turn back to the host at once — no lease burn at all. (Before the
+        // auto-pass this waited out bob's lease and posted "bob 超时，跳过";
+        // that fallback now only covers clients that cannot signal death.)
         await alice.close();
         await bob.close();
 
@@ -344,9 +346,17 @@ describe('lease sweep end-to-end (spawned server)', () => {
           const detail = (await (
             await fetch(`${base}/api/chat/rooms/e2e`)
           ).json()) as any;
-          return detail.messages.some((m: any) => m.text === 'bob 超时，跳过');
+          return detail.messages.some(
+            (m: any) => m.text === 'bob 退出，把轮次交还给主持人',
+          );
         }, 40_000);
         expect(recovered).toBe(true);
+        const detail = (await (
+          await fetch(`${base}/api/chat/rooms/e2e`)
+        ).json()) as any;
+        expect(
+          detail.messages.some((m: any) => m.text === 'bob 超时，跳过'),
+        ).toBe(false);
       } finally {
         child.kill();
         await new Promise<void>((resolve) => {

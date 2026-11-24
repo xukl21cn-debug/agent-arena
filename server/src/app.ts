@@ -20,6 +20,8 @@ export interface AppOptions {
   /** The chat domain's rooms; created here when the caller does not pass one. */
   chat?: ChatManager;
   work?: WorkStore;
+  /** Chat MCP gone-detection grace; tests shrink it, production keeps 5s. */
+  chatGoneGraceMs?: number;
 }
 
 function sendNotFound(res: express.Response): void {
@@ -57,7 +59,11 @@ export function createApp(
   // MCP endpoint and its own error mapping — the games' modules are untouched.
   const chat = options.chat ?? new ChatManager(config.dataDir);
   app.use('/api/chat', createChatRouter(chat));
-  mountChatMcp(app, chat, new SessionBindings());
+  mountChatMcp(app, chat, new SessionBindings(), {
+    ...(options.chatGoneGraceMs === undefined
+      ? {}
+      : { goneGraceMs: options.chatGoneGraceMs }),
+  });
 
   const webDist = options.webDist ?? null;
   const webIndex = webDist ? path.join(webDist, 'index.html') : null;
