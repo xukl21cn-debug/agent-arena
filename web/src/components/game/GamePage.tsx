@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import {
   DEFAULT_ROOM_ID,
   ROOM_ID_PATTERN,
@@ -46,6 +46,7 @@ export function GamePage() {
   const commentary = useRoomStore((store) => store.commentary);
   const busy = useRoomStore((store) => store.busy);
   const error = useRoomStore((store) => store.error);
+  const errorCode = useRoomStore((store) => store.errorCode);
   const phase = useRoomStore((store) => store.phase);
   const waitingSince = useRoomStore((store) => store.waitingSince);
   const resultDismissed = useRoomStore((store) => store.resultDismissed);
@@ -220,6 +221,30 @@ export function GamePage() {
     ) : null;
 
   const isGo = goState !== null;
+
+  // A 1008 close or REST 404 saying ROOM_NOT_FOUND is not a transient network
+  // failure: the room is gone, so show an empty state instead of a playable
+  // board with a delete button for a room that does not exist.
+  if (state === null && errorCode === 'ROOM_NOT_FOUND') {
+    return (
+      <>
+        <div className="page-head">
+          <div>
+            <BackLink to="/games" label="棋局大厅" />
+            <h2 className="page-title">棋局对弈</h2>
+            <p className="page-subtitle">房间不存在或已删除。</p>
+          </div>
+        </div>
+        <section className="game-not-found panel" role="status">
+          <strong>房间不存在或已删除</strong>
+          <p>请检查房间号，或返回棋局大厅重新选择一间房。</p>
+          <Link className="btn btn--primary" to="/games">
+            返回棋局大厅
+          </Link>
+        </section>
+      </>
+    );
+  }
 
   return (
     <>

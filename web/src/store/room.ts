@@ -53,6 +53,8 @@ export interface RoomStore {
   busy: boolean;
   /** Last user-facing error, already formatted. */
   error: string | null;
+  /** Last error code; lets the page tell "room gone" apart from a network blip. */
+  errorCode: string | null;
   /** The result overlay was dismissed for the current game. */
   resultDismissed: boolean;
 
@@ -154,6 +156,7 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
   commentary: [],
   busy: false,
   error: null,
+  errorCode: null,
   resultDismissed: false,
 
   connect(roomId) {
@@ -169,6 +172,7 @@ export const useRoomStore = create<RoomStore>((set, get) => ({
       participants: [],
       commentary: [],
       error: null,
+      errorCode: null,
       resultDismissed: false,
       // A request abandoned by leaving must not leave the new room disabled.
       busy: false,
@@ -473,7 +477,11 @@ function subscribeToRoom(
             message?: string;
           };
           console.warn('[ws]', code, text);
-          set({ connection: 'offline', error: errorText(code, text) });
+          set({
+            connection: 'offline',
+            error: errorText(code, text),
+            errorCode: code ?? null,
+          });
           break;
         }
         default:
@@ -486,9 +494,11 @@ function subscribeToRoom(
         return;
       }
       if (event.code === 1008) {
+        const code = event.reason || 'ROOM_NOT_FOUND';
         set({
           connection: 'offline',
-          error: errorText(event.reason || 'ROOM_NOT_FOUND'),
+          error: errorText(code),
+          errorCode: code,
         });
         return;
       }
@@ -518,8 +528,16 @@ function subscribeToRoom(
       }
       store.applyPhase(view.phase);
     })
-    .catch(() => {
-      // The socket keeps retrying; a failed first fetch is not fatal.
+    .catch((caught: unknown) => {
+      if (disposed) {
+        return;
+      }
+      // The socket keeps retrying; a failed first fetch is not fatal. But a
+      // definitive "room gone" answer is worth recording so the page can show
+      // its empty state even before the socket gives up.
+      if (caught instanceof ApiError && caught.code === 'ROOM_NOT_FOUND') {
+        set({ errorCode: 'ROOM_NOT_FOUND' });
+      }
     });
 
   return () => {
