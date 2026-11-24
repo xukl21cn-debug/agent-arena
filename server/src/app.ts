@@ -22,6 +22,8 @@ export interface AppOptions {
   work?: WorkStore;
   /** Chat MCP gone-detection grace; tests shrink it, production keeps 5s. */
   chatGoneGraceMs?: number;
+  /** How long a dead chat MCP session stays resumable; tests shrink it. */
+  chatSessionRetentionMs?: number;
 }
 
 function sendNotFound(res: express.Response): void {
@@ -63,6 +65,9 @@ export function createApp(
     ...(options.chatGoneGraceMs === undefined
       ? {}
       : { goneGraceMs: options.chatGoneGraceMs }),
+    ...(options.chatSessionRetentionMs === undefined
+      ? {}
+      : { sessionRetentionMs: options.chatSessionRetentionMs }),
   });
 
   const webDist = options.webDist ?? null;

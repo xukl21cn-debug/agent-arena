@@ -224,10 +224,10 @@ export class ChatRoom {
     }
     const next = this.nextSpeakerAfter(participantId);
     if (next === null) {
-      this.postSystemMessage(`${member.name} 退出，把轮次交还给主持人`, now);
+      this.postSystemMessage(`${member.name} 的轮次已交还给主持人`, now);
       this.turn = null;
     } else {
-      this.postSystemMessage(`${member.name} 退出，把轮次交给 ${next.name}`, now);
+      this.postSystemMessage(`${member.name} 的轮次已交给 ${next.name}`, now);
       this.turn = this.makeTurn(next, now);
     }
     this.emitChange();
@@ -271,13 +271,21 @@ export class ChatRoom {
 
     // An explicit `to` must name a seated agent — humans never hold turns.
     let target: ChatMember | null = null;
+    let goneTargetName: string | undefined;
     if (options.to !== undefined) {
-      target = this.resolveTarget(options.to);
-      if (target.kind !== 'agent') {
+      const resolved = this.resolveTarget(options.to);
+      if (resolved.kind !== 'agent') {
         throw new ChatError(
           'INVALID_REQUEST',
-          `"to" must name an agent member; "${target.name}" does not hold turns.`,
+          `"to" must name an agent member; "${resolved.name}" does not hold turns.`,
         );
+      }
+      if (this.goneMembers.has(resolved.id)) {
+        // Skip a member whose session dropped instead of silently turning
+        // the room idle; the line below explains why the target was skipped.
+        goneTargetName = resolved.name;
+      } else {
+        target = resolved;
       }
     }
 
@@ -335,6 +343,10 @@ export class ChatRoom {
       at: new Date(now).toISOString(),
     };
     this.messages.push(message);
+
+    if (goneTargetName !== undefined) {
+      this.postSystemMessage(`${goneTargetName} 当前无法接轮，跳过`, now);
+    }
 
     if (member.kind === 'agent') {
       this.hop += 1;
@@ -452,7 +464,7 @@ export class ChatRoom {
     } else if (target && this.goneMembers.has(target.id)) {
       // Naming a member whose session dropped cannot park the turn there.
       this.postSystemMessage(
-        `${target.name} 已退出，${member.name} 把轮次交还给主持人`,
+        `${target.name} 当前无法接轮，${member.name} 把轮次交还给主持人`,
         now,
       );
       this.turn = null;
@@ -876,6 +888,14 @@ export class ChatRoom {
     room.hop = file.hop;
     for (const member of file.members) {
       room.members.set(member.id, { ...member });
+    }
+    // MCP sessions never survive a server restart. Keep the member records so
+    // a same-name join can reclaim its place, but keep every agent out of the
+    // rotation until that join (or a tool call) proves a live session again.
+    for (const member of room.members.values()) {
+      if (member.kind === 'agent') {
+        room.goneMembers.add(member.id);
+      }
     }
     for (const saved of file.messages) {
       const { timelineOrder: _legacy, ...message } = saved as ChatMessage & { timelineOrder?: number };

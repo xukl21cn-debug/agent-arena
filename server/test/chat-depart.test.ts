@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { ChatRoom } from '../src/chat/chat-room';
 import { ChatManager } from '../src/chat/manager';
 
 // memberGone (auto-pass on session drop): a member whose session ended is
@@ -44,7 +45,7 @@ describe('ChatRoom.memberGone (domain)', () => {
     room.memberGone(a.id, T0 + 3);
 
     expect(room.snapshot().turn?.participantId).toBe(b.id);
-    expect(lastText(room)).toBe('alpha 退出，把轮次交给 beta');
+    expect(lastText(room)).toBe('alpha 的轮次已交给 beta');
   });
 
   it('D2: alone with the turn, the gone member hands it to the host', () => {
@@ -55,7 +56,7 @@ describe('ChatRoom.memberGone (domain)', () => {
     room.memberGone(a.id, T0 + 3);
 
     expect(room.snapshot().turn).toBeNull();
-    expect(lastText(room)).toBe('alpha 退出，把轮次交还给主持人');
+    expect(lastText(room)).toBe('alpha 的轮次已交还给主持人');
   });
 
   it('D3: both gone — the first departure re-homes the turn, the second is silent', () => {
@@ -69,7 +70,7 @@ describe('ChatRoom.memberGone (domain)', () => {
     room.memberGone(room.snapshot().turn!.participantId, T0 + 4); // beta gone → host
 
     expect(room.snapshot().turn).toBeNull();
-    expect(lastText(room)).toBe('beta 退出，把轮次交还给主持人');
+    expect(lastText(room)).toBe('beta 的轮次已交还给主持人');
   });
 
   it('D4: a gone member not holding the turn leaves it untouched', () => {
@@ -112,7 +113,7 @@ describe('ChatRoom.memberGone (domain)', () => {
     room.passTurn(a, 'beta', T0 + 4);
 
     expect(room.snapshot().turn).toBeNull();
-    expect(lastText(room)).toBe('beta 已退出，alpha 把轮次交还给主持人');
+    expect(lastText(room)).toBe('beta 当前无法接轮，alpha 把轮次交还给主持人');
   });
 
   it('D7: touch revives a gone member — the turn may land on them again', () => {
@@ -167,5 +168,36 @@ describe('ChatRoom.memberGone (domain)', () => {
 
     room.sendMessage(room.humanMember(), '继续', { to: 'alpha' }, T0 + 5);
     expect(room.snapshot().turn?.participantId).toBe(a.id);
+  });
+
+  it('D11: sending to a gone member records the skip and rotates to a live one', () => {
+    const room = manager().create('d11');
+    const a = room.join('alpha', undefined, T0);
+    const b = room.join('beta', undefined, T0 + 1);
+    const c = room.join('gamma', undefined, T0 + 2);
+    room.sendMessage(room.humanMember(), '开始', { to: 'alpha' }, T0 + 3);
+    room.memberGone(b.id, T0 + 4);
+
+    room.sendMessage(a, '继续', { to: 'beta' }, T0 + 5);
+
+    expect(room.snapshot().turn?.participantId).toBe(c.id);
+    expect(
+      room.messages.some((message) => message.text === 'beta 当前无法接轮，跳过'),
+    ).toBe(true);
+  });
+
+  it('D12: restored agent members start out of rotation until they rejoin', () => {
+    const first = manager().create('d12');
+    const a = first.join('alpha', undefined, T0);
+    first.sendMessage(first.humanMember(), '开始', { to: 'alpha' }, T0 + 1);
+
+    const restored = ChatRoom.fromSnapshotFile(first.toSnapshotFile());
+    restored.sendMessage(restored.humanMember(), '继续', undefined, T0 + 2);
+    expect(restored.snapshot().turn).toBeNull();
+
+    const rejoined = restored.join('alpha', undefined, T0 + 3);
+    expect(rejoined.id).toBe(a.id);
+    restored.sendMessage(restored.humanMember(), '回来', { to: 'alpha' }, T0 + 4);
+    expect(restored.snapshot().turn?.participantId).toBe(a.id);
   });
 });

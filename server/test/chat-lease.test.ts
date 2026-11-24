@@ -262,7 +262,7 @@ async function until(
 
 describe('lease sweep end-to-end (spawned server)', () => {
   it(
-    'T8: a room whose agents all left recovers within a sweep cycle',
+    'T8: closing both agent sessions hands the turn back without waiting for the sweep',
     { timeout: 60_000 },
     async () => {
       const e2eDir = mkdtempSync(path.join(os.tmpdir(), 'arena-chat-lease-e2e-'));
@@ -347,7 +347,7 @@ describe('lease sweep end-to-end (spawned server)', () => {
             await fetch(`${base}/api/chat/rooms/e2e`)
           ).json()) as any;
           return detail.messages.some(
-            (m: any) => m.text === 'bob 退出，把轮次交还给主持人',
+            (m: any) => m.text === 'bob 的轮次已交还给主持人',
           );
         }, 40_000);
         expect(recovered).toBe(true);
