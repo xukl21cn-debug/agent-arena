@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import {
   DEFAULT_ROOM_ID,
   ROOM_ID_PATTERN,
@@ -22,6 +22,7 @@ import {
 import { usePageTitle } from '../layout/PageTitle';
 import { BackLink } from '../layout/BackLink';
 import { RoomChip } from '../layout/RoomChip';
+import { RoomNotFound } from '../layout/RoomNotFound';
 import { api, errorMessage } from '../../api';
 
 const CONNECTION_LABELS: Record<ConnectionStatus, string> = {
@@ -227,22 +228,13 @@ export function GamePage() {
   // board with a delete button for a room that does not exist.
   if (state === null && errorCode === 'ROOM_NOT_FOUND') {
     return (
-      <>
-        <div className="page-head">
-          <div>
-            <BackLink to="/games" label="棋局大厅" />
-            <h2 className="page-title">棋局对弈</h2>
-            <p className="page-subtitle">房间不存在或已删除。</p>
-          </div>
-        </div>
-        <section className="game-not-found panel" role="status">
-          <strong>房间不存在或已删除</strong>
-          <p>请检查房间号，或返回棋局大厅重新选择一间房。</p>
-          <Link className="btn btn--primary" to="/games">
-            返回棋局大厅
-          </Link>
-        </section>
-      </>
+      <RoomNotFound
+        title="棋局对弈"
+        to="/games"
+        backLabel="棋局大厅"
+        actionLabel="返回棋局大厅"
+        body="请检查房间号，或返回棋局大厅重新选择一间房。"
+      />
     );
   }
 

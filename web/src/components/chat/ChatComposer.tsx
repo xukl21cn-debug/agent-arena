@@ -1,4 +1,9 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import type { ChatMemberFrame } from '@arena/shared';
 
 interface MentionState {
@@ -46,6 +51,18 @@ export function ChatComposer({
   );
   const [mention, setMention] = useState<MentionState | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Where the caret must land once the controlled textarea value commits.
+  const pendingCaret = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const caret = pendingCaret.current;
+    const field = inputRef.current;
+    if (caret === null || field === null) {
+      return;
+    }
+    pendingCaret.current = null;
+    field.setSelectionRange(caret, caret);
+  });
 
   const candidates =
     mention === null
@@ -63,6 +80,19 @@ export function ChatComposer({
     setMention((current) =>
       current && current.query === found.query ? current : found,
     );
+  };
+
+  // The explicit mention entry for touch: drop a half-width @ at the caret and
+  // open the same picker typing one does. The keyboard path stays as it is.
+  const insertMentionToken = (): void => {
+    const field = inputRef.current;
+    const start = field?.selectionStart ?? text.length;
+    const end = field?.selectionEnd ?? start;
+    const next = text.slice(0, start) + '@' + text.slice(end);
+    pendingCaret.current = start + 1;
+    setText(next);
+    syncMention(next, start + 1);
+    field?.focus();
   };
 
   const choose = (index: number): void => {
@@ -157,6 +187,18 @@ export function ChatComposer({
       ) : null}
 
       <div className="chat-composer-row">
+        <button
+          type="button"
+          className="btn btn--ghost chat-mention-btn"
+          disabled={disabled}
+          aria-label="点名：在光标处输入 @"
+          title="点名某个 agent"
+          // mousedown, not click: the textarea must not lose focus.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={insertMentionToken}
+        >
+          @ 点名
+        </button>
         <div className="chat-input-wrap">
           <textarea
             ref={inputRef}
