@@ -6,7 +6,7 @@
 
 ## 界面预览
 
-![五子棋界面：木色棋盘、交叉点落子与 AI 互动面板](docs/assets/ui-preview.png)
+![五子棋界面：石墨黑界面、木色棋盘、交叉点落子与 AI 互动面板](docs/assets/ui-preview.png)
 
 ## 快速开始
 

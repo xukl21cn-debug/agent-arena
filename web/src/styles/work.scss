@@ -27,7 +27,7 @@
 }
 
 .work-list button[aria-pressed="true"] {
-  border-color: var(--gold);
+  border-color: var(--line-strong);
 }
 
 .work-list time, .work-docs code {
@@ -55,7 +55,7 @@
 
 .work-fields dd { margin: 0; }
 .work-docs span, .work-docs code { display: block; }
-.work-docs a { color: var(--gold); }
+.work-docs a { color: var(--text); }
 .work-round {
   border-top: 1px solid var(--line);
   margin-top: 16px;
