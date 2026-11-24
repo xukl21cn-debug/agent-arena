@@ -5,7 +5,7 @@ import {
   useState,
   type FormEvent,
 } from 'react';
-import { useNavigate, Link } from 'react-router';
+import { useNavigate } from 'react-router';
 import type { ChatMemberFrame } from '@arena/shared';
 import { useChatStore, type ChatConnection } from '../../store/chat';
 import { ChatComposer } from './ChatComposer';
@@ -13,6 +13,7 @@ import { authorColor, ChatTimeline } from './ChatTimeline';
 import { usePageTitle } from '../layout/PageTitle';
 import { BackLink } from '../layout/BackLink';
 import { RoomChip } from '../layout/RoomChip';
+import { RoomNotFound } from '../layout/RoomNotFound';
 import { api, errorMessage } from '../../api';
 
 const CONNECTION_LABELS: Record<ChatConnection, string> = {
@@ -251,7 +252,9 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   const navigate = useNavigate();
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Both delete and export failures surface here, so the name is the shared
+  // action error, not the delete error.
+  const [actionError, setActionError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   // Same 4s window as the other two-step buttons: arming expires on its own.
@@ -269,12 +272,12 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
     room !== null && (room.messageCount === 0 || room.phase === 'closed');
   const removeRoom = async (): Promise<void> => {
     setDeleting(true);
-    setDeleteError(null);
+    setActionError(null);
     try {
       await api.deleteChatRoom(roomId);
       navigate('/chats');
     } catch (caught) {
-      setDeleteError(errorMessage(caught));
+      setActionError(errorMessage(caught));
       setDeleting(false);
       setDeleteArmed(false);
     }
@@ -284,7 +287,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   // it into a real file download so the closed-room hint has a working entry.
   const exportTranscript = async (): Promise<void> => {
     setExporting(true);
-    setDeleteError(null);
+    setActionError(null);
     try {
       const payload = await api.chatTranscript(
         roomId,
@@ -302,7 +305,7 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
     } catch (caught) {
-      setDeleteError(errorMessage(caught));
+      setActionError(errorMessage(caught));
     } finally {
       setExporting(false);
     }
@@ -312,22 +315,13 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
   // room is gone, so the page shows an empty state instead of "连接中…".
   if (room === null && errorCode === 'ROOM_NOT_FOUND') {
     return (
-      <>
-        <div className="page-head">
-          <div>
-            <BackLink to="/chats" label="聊天大厅" />
-            <h2 className="page-title">聊天室</h2>
-            <p className="page-subtitle">房间不存在或已删除。</p>
-          </div>
-        </div>
-        <section className="chat-not-found panel" role="status">
-          <strong>房间不存在或已删除</strong>
-          <p>请检查房间号，或返回聊天大厅重新选择一间聊天室。</p>
-          <Link className="btn btn--primary" to="/chats">
-            返回聊天大厅
-          </Link>
-        </section>
-      </>
+      <RoomNotFound
+        title="聊天室"
+        to="/chats"
+        backLabel="聊天大厅"
+        actionLabel="返回聊天大厅"
+        body="请检查房间号，或返回聊天大厅重新选择一间聊天室。"
+      />
     );
   }
 
@@ -392,14 +386,14 @@ export function ChatRoomPage({ roomId }: { roomId: string }) {
         </div>
       </div>
 
-      {deleteError !== null || error ? (
+      {actionError !== null || error ? (
         <div className="error-bar" role="alert">
-          <span>{deleteError ?? error}</span>
+          <span>{actionError ?? error}</span>
           <button
             type="button"
             className="error-dismiss"
             onClick={() => {
-              setDeleteError(null);
+              setActionError(null);
               clearError();
             }}
           >

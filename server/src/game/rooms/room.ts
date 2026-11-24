@@ -85,12 +85,17 @@ export interface RoomActionFailure {
   state: AnyGameState;
 }
 
+/**
+ * Success carries `seat` — the identity the mutation resolved and acted on.
+ * Presence touches this exact seat after the call instead of resolving the
+ * caller's ref a second time (which can silently miss once the roster moved).
+ */
 export type MoveActionResult =
-  | { ok: true; state: AnyGameState; move: AnyMove }
+  | { ok: true; state: AnyGameState; move: AnyMove; seat: StoneColor }
   | RoomActionFailure;
 
 export type StateActionResult =
-  | { ok: true; state: AnyGameState }
+  | { ok: true; state: AnyGameState; seat: StoneColor }
   | RoomActionFailure;
 
 interface Waiter {
@@ -122,8 +127,8 @@ export type IdentityResult =
  * Normalize `new_game` inputs before any side effect.
  *
  * REST and MCP share this so the same value yields the same code and message:
- * - `INVALID_REQUEST`: wrong type / enum / format, or a gomoku board size
- *   outside 3..36.
+ * - `INVALID_REQUEST`: wrong type / enum / format, a gomoku board size
+ *   outside 3..36, or a komi outside 0..36.
  * - `UNSUPPORTED_RULE`: well-formed values v1 does not implement (a Go board
  *   other than 9, a ko rule other than simple, Go-only parameters on gomoku).
  */
@@ -183,6 +188,14 @@ export function normalizeNewGameOptions(
     }
     if (typeof komi !== 'number' || !Number.isFinite(komi)) {
       throw new RoomError('INVALID_REQUEST', 'komi must be a finite number.');
+    }
+    // The documented range (README 已知限制 and the new_game description):
+    // 0 and 36 are valid, anything outside is a client error, not a rule gap.
+    if (komi < 0 || komi > 36) {
+      throw new RoomError(
+        'INVALID_REQUEST',
+        `komi must be between 0 and 36, got ${komi}.`,
+      );
     }
     options.komi = komi;
   }
@@ -744,7 +757,10 @@ export class GameRoom {
     if (this.state.game !== 'go') {
       return this.failure('WRONG_GAME', 'mark_dead is only available in Go.');
     }
-    return this.applyGoScoring(markGoDead(this.state, row, col));
+    return this.applyGoScoring(
+      identity.seat,
+      markGoDead(this.state, row, col),
+    );
   }
 
   /** Confirm the current score as this seat. Scoring only. */
@@ -756,7 +772,10 @@ export class GameRoom {
     if (this.state.game !== 'go') {
       return this.failure('WRONG_GAME', 'confirm_score is only available in Go.');
     }
-    return this.applyGoScoring(confirmGoScore(this.state, identity.seat));
+    return this.applyGoScoring(
+      identity.seat,
+      confirmGoScore(this.state, identity.seat),
+    );
   }
 
   /** Drop the marks and confirmations, and resume playing. Scoring only. */
@@ -768,7 +787,7 @@ export class GameRoom {
     if (this.state.game !== 'go') {
       return this.failure('WRONG_GAME', 'resume_play is only available in Go.');
     }
-    return this.applyGoScoring(resumeGoPlay(this.state));
+    return this.applyGoScoring(identity.seat, resumeGoPlay(this.state));
   }
 
   /**
@@ -778,7 +797,10 @@ export class GameRoom {
    * everyone as game_over. This is what makes scoring parallel instead of
    * turn-based.
    */
-  private applyGoScoring(result: GoScoringResult): StateActionResult {
+  private applyGoScoring(
+    seat: StoneColor,
+    result: GoScoringResult,
+  ): StateActionResult {
     if (!result.ok) {
       return {
         ok: false,
@@ -791,7 +813,7 @@ export class GameRoom {
     this.state = result.state;
     this.emitState('scoring');
     this.save();
-    return result;
+    return { ...result, seat };
   }
 
   private moveAt(seat: StoneColor, row: number, col: number): MoveActionResult {
@@ -817,7 +839,7 @@ export class GameRoom {
 
     this.emitState('move');
     this.save();
-    return result;
+    return { ...result, seat };
   }
 
   /**
@@ -840,7 +862,7 @@ export class GameRoom {
 
     this.emitState('move');
     this.save();
-    return result;
+    return { ...result, seat };
   }
 
   private passAt(seat: StoneColor): MoveActionResult {
@@ -862,7 +884,7 @@ export class GameRoom {
 
     this.emitState('move');
     this.save();
-    return result;
+    return { ...result, seat };
   }
 
   resignBy(actor: Actor): StateActionResult {
@@ -900,7 +922,7 @@ export class GameRoom {
     this.state = result.state;
     this.emitState('resign');
     this.save();
-    return result;
+    return { ...result, seat };
   }
 
   /**

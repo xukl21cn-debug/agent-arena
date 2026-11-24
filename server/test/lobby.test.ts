@@ -220,6 +220,85 @@ describe('lobby over HTTP and WS', () => {
     expect(human?.ready).toBe(true);
   });
 
+  it('POST /ready identifies the caller by header or body participantId', async () => {
+    const created = await fetch(`${baseUrl}/api/rooms`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ roomId: 'ready-id' }),
+    });
+    expect(created.status).toBe(201);
+
+    // The agent claims the white seat and gets an id to identify with.
+    const join = await fetch(`${baseUrl}/api/rooms/ready-id/participants`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'agent',
+        name: 'ready-agent',
+        seat: 'white',
+      }),
+    });
+    const joined = (await join.json()) as { participantId: string };
+
+    // Header form, no body participantId. Before the fix this fell into the
+    // web-human inference (readying the wrong seat) or IDENTITY_REQUIRED.
+    const viaHeader = await fetch(`${baseUrl}/api/rooms/ready-id/ready`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-arena-participant': joined.participantId,
+      },
+      body: JSON.stringify({ ready: true }),
+    });
+    expect(viaHeader.status).toBe(200);
+    const headerPayload = (await viaHeader.json()) as {
+      phase: string;
+      participants: Array<{ seat: string; ready?: boolean }>;
+    };
+    expect(headerPayload.phase).toBe('waiting');
+    expect(
+      headerPayload.participants.find((p) => p.seat === 'white')?.ready,
+    ).toBe(true);
+    // The human seat was not readied behind the caller's back.
+    expect(
+      headerPayload.participants.find((p) => p.seat === 'black')?.ready,
+    ).not.toBe(true);
+
+    // Body form keeps working, including cancelling.
+    const viaBody = await fetch(`${baseUrl}/api/rooms/ready-id/ready`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        participantId: joined.participantId,
+        ready: false,
+      }),
+    });
+    expect(viaBody.status).toBe(200);
+    const bodyPayload = (await viaBody.json()) as {
+      phase: string;
+      participants: Array<{ seat: string; ready?: boolean }>;
+    };
+    expect(bodyPayload.phase).toBe('lobby');
+    expect(
+      bodyPayload.participants.find((p) => p.seat === 'white')?.ready,
+    ).not.toBe(true);
+
+    // An unknown id answers PARTICIPANT_NOT_FOUND instead of falling back to
+    // the human inference that used to run when no body id was present.
+    const missing = await fetch(`${baseUrl}/api/rooms/ready-id/ready`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-arena-participant': 'p_ghost',
+      },
+      body: JSON.stringify({ ready: true }),
+    });
+    expect(missing.status).toBe(404);
+    expect(((await missing.json()) as { error: { code: string } }).error.code).toBe(
+      'PARTICIPANT_NOT_FOUND',
+    );
+  });
+
   it('R7: a watcher receives phase events as the room gathers and starts', async () => {
     const created = await fetch(`${baseUrl}/api/rooms`, {
       method: 'POST',

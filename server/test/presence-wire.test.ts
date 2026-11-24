@@ -267,6 +267,30 @@ describe('REST participant presence', () => {
     expect(black!.lastSeenAt!).toBeGreaterThan(afterJoin);
   });
 
+  it('ready with header participantId touches that seat, not the human inference', async () => {
+    await createRoom('presence-rest-ready-header');
+    const participantId = await joinAgent('presence-rest-ready-header', 'white');
+
+    await tick();
+    // Header only — no body participantId. Before the fix this fell into the
+    // web-human inference and readied the wrong seat (or answered
+    // IDENTITY_REQUIRED).
+    const ready = await restPost(
+      'presence-rest-ready-header',
+      'ready',
+      { ready: true },
+      participantId,
+    );
+    expect(ready.status).toBe(200);
+
+    const participants = (await view('presence-rest-ready-header')).participants;
+    expect(seatOf(participants, 'white')?.ready).toBe(true);
+    expect(seatOf(participants, 'white')?.presence).toBe('idle');
+    // Nobody was readied or touched behind the caller's back.
+    expect(seatOf(participants, 'black')?.ready).not.toBe(true);
+    expect(seatOf(participants, 'black')?.presence).toBe('unknown');
+  });
+
   it('move with header or body participantId refreshes presence', async () => {
     for (const mode of ['header', 'body'] as const) {
       const roomId = `presence-rest-move-${mode}`;

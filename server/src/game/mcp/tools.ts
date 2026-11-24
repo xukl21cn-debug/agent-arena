@@ -233,7 +233,8 @@ export function registerTools(server: McpServer, api: ArenaApi): void {
       description: `开始一局新对局。用 game 选择游戏：
 - 省略 game：15×15 五子棋（黑先，无禁手，五连或长连获胜）——与旧版本行为完全一致；
 - game="go"：围棋，9×9 棋盘，黑先，贴目 7.5 计入白方，简单劫，中国规则数子。
-围棋参数：boardSize v1 只接受 9，传其他值会返回 UNSUPPORTED_RULE（不会静默接受）；komi 默认 7.5（仅围棋可传）；koRule 只支持 "simple"（仅围棋可传）。
+围棋参数：boardSize v1 只接受 9，传其他值不会静默接受：格式合法但 v1 不支持的值返回 UNSUPPORTED_RULE，类型/格式/范围错误返回 INVALID_REQUEST；
+komi 默认 7.5，取值 0-36（含边界），越界返回 INVALID_REQUEST（仅围棋可传）；koRule 只支持 "simple"（仅围棋可传）。
 错误契约：类型/枚举/格式错误返回 INVALID_REQUEST；格式合法但 v1 不支持的规则返回 UNSUPPORTED_RULE。五子棋 boardSize 必须在 3-36 之间。
 用 agentColor 选择 AI 执黑还是执白（默认 white），另一种颜色由人类执子。网页棋盘会立即重置。
 roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖当前对局，旧局作废。一个房间的对局绑定一种游戏，切换游戏等于开新局。
@@ -259,7 +260,7 @@ roomId 指向不存在的房间时会自动创建；重复调用会直接覆盖�
         komi: z
           .unknown()
           .optional()
-          .describe('围棋贴目（有限数字），默认 7.5，计入白方。仅围棋可用。'),
+          .describe('围棋贴目（有限数字），默认 7.5，计入白方，取值 0-36。仅围棋可用。'),
         koRule: z
           .unknown()
           .optional()

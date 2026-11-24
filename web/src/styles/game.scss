@@ -681,29 +681,6 @@
   border-bottom: 1px solid var(--line);
 }
 
-/* A room that no longer exists: a real empty state, not a playable board. */
-.game-not-found.panel {
-  position: static;
-  height: auto;
-  align-items: center;
-  gap: 10px;
-  padding: 44px 24px;
-  text-align: center;
-}
-
-.game-not-found strong {
-  font-family: var(--font-display);
-  font-size: 18px;
-  letter-spacing: 0.08em;
-  color: var(--text);
-}
-
-.game-not-found p {
-  margin: 0 0 6px;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
 .panel-heading {
   min-width: 0;
 }
