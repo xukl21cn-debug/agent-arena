@@ -18,7 +18,7 @@
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.1em;
-  color: var(--gold);
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
@@ -97,7 +97,7 @@
 }
 
 .chat-bubble {
-  --author: var(--gold);
+  --author: var(--text);
   max-width: 82%;
   padding: 8px 13px 9px;
   border: 1px solid var(--line);
@@ -109,9 +109,9 @@
 
 .chat-line--own .chat-bubble {
   border-radius: 12px 4px 12px 12px;
-  border-left: 1px solid var(--gold-line);
-  border-right: 2px solid rgba(217, 166, 75, 0.6);
-  background: rgba(217, 166, 75, 0.07);
+  border-left: 1px solid var(--line-strong);
+  border-right: 2px solid var(--line-strong);
+  background: var(--panel-soft);
 }
 
 .chat-bubble-meta {
@@ -130,7 +130,7 @@
 }
 
 .chat-to {
-  color: var(--gold);
+  color: var(--text-dim);
 }
 
 .chat-bubble-meta time {
@@ -161,15 +161,15 @@
   margin-bottom: 8px;
   padding: 5px 10px;
   width: fit-content;
-  border: 1px solid var(--gold-line);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: var(--gold-soft);
+  background: var(--panel-soft);
   font-size: 12px;
   color: var(--text-dim);
 }
 
 .chat-target b {
-  color: var(--gold);
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -213,7 +213,7 @@
 }
 
 .chat-input-wrap textarea:focus-visible {
-  outline: 2px solid var(--gold);
+  outline: 2px solid var(--text);
   outline-offset: 1px;
 }
 
@@ -262,7 +262,7 @@
 }
 
 .chat-mention li.is-active {
-  background: rgba(217, 166, 75, 0.12);
+  background: var(--panel-soft);
 }
 
 .chat-mention-name {
@@ -323,7 +323,7 @@
   display: block;
   height: 100%;
   border-radius: 999px;
-  background: var(--gold);
+  background: var(--text-dim);
   transition: width 0.3s ease;
 }
 
@@ -396,8 +396,8 @@
 }
 
 .chat-member.is-turn {
-  border-color: rgba(217, 166, 75, 0.45);
-  background: rgba(217, 166, 75, 0.07);
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
 }
 
 .chat-member-dot {
@@ -441,8 +441,8 @@
   right: 8px;
   font-size: 9px;
   letter-spacing: 0.12em;
-  color: var(--on-gold);
-  background: var(--gold);
+  color: var(--bg);
+  background: var(--text);
   border-radius: 999px;
   padding: 1px 7px;
   font-weight: 600;
@@ -461,8 +461,8 @@
 }
 
 .chat-phase--paused {
-  color: #d9c15a;
-  border-color: rgba(217, 193, 90, 0.4);
+  color: var(--text-dim);
+  border-color: var(--line-strong);
 }
 
 .chat-phase--closed {

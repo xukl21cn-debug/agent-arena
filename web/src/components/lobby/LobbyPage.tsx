@@ -34,7 +34,7 @@ const FILTERS = [
 
 type FilterKey = (typeof FILTERS)[number]['key'];
 
-/** Phase tone for the pill: active green, pending gold, over dim. */
+/** Phase tone for the pill: active green, waiting/paused dim, over faint. */
 function phaseTone(phase: string): string {
   if (phase === 'playing' || phase === 'open') {
     return 'active';

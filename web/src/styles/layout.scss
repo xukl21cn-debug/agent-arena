@@ -30,7 +30,7 @@
 }
 
 .room-chip-copy:hover {
-  color: var(--gold);
+  color: var(--text);
 }
 
 .connection {
@@ -57,7 +57,7 @@
 
 .connection--connecting .connection-dot,
 .connection--reconnecting .connection-dot {
-  background: var(--gold);
+  background: var(--text);
   animation: blink 1.2s ease-in-out infinite;
 }
 
@@ -124,7 +124,7 @@
 }
 
 .back-link:hover {
-  color: var(--gold);
+  color: var(--text);
 }
 
 .page-head {

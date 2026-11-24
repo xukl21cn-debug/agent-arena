@@ -100,7 +100,7 @@
 }
 
 .lobby-card:hover {
-  border-color: var(--gold-line-strong);
+  border-color: var(--line-strong);
   transform: translateY(-1px);
 }
 
@@ -134,7 +134,7 @@
 }
 
 .card-phase--warn {
-  color: var(--gold);
+  color: var(--text-dim);
 }
 
 .card-phase--done {
@@ -145,7 +145,7 @@
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
-  color: var(--gold);
+  color: var(--text-dim);
 }
 
 .card-title {
