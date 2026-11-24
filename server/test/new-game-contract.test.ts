@@ -79,6 +79,8 @@ describe('new_game error contract', () => {
       { label: 'go koRule=superko', args: { game: 'go', koRule: 'superko' }, code: 'UNSUPPORTED_RULE', message: /simple/ },
       { label: 'go koRule=5', args: { game: 'go', koRule: 5 }, code: 'INVALID_REQUEST', message: /string/ },
       { label: 'go komi=abc', args: { game: 'go', komi: 'abc' }, code: 'INVALID_REQUEST', message: /finite number/ },
+      { label: 'go komi=-1', args: { game: 'go', komi: -1 }, code: 'INVALID_REQUEST', message: /between 0 and 36/ },
+      { label: 'go komi=37', args: { game: 'go', komi: 37 }, code: 'INVALID_REQUEST', message: /between 0 and 36/ },
       { label: 'game=shogi', args: { game: 'shogi' }, code: 'INVALID_REQUEST', message: /gomoku/ },
       { label: 'gomoku boardSize=2', args: { boardSize: 2 }, code: 'INVALID_REQUEST', message: /between 3 and 36/ },
       { label: 'gomoku boardSize=40', args: { boardSize: 40 }, code: 'INVALID_REQUEST', message: /between 3 and 36/ },
@@ -125,6 +127,47 @@ describe('new_game error contract', () => {
       );
       expect(started.state.game).toBe('go');
       expect(started.state.rules.boardSize).toBe(9);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('accepts komi at both ends of the documented 0-36 range', async () => {
+    await post('/api/rooms', { roomId: 'komi-range' });
+
+    const low = await post('/api/rooms/komi-range/games', {
+      game: 'go',
+      komi: 0,
+    });
+    expect(low.status).toBe(200);
+    expect(((await low.json()) as { state: { rules: { komi: number } } }).state.rules.komi).toBe(0);
+
+    const high = await post('/api/rooms/komi-range/games', {
+      game: 'go',
+      komi: 36,
+    });
+    expect(high.status).toBe(200);
+    expect(((await high.json()) as { state: { rules: { komi: number } } }).state.rules.komi).toBe(36);
+  });
+
+  it('the new_game description states the precise rule contract and the komi range', async () => {
+    // tools.ts text is model-facing documentation; this pins the exact
+    // wording so it cannot quietly drift from the behaviour above.
+    const client = new Client({ name: 'desc-reader', version: '0.0.1' });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`${baseUrl}/game/mcp`),
+    );
+    await client.connect(transport);
+    try {
+      const tools = await client.listTools();
+      const description = tools.tools.find(
+        (tool) => tool.name === 'new_game',
+      )?.description;
+      expect(description).toContain(
+        '格式合法但 v1 不支持的值返回 UNSUPPORTED_RULE',
+      );
+      expect(description).toContain('类型/格式/范围错误返回 INVALID_REQUEST');
+      expect(description).toContain('取值 0-36');
     } finally {
       await client.close();
     }

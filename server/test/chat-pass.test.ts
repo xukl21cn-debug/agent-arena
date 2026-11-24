@@ -480,6 +480,21 @@ describe('pass_turn over /chat/mcp', () => {
       expect(waitTool?.description).toContain('pass_turn');
       const passTool = tools.tools.find((tool) => tool.name === 'pass_turn');
       expect(passTool?.description).toContain('必须');
+
+      // B-1 (chat-prompt.md §3.4): the rules block makes yielding before the
+      // agent ends its work mandatory, not a suggestion.
+      const instructions = client.getInstructions();
+      expect(instructions).toContain('没有新内容');
+      expect(instructions).toContain('已收工');
+      expect(instructions).toContain('必须');
+      expect(instructions).toContain('pass_turn 交还轮次，再结束本次工作');
+
+      // B-4: send_message reminds the model to hand the turn back when it is
+      // done speaking.
+      const sendTool = tools.tools.find((tool) => tool.name === 'send_message');
+      expect(sendTool?.description).toContain(
+        '发完若不再继续发言，记得用 pass_turn 交还轮次',
+      );
     } finally {
       await client.close();
     }

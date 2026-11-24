@@ -309,4 +309,39 @@ describe('chat limits and cursors over MCP', () => {
       await a1.close();
     }
   });
+
+  it('G1: get_transcript limit bounds answer with a JSON INVALID_REQUEST, not a bare -32602', async () => {
+    // The new_game contract applied to `limit`: out-of-range (0 / 101) and
+    // wrong-shape (12.5 / "5") values must come back as a tool error with a
+    // domain code the model can branch on — the schema stays loose and the
+    // handler validates, instead of zod failing the call with -32602.
+    const a1 = await backlogRoom('limit-bounds', 3);
+    try {
+      for (const limit of [0, 101, 12.5, '5']) {
+        const result = await a1.callTool({
+          name: 'get_transcript',
+          arguments: { roomId: 'limit-bounds', limit },
+        });
+        expect(result.isError, `limit=${String(limit)}`).toBe(true);
+        const text = (result.content as Array<{ text?: string }>)[0]
+          .text as string;
+        expect(text, `limit=${String(limit)}`).not.toContain('-32602');
+        const payload = JSON.parse(text);
+        expect(payload.code, `limit=${String(limit)}`).toBe('INVALID_REQUEST');
+        expect(payload.message, `limit=${String(limit)}`).toContain('limit');
+      }
+
+      // In-range values (and the omission of `limit`) keep working.
+      const two = await call(a1, 'get_transcript', {
+        roomId: 'limit-bounds',
+        limit: 2,
+      });
+      expect(two.messages).toHaveLength(2);
+      expect(two.omittedEarlier).toBe(1);
+      const all = await call(a1, 'get_transcript', { roomId: 'limit-bounds' });
+      expect(all.messages).toHaveLength(3);
+    } finally {
+      await a1.close();
+    }
+  });
 });

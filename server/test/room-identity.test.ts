@@ -138,6 +138,53 @@ describe('GameRoom acting as a participant', () => {
     expect(room.getState().winner).toBe('white');
   });
 
+  it('carries the acting seat in every success result', () => {
+    // The REST layer touches presence from the mutation result instead of
+    // resolving the caller's ref a second time — a re-resolve could land on a
+    // different seat (or silently none) once the roster moved underneath.
+    const room = newRoom();
+    const black = room.join({ name: 'dsh', kind: 'agent', seat: 'black' });
+    const white = room.join({ name: 'codex', kind: 'agent', seat: 'white' });
+
+    const moved = room.moveAs({ participantId: black.id }, 7, 7);
+    expect(moved.ok).toBe(true);
+    if (moved.ok) {
+      expect(moved.seat).toBe('black');
+    }
+
+    const answered = room.moveAs({ participantId: white.id }, 7, 8);
+    expect(answered.ok).toBe(true);
+    if (answered.ok) {
+      expect(answered.seat).toBe('white');
+    }
+
+    const resigned = room.resignAs({ participantId: white.id });
+    expect(resigned.ok).toBe(true);
+    if (resigned.ok) {
+      expect(resigned.seat).toBe('white');
+    }
+  });
+
+  it('carries the acting seat through Go pass and scoring actions', () => {
+    const room = newRoom();
+    room.newGame({ game: 'go' });
+    const black = room.join({ name: 'dsh', kind: 'agent', seat: 'black' });
+    const white = room.join({ name: 'codex', kind: 'agent', seat: 'white' });
+
+    const passed = room.passAs({ participantId: black.id });
+    expect(passed.ok).toBe(true);
+    if (passed.ok) {
+      expect(passed.seat).toBe('black');
+    }
+    room.passAs({ participantId: white.id }); // → scoring
+
+    const confirmed = room.confirmScoreAs({ participantId: black.id });
+    expect(confirmed.ok).toBe(true);
+    if (confirmed.ok) {
+      expect(confirmed.seat).toBe('black');
+    }
+  });
+
   it('unseats a departing participant without ending the game', () => {
     const room = newRoom();
     const agent = room.join({ name: 'dsh', kind: 'agent', seat: 'white' });

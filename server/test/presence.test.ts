@@ -302,6 +302,51 @@ describe('PresenceRegistry', () => {
     expect(snapshot(reg)[1]?.presence).toBe('idle');
   });
 
+  it('a REST touch re-arms the recent-call fallback after the session is gone', () => {
+    // The regression this test exists for: once an MCP session had attached,
+    // sessionSeen latched the seat to `disconnected` forever — a REST-only
+    // agent reconnecting after its session died could never read as alive
+    // again, however active its REST calls were. touch() re-evaluates the
+    // latch: no surviving session means the seat is REST-driven again.
+    const reg = registry();
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    reg.detachSession('session-1');
+    expect(snapshot(reg)[1]?.presence).toBe('disconnected'); // latched, no touch
+
+    reg.touch('r1', 'white'); // the agent came back over plain REST
+    expect(snapshot(reg)[1]?.presence).toBe('idle');
+  });
+
+  it('the fallback also re-arms when the session only went silent, before the sweep', () => {
+    // A vanished MCP client only ever shows up as silence; its session can
+    // sit expired-but-unswept in the map for a while. The latch must
+    // re-evaluate on the touch itself, not wait for the sweep to catch up.
+    const clock = { now: NOW };
+    const reg = registry(clock);
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+    clock.now += 91_000; // past sessionIdleMs (90s), sweep has not run
+
+    reg.touch('r1', 'white');
+    expect(snapshot(reg)[1]?.presence).toBe('idle');
+  });
+
+  it('a live session still keeps the latch — touch does not demote it to REST', () => {
+    // While a session survives, it remains the stronger evidence: the seat
+    // reports through the session, and the latch stays armed so a later
+    // silent disconnect still reads as a confirmed one.
+    const clock = { now: NOW };
+    const reg = registry(clock);
+    reg.attachSession('r1', 'white', 'session-1', 'dsh');
+
+    reg.touch('r1', 'white');
+    expect(snapshot(reg)[1]?.presence).toBe('idle');
+
+    // The session then goes quiet past the idle window with no further
+    // touches: a confirmed disconnect, not a REST fallback.
+    clock.now += 91_000;
+    expect(snapshot(reg)[1]?.presence).toBe('disconnected');
+  });
+
   it('never treats a REST call as proof that the human seat is watching', () => {
     // A human seat has exactly one client: the browser tab. Without a viewer,
     // a recent move (or any other REST call) must not read as connected, or
