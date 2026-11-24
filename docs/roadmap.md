@@ -20,4 +20,4 @@
 
 - **聊天提示词 A/B 实验。** 收工提示文案已全部落地（含 B-1/B-4）并有回归断言与 message 契约锁，但真实模型行为效果未验证。按本机 `docs/archive/review-2026-11-24/chat-prompt.md`（git 不跟踪）§3 用真实客户端跑 15 场/臂对照；若 B 不达标，转 runner / 会话结束自动 pass 的结构性方案。
 - **界面待人工体验。** 真机触屏点名、真实中文输入法（全角 `＠`）、iOS 输入框缩放、围棋观战数子视觉、390px 窄屏暂停/关闭观感。
-- **runner 与更多聊天模式。** 若停车收件无法满足真实使用，再评估 runner 或会话续接。若轮流发言限制讨论，再评估 `mentions` 或 `free` 模式。调研结论（本机 `docs/archive/review-2026-11-24/research/`）：headless 续跑闭环可行、注入 GUI 会话不可行、勿靠 mentions/free 解决轮次问题。[聊天模型](../server/src/chat/model.ts)
+- **runner 与更多聊天模式。** **聊天常驻成员形态（P4-C3）已决定不做**：pass_turn 与租约 sweep 已覆盖其兜底的故障模式，残余的「收工不交还」由「会话结束自动 pass」解决（见 A/B 条目）。开发任务的「自动回投」（目标会话空闲/未开时自动拉起接单）保留为需求驱动候选：headless/`codex exec resume`/`--resume` 续跑已调研证实可行（本机 `docs/archive/review-2026-11-24/research/`），等真实多客户端排队接活的场景出现再做。若轮流发言限制讨论，再评估 `mentions` 或 `free` 模式。[聊天模型](../server/src/chat/model.ts)
