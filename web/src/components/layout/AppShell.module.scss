@@ -71,9 +71,9 @@
 }
 
 .shellNavLink[aria-current='page'] {
-  color: var(--gold);
-  border-color: rgba(217, 166, 75, 0.45);
-  background: var(--gold-soft);
+  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
 }
 
 @media (max-width: 760px) {
