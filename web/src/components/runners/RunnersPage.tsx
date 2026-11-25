@@ -79,7 +79,7 @@ function RunnerList({ runners, selected, onSelect }: {
         <Terminal className="mx-auto mb-3 size-6 text-muted-foreground" />
         <p className="font-medium">还没有 runner 注册</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          先在仓库根运行 <code className="rounded bg-muted px-1.5 py-0.5 text-xs">pnpm runner -- --config runner.config.json</code>。
+          先在仓库根运行 <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">pnpm runner -- --config runner.config.json</code>。
         </p>
       </div>
     );
