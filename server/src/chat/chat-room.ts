@@ -78,6 +78,13 @@ export class ChatRoom {
   /** Last chat text per member, for the duplicate-message rule. */
   private readonly lastText = new Map<string, string>();
   private readonly waiters = new Set<Waiter>();
+  /**
+   * Members whose session dropped and has not come back. A gone member is
+   * skipped by rotation and never assigned a turn — a turn parked on an
+   * exited member can only burn lease timeouts. Any tool call (touch) or a
+   * fresh join revives the member; this is session state, never persisted.
+   */
+  private readonly goneMembers = new Set<string>();
 
   constructor(
     id: string,
@@ -129,6 +136,8 @@ export class ChatRoom {
     );
     if (existing) {
       existing.lastSeenAt = now;
+      // A fresh join is a fresh session: the member is drivable again.
+      this.goneMembers.delete(existing.id);
       if (client !== undefined) {
         existing.client = client;
       }
@@ -182,6 +191,8 @@ export class ChatRoom {
     const member = this.members.get(participantId);
     if (member) {
       member.lastSeenAt = now;
+      // Any call proves a live session behind the member again.
+      this.goneMembers.delete(participantId);
     }
   }
 
@@ -192,6 +203,35 @@ export class ChatRoom {
    */
   memberRef(participantId: string): ChatMember | undefined {
     return this.members.get(participantId);
+  }
+
+  /**
+   * A member's session dropped: nobody can drive it any more. The record
+   * stays (a reconnect reclaims it via join), but the member leaves the
+   * rotation and — if the turn is parked on it — hands it back at once: to
+   * the next member still around, or to the host. Without this the turn
+   * burns a full lease per dead member before the pause kicks in.
+   */
+  memberGone(participantId: string, now: number): void {
+    const member = this.members.get(participantId);
+    if (!member || member.kind !== 'agent') {
+      return;
+    }
+    this.goneMembers.add(participantId);
+    this.consecutiveTimeouts.delete(participantId);
+    if (this.turn?.participantId !== participantId) {
+      return;
+    }
+    const next = this.nextSpeakerAfter(participantId);
+    if (next === null) {
+      this.postSystemMessage(`${member.name} 的轮次已交还给主持人`, now);
+      this.turn = null;
+    } else {
+      this.postSystemMessage(`${member.name} 的轮次已交给 ${next.name}`, now);
+      this.turn = this.makeTurn(next, now);
+    }
+    this.emitChange();
+    this.wakeAll();
   }
 
   // -- messaging ------------------------------------------------------------
@@ -231,13 +271,21 @@ export class ChatRoom {
 
     // An explicit `to` must name a seated agent — humans never hold turns.
     let target: ChatMember | null = null;
+    let goneTargetName: string | undefined;
     if (options.to !== undefined) {
-      target = this.resolveTarget(options.to);
-      if (target.kind !== 'agent') {
+      const resolved = this.resolveTarget(options.to);
+      if (resolved.kind !== 'agent') {
         throw new ChatError(
           'INVALID_REQUEST',
-          `"to" must name an agent member; "${target.name}" does not hold turns.`,
+          `"to" must name an agent member; "${resolved.name}" does not hold turns.`,
         );
+      }
+      if (this.goneMembers.has(resolved.id)) {
+        // Skip a member whose session dropped instead of silently turning
+        // the room idle; the line below explains why the target was skipped.
+        goneTargetName = resolved.name;
+      } else {
+        target = resolved;
       }
     }
 
@@ -251,6 +299,9 @@ export class ChatRoom {
           `It is ${this.turn.name}'s turn; wait_for_messages until you are asked.`,
         );
       }
+      // Acting proves a live session behind the member (revives after a gone
+      // mark); `touch` records it and clears the flag in one place.
+      this.touch(member.id, now);
       if (member.messages >= this.policy.maxMessagesPerMember) {
         // Refused, and the room moves on: the stuck member is skipped so the
         // rotation does not park on someone who cannot speak any more.
@@ -292,6 +343,10 @@ export class ChatRoom {
       at: new Date(now).toISOString(),
     };
     this.messages.push(message);
+
+    if (goneTargetName !== undefined) {
+      this.postSystemMessage(`${goneTargetName} 当前无法接轮，跳过`, now);
+    }
 
     if (member.kind === 'agent') {
       this.hop += 1;
@@ -405,6 +460,13 @@ export class ChatRoom {
 
     if (target?.kind === 'human') {
       this.postSystemMessage(`${member.name} 把轮次交还给主持人`, now);
+      this.turn = null;
+    } else if (target && this.goneMembers.has(target.id)) {
+      // Naming a member whose session dropped cannot park the turn there.
+      this.postSystemMessage(
+        `${target.name} 当前无法接轮，${member.name} 把轮次交还给主持人`,
+        now,
+      );
       this.turn = null;
     } else {
       const next = target ?? this.nextSpeakerAfter(member.id);
@@ -649,21 +711,32 @@ export class ChatRoom {
     const agents = [...this.members.values()].filter(
       (member) => member.kind === 'agent',
     );
-    if (agents.length === 0) {
+    const live = agents.filter((member) => !this.goneMembers.has(member.id));
+    if (live.length === 0) {
       return null;
     }
     if (after === undefined) {
-      return agents[0]!;
+      return live[0]!;
     }
     const index = agents.findIndex((member) => member.id === after);
     if (index === -1) {
-      return agents[0]!;
+      return live[0]!;
     }
-    return agents[(index + 1) % agents.length]!;
+    // Walk forward from `after`, skipping members whose session is gone: the
+    // turn must never park on a member nobody can drive any more.
+    for (let step = 1; step <= agents.length; step++) {
+      const candidate = agents[(index + step) % agents.length]!;
+      if (!this.goneMembers.has(candidate.id)) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   private makeTurn(member: ChatMember | null, now: number): ChatTurn | null {
-    if (!member) {
+    if (!member || this.goneMembers.has(member.id)) {
+      // A gone member cannot hold a turn — waiting for the host beats
+      // parking a lease on somebody who will never answer.
       return null;
     }
     return {
@@ -815,6 +888,14 @@ export class ChatRoom {
     room.hop = file.hop;
     for (const member of file.members) {
       room.members.set(member.id, { ...member });
+    }
+    // MCP sessions never survive a server restart. Keep the member records so
+    // a same-name join can reclaim its place, but keep every agent out of the
+    // rotation until that join (or a tool call) proves a live session again.
+    for (const member of room.members.values()) {
+      if (member.kind === 'agent') {
+        room.goneMembers.add(member.id);
+      }
     }
     for (const saved of file.messages) {
       const { timelineOrder: _legacy, ...message } = saved as ChatMessage & { timelineOrder?: number };

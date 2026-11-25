@@ -32,6 +32,17 @@ import type { ChatManager } from './manager.js';
 /** Seconds in the default lease, for the instructions this text builds. */
 const LEASE_SECONDS = DEFAULT_CHAT_POLICY.turnTimeoutMs / 1000;
 
+/** Chat bindings share this namespace inside SessionBindings. */
+const CHAT_BINDING_PREFIX = 'chat:';
+
+function chatBindingKey(roomId: string): string {
+  return `${CHAT_BINDING_PREFIX}${roomId}`;
+}
+
+function chatRoomIdOf(bindingKey: string): string {
+  return bindingKey.slice(CHAT_BINDING_PREFIX.length);
+}
+
 export const CHAT_INSTRUCTIONS = `你是聊天室里的 Agent 成员（/chat/mcp，与棋类对弈完全无关）。
 
 房间规则（relay 接力模式）：
@@ -64,7 +75,35 @@ wait_for_messages 是长轮询：没有新消息时调用会挂起，这是正�
 interface ChatMcpSession {
   server: McpServer;
   transport: StreamableHTTPServerTransport;
+  /** Open standing SSE streams (GET) — the client's lifeline. */
+  streams: number;
+  /** Tool calls being processed right now (a parked wait counts as one). */
+  inflight: number;
+  /** Whether this session ever opened a standing SSE stream. */
+  hadStream: boolean;
+  /**
+   * Set when the session was declared gone after its grace expired. A later
+   * request revives it. A gone session must not count as another live driver
+   * of the same member — otherwise a reconnected member leaves the old dead
+   * session behind and every later exit is treated as "still driven".
+   */
+  gone: boolean;
 }
+
+/**
+ * How long a session may stay dark (stream dropped, nothing in flight)
+ * before its member is declared gone. Long enough to ride out an SSE
+ * reconnect, short enough to free a parked turn within seconds instead of
+ * burning full leases on a member that will never answer.
+ */
+const GONE_GRACE_MS = 5_000;
+
+/**
+ * A dead session is kept around so a short network blip can resume it, but
+ * keeping it forever leaks its server, transport and bindings. Retire it
+ * after this long; a client that comes back later starts a fresh session.
+ */
+const SESSION_RETENTION_MS = 10 * 60_000;
 
 function jsonRpcError(code: number, message: string): unknown {
   return { jsonrpc: '2.0', error: { code, message }, id: null };
@@ -164,8 +203,175 @@ export function mountChatMcp(
   app: Express,
   manager: ChatManager,
   bindings: SessionBindings,
+  options: { goneGraceMs?: number; sessionRetentionMs?: number } = {},
 ): void {
   const sessions = new Map<string, ChatMcpSession>();
+  const goneTimers = new Map<string, NodeJS.Timeout>();
+  const retireTimers = new Map<string, NodeJS.Timeout>();
+  const goneGraceMs = options.goneGraceMs ?? GONE_GRACE_MS;
+  const sessionRetentionMs = options.sessionRetentionMs ?? SESSION_RETENTION_MS;
+
+  const cancelGoneCheck = (sessionId: string): void => {
+    const timer = goneTimers.get(sessionId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      goneTimers.delete(sessionId);
+    }
+  };
+
+  const cancelRetirement = (sessionId: string): void => {
+    const timer = retireTimers.get(sessionId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      retireTimers.delete(sessionId);
+    }
+  };
+
+  /**
+   * A dead session is kept resumable for a while, then retired. Without the
+   * retirement a process that exits without DELETE leaves its MCP server,
+   * transport and bindings in memory forever.
+   */
+  const scheduleRetirement = (sessionId: string): void => {
+    if (retireTimers.has(sessionId)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      retireTimers.delete(sessionId);
+      const session = sessions.get(sessionId);
+      if (session === undefined || !session.gone) {
+        return;
+      }
+      releaseSession(sessionId);
+    }, sessionRetentionMs);
+    timer.unref();
+    retireTimers.set(sessionId, timer);
+  };
+
+  /**
+   * Any request from a session proves its client is alive again. A previous
+   * grace expiry may have marked all of its members gone; touch them so the
+   * member is once more drivable without waiting for a tool call that may
+   * never come.
+   */
+  const reviveSession = (sessionId: string, session: ChatMcpSession): void => {
+    if (!session.gone) {
+      return;
+    }
+    session.gone = false;
+    cancelRetirement(sessionId);
+    const claimed = bindings.roomsOf(sessionId);
+    if (claimed === undefined) {
+      return;
+    }
+    const now = Date.now();
+    for (const [roomKey, participantId] of claimed) {
+      if (!roomKey.startsWith(CHAT_BINDING_PREFIX)) {
+        continue;
+      }
+      manager.get(chatRoomIdOf(roomKey))?.touch(participantId, now);
+    }
+  };
+
+  /**
+   * The session looks dead (stream dropped, nothing in flight, grace
+   * expired): mark every member it drives as gone so a held turn is handed
+   * back at once instead of burning leases on an unreachable member. The
+   * session itself stays resumable — a client that comes back after a long
+   * blip revives its member on the next request (touch/join) instead of being
+   * locked out.
+   */
+  const markSessionGone = (sessionId: string): void => {
+    const session = sessions.get(sessionId);
+    if (session?.gone) {
+      return;
+    }
+    if (session) {
+      session.gone = true;
+      scheduleRetirement(sessionId);
+    }
+    const claimed = bindings.roomsOf(sessionId);
+    if (claimed === undefined) {
+      return;
+    }
+    const now = Date.now();
+    for (const [roomKey, participantId] of claimed) {
+      if (!roomKey.startsWith(CHAT_BINDING_PREFIX)) {
+        continue;
+      }
+      const roomId = chatRoomIdOf(roomKey);
+      // Another live session may still drive the same member (reconnect).
+      // A session already marked gone must never count: stale sessions from
+      // an earlier process would otherwise mask every later exit.
+      let stillDriven = false;
+      for (const [otherId, other] of sessions) {
+        if (otherId !== sessionId && !other.gone && bindings.participantOf(otherId, roomKey) === participantId) {
+          stillDriven = true;
+          break;
+        }
+      }
+      if (stillDriven) {
+        continue;
+      }
+      try {
+        manager.get(roomId)?.memberGone(participantId, now);
+      } catch (error) {
+        // This runs from a timer path: an uncaught persistence failure here
+        // would take the whole process down. Keep the other rooms going.
+        console.error(
+          `[chat-mcp] failed to mark ${participantId} gone in room "${roomId}":`,
+          error,
+        );
+      }
+    }
+  };
+
+  /**
+   * Explicit session end (DELETE / transport close): full teardown —
+   * bindings dropped, members marked gone, the session id retired.
+   */
+  const releaseSession = (sessionId: string): void => {
+    cancelGoneCheck(sessionId);
+    cancelRetirement(sessionId);
+    const session = sessions.get(sessionId);
+    if (session === undefined) {
+      return;
+    }
+    const wasGone = session.gone;
+    sessions.delete(sessionId);
+    // A session already declared gone had its members handled then; doing it
+    // again would only repeat the system line. A live session (DELETE) still
+    // has to hand its members back now.
+    if (!wasGone) {
+      markSessionGone(sessionId);
+    }
+    bindings.clear(sessionId);
+  };
+
+  /**
+   * A connection dropped without the session ending (SSE blip, aborted
+   * request). Give the client `goneGraceMs` to come back — any new request
+   * cancels — then mark its members gone if the session is still dark.
+   */
+  const scheduleGoneCheck = (sessionId: string): void => {
+    if (goneTimers.has(sessionId)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      goneTimers.delete(sessionId);
+      const session = sessions.get(sessionId);
+      if (session === undefined || session.gone) {
+        return;
+      }
+      if (session.streams > 0 || session.inflight > 0) {
+        // A standing stream or a parked wait means the client is still there.
+        return;
+      }
+      markSessionGone(sessionId);
+    }, goneGraceMs);
+    timer.unref();
+    goneTimers.set(sessionId, timer);
+  };
 
   const createMcpServer = (): McpServer => {
     const server = new McpServer(
@@ -189,6 +395,24 @@ export function mountChatMcp(
           res.status(404).json(jsonRpcError(-32001, 'Session not found'));
           return;
         }
+        // Any request proves the client is alive — and a long-polling wait
+        // keeps `inflight` up while it parks, so no gone check fires under a
+        // healthy parked waiter.
+        cancelGoneCheck(sessionId);
+        reviveSession(sessionId, existing);
+        existing.inflight += 1;
+        res.on('close', () => {
+          existing.inflight -= 1;
+          const darkAgain =
+            existing.hadStream && existing.streams === 0 && existing.inflight === 0;
+          if (!res.writableEnded || darkAgain) {
+            // The connection died mid-call (process exit, network cut), or a
+            // request completed after the standing stream was already gone.
+            // The latter matters because a gone check that fired while this
+            // long-poll was in flight returned without rescheduling itself.
+            scheduleGoneCheck(sessionId);
+          }
+        });
         await sessionContext.run(
           {
             sessionId,
@@ -217,12 +441,18 @@ export function mountChatMcp(
       });
 
       const server = createMcpServer();
-      session = { server, transport };
+      session = {
+        server,
+        transport,
+        streams: 0,
+        inflight: 0,
+        hadStream: false,
+        gone: false,
+      };
       transport.onclose = () => {
         const closedId = transport.sessionId;
         if (closedId) {
-          sessions.delete(closedId);
-          bindings.clear(closedId);
+          releaseSession(closedId);
         }
       };
 
@@ -239,10 +469,20 @@ export function mountChatMcp(
   app.get('/chat/mcp', async (req: Request, res: Response) => {
     const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
-    if (!session) {
+    if (!session || sessionId === undefined) {
       sendBadRequest(res, 'Bad Request: Invalid or missing session ID');
       return;
     }
+    // The standing SSE stream is the client's lifeline: when it drops and
+    // nothing takes its place within the grace, the session is over.
+    cancelGoneCheck(sessionId);
+    reviveSession(sessionId, session);
+    session.hadStream = true;
+    session.streams += 1;
+    res.on('close', () => {
+      session.streams -= 1;
+      scheduleGoneCheck(sessionId);
+    });
     try {
       await session.transport.handleRequest(req, res);
     } catch (error) {
@@ -256,14 +496,15 @@ export function mountChatMcp(
   app.delete('/chat/mcp', async (req: Request, res: Response) => {
     const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
-    if (!session) {
+    if (!session || sessionId === undefined) {
       sendBadRequest(res, 'Bad Request: Invalid or missing session ID');
       return;
     }
     try {
       await session.transport.handleRequest(req, res);
-      sessions.delete(sessionId!);
-      bindings.clear(sessionId!);
+      // Graceful termination: hand held turns back now instead of waiting
+      // out the grace window. (transport.onclose releases too — idempotent.)
+      releaseSession(sessionId);
     } catch (error) {
       console.error('[chat-mcp] DELETE /chat/mcp failed', error);
       if (!res.headersSent) {
@@ -278,14 +519,10 @@ function registerChatTools(
   manager: ChatManager,
   bindings: SessionBindings,
 ): void {
-  // The binding key is namespaced per domain: `chat:<roomId>` never collides
-  // with a game seat held in the same-named room.
-  const bindingKey = (roomId: string): string => `chat:${roomId}`;
-
   const memberOf = (roomId: string): ChatMember => {
     const session = sessionContext.getStore();
     const participantId = session?.sessionId
-      ? bindings.participantOf(session.sessionId, bindingKey(roomId))
+      ? bindings.participantOf(session.sessionId, chatBindingKey(roomId))
       : undefined;
     const room = manager.getOrThrow(roomId);
     if (participantId === undefined) {
@@ -329,7 +566,7 @@ function registerChatTools(
       const session = sessionContext.getStore();
       // Reconnect: an existing binding is the same member coming back.
       const knownId = session?.sessionId
-        ? bindings.participantOf(session.sessionId, bindingKey(roomId))
+        ? bindings.participantOf(session.sessionId, chatBindingKey(roomId))
         : undefined;
       const knownMember = knownId
         ? room.snapshot().members.find((item) => item.id === knownId && item.kind === 'agent')
@@ -341,7 +578,7 @@ function registerChatTools(
         Date.now(),
       );
       if (session?.sessionId) {
-        bindings.bind(session.sessionId, bindingKey(roomId), member.id);
+        bindings.bind(session.sessionId, chatBindingKey(roomId), member.id);
       }
 
       const snapshot = room.snapshot();
@@ -518,7 +755,7 @@ afterSeq 缺省 = 当前最新序号（等你调用之后的新消息）。`,
       const room = manager.getOrThrow(roomId);
       const session = sessionContext.getStore();
       const myId = session?.sessionId
-        ? bindings.participantOf(session.sessionId, bindingKey(roomId))
+        ? bindings.participantOf(session.sessionId, chatBindingKey(roomId))
         : undefined;
       if (myId) {
         room.touch(myId, Date.now());

@@ -54,6 +54,16 @@ export class SessionBindings {
     return this.bySession.get(sessionId)?.get(roomId);
   }
 
+  /**
+   * Every binding a session holds, keyed by its namespaced room key
+   * (`chat:<roomId>`, `game:<roomId>`, …) with the participant id as value.
+   * Returns a copy so callers cannot mutate the session's own map.
+   */
+  roomsOf(sessionId: string): ReadonlyMap<string, string> | undefined {
+    const rooms = this.bySession.get(sessionId);
+    return rooms === undefined ? undefined : new Map(rooms);
+  }
+
   /** Drop every binding for a session (transport closed). */
   clear(sessionId: string): void {
     this.bySession.delete(sessionId);
