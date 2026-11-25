@@ -57,6 +57,13 @@ it('keeps the latest session id for a task across rework rounds', () => {
   expect(store.latestSessionForTask('task-1')).toBe('session-round-1');
 });
 
+it('persists the runner command cursor', () => {
+  const store = new SessionStore(file, () => 1_000);
+  expect(store.commandCursor()).toBe(0);
+  store.setCommandCursor(7);
+  expect(new SessionStore(file, () => 2_000).commandCursor()).toBe(7);
+});
+
 it('moves a corrupt state file aside instead of overwriting it', () => {
   writeFileSync(file, 'not json', 'utf8');
   const store = new SessionStore(file, () => 1_000);

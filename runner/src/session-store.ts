@@ -18,6 +18,8 @@ export interface SessionRecord {
 interface StateFile {
   version: 1;
   records: SessionRecord[];
+  /** Highest runner-management command already consumed by this runner. */
+  commandSeq?: number;
 }
 
 function keyOf(taskId: string, round: number): string {
@@ -31,6 +33,7 @@ function keyOf(taskId: string, round: number): string {
  */
 export class SessionStore {
   private readonly records = new Map<string, SessionRecord>();
+  private commandSeq = 0;
 
   constructor(
     private readonly file: string,
@@ -44,6 +47,8 @@ export class SessionStore {
     try {
       const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as StateFile;
       if (parsed.version !== 1 || !Array.isArray(parsed.records)) throw new Error('unsupported state file shape');
+      this.commandSeq = typeof parsed.commandSeq === 'number' && Number.isInteger(parsed.commandSeq) && parsed.commandSeq >= 0
+        ? parsed.commandSeq : 0;
       for (const record of parsed.records) {
         if (typeof record.taskId === 'string' && typeof record.round === 'number') {
           this.records.set(keyOf(record.taskId, record.round), record);
@@ -65,7 +70,11 @@ export class SessionStore {
 
   private save(): void {
     mkdirSync(path.dirname(this.file), { recursive: true });
-    const payload: StateFile = { version: 1, records: [...this.records.values()] };
+    const payload: StateFile = {
+      version: 1,
+      records: [...this.records.values()],
+      ...(this.commandSeq === 0 ? {} : { commandSeq: this.commandSeq }),
+    };
     const temp = `${this.file}.tmp`;
     const fd = openSync(temp, 'w');
     try {
@@ -75,6 +84,17 @@ export class SessionStore {
       closeSync(fd);
     }
     renameSync(temp, this.file);
+  }
+
+  /** Highest command sequence already consumed by this runner. */
+  commandCursor(): number {
+    return this.commandSeq;
+  }
+
+  setCommandCursor(seq: number): void {
+    if (!Number.isInteger(seq) || seq < this.commandSeq) return;
+    this.commandSeq = seq;
+    this.save();
   }
 
   get(taskId: string, round: number): SessionRecord | undefined {

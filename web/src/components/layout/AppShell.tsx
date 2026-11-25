@@ -19,6 +19,11 @@ const TABS: ShellTab[] = [
     label: '开发任务',
     hint: '看板只在后端监听回环地址时可用',
   },
+  {
+    to: '/runners',
+    label: 'Runner',
+    hint: '本机执行器状态与命令',
+  },
 ];
 
 /**

@@ -1,4 +1,5 @@
 import type { WorkTask, WorkTaskSummary } from './work.js';
+import type { RunnerDetail, RunnerSummary } from './runner.js';
 import type {
   Actor,
   AnyGameState,
@@ -251,6 +252,9 @@ export type ServerMessage =
   | { type: 'hello'; kind: 'work'; tasks: WorkTaskSummary[] }
   | { type: 'task'; kind: 'work'; task: WorkTask }
   | { type: 'error'; kind: 'work'; code: string; message: string }
+  | { type: 'hello'; kind: 'runner'; runners: RunnerSummary[] }
+  | { type: 'runner'; kind: 'runner'; runner: RunnerDetail }
+  | { type: 'error'; kind: 'runner'; code: string; message: string }
   | {
       type: 'hello';
       roomId: string;

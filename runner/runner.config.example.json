@@ -1,9 +1,11 @@
 {
+  "id": "runner-local",
   "serverUrl": "http://127.0.0.1:3000",
   "name": "runner-dsh",
   "workspace": ".",
   "stateFile": ".arena-runner/state.json",
   "waitTimeoutMs": 20000,
+  "heartbeatIntervalMs": 5000,
   "dsh": {
     "command": "dsh",
     "argsPrefix": [],

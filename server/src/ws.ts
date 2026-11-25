@@ -12,6 +12,7 @@ import type { RoomManager } from './game/rooms/room-manager.js';
 import { isLocalWorkOrigin } from './work/http.js';
 import { isWorkLoopback } from './work/mcp.js';
 import type { WorkStore } from './work/store.js';
+import type { RunnerRegistry } from './runner/registry.js';
 
 export interface WebSocketOptions {
   path?: string;
@@ -21,6 +22,8 @@ export interface WebSocketOptions {
   /** Chat rooms; when passed, sockets asking `?kind=chat` subscribe to them. */
   chat?: ChatManager;
   work?: WorkStore;
+  /** Runner presence and command queue; sockets asking `?kind=runner` subscribe. */
+  runner?: RunnerRegistry;
 }
 
 /** How much timeline a chat hello carries. */
@@ -248,6 +251,21 @@ export function attachWebSocket(
       }
       sendJson(socket, { type: 'hello', kind: 'work', tasks: work.list() });
       const unsubscribe = work.subscribe((task) => sendJson(socket, { type: 'task', kind: 'work', task }));
+      socket.once('close', unsubscribe);
+      socket.once('error', unsubscribe);
+      return;
+    }
+
+    if (url.searchParams.get('kind') === 'runner') {
+      const runner = options.runner;
+      const host = request.headers.host?.replace(/:\d+$/u, '') ?? '';
+      if (!runner || !isWorkLoopback(host) || !isLocalWorkOrigin(request.headers.origin)) {
+        sendJson(socket, { type: 'error', kind: 'runner', code: 'INVALID_REQUEST', message: 'Runner 管理仅在本机开放。' });
+        socket.close(1008);
+        return;
+      }
+      sendJson(socket, { type: 'hello', kind: 'runner', runners: runner.list() });
+      const unsubscribe = runner.subscribe((detail) => sendJson(socket, { type: 'runner', kind: 'runner', runner: detail }));
       socket.once('close', unsubscribe);
       socket.once('error', unsubscribe);
       return;

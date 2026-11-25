@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
@@ -20,20 +21,25 @@ export interface DshConfig {
 }
 
 export interface RunnerConfig {
+  /** Stable registry id; derived from the name when omitted. */
+  id: string;
   serverUrl: string;
   name: string;
   workspace: string;
   stateFile: string;
   waitTimeoutMs: number;
+  heartbeatIntervalMs: number;
   dsh: DshConfig;
 }
 
 interface RawConfig {
+  id?: unknown;
   serverUrl?: unknown;
   name?: unknown;
   workspace?: unknown;
   stateFile?: unknown;
   waitTimeoutMs?: unknown;
+  heartbeatIntervalMs?: unknown;
   dsh?: Record<string, unknown>;
 }
 
@@ -103,6 +109,11 @@ export function loadRunnerConfig(
     text(raw.workspace, exists ? '.' : cwd, 'workspace'),
     'workspace',
   );
+  const name = text(raw.name, 'runner-dsh', 'name');
+  const id = text(raw.id, `runner-${createHash('sha256').update(name).digest('hex').slice(0, 8)}`, 'id');
+  if (!/^[a-zA-Z0-9_-]{1,64}$/u.test(id)) {
+    throw new Error('id must match [a-zA-Z0-9_-]{1,64}.');
+  }
   const stateFile = path.resolve(baseDir, text(raw.stateFile, '.arena-runner/state.json', 'stateFile'));
   const permissionMode = dshRaw.permissionMode === undefined
     ? 'workspace-write'
@@ -117,11 +128,13 @@ export function loadRunnerConfig(
   const command = process.platform === 'win32' && rawCommand === 'dsh' ? 'dsh.cmd' : rawCommand;
 
   return {
+    id,
     serverUrl: text(raw.serverUrl, DEFAULT_SERVER_URL, 'serverUrl').replace(/\/+$/u, ''),
-    name: text(raw.name, 'runner-dsh', 'name'),
+    name,
     workspace,
     stateFile,
     waitTimeoutMs: integer(raw.waitTimeoutMs, DEFAULT_WAIT_TIMEOUT_MS, 'waitTimeoutMs', 1_000, 30_000),
+    heartbeatIntervalMs: integer(raw.heartbeatIntervalMs, 5_000, 'heartbeatIntervalMs', 1_000, 60_000),
     dsh: {
       command,
       argsPrefix: stringArray(dshRaw.argsPrefix, 'dsh.argsPrefix'),

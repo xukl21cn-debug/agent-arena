@@ -22,15 +22,19 @@ P1 只支持 DSH headless，单进程、单任务顺序执行。
 
    `pnpm runner` 会先构建 `shared` 和 `runner`，然后从仓库根启动 `runner/dist/index.js`，所以默认工作区就是仓库根。
 
+启动后打开 `/runners` 查看在线状态、当前任务与最近事件；runner 不在线时页面仍可打开，命令会留在服务端队列里，等它重连后生效。
+
 ## 配置
 
 ```json
 {
+  "id": "runner-local",
   "serverUrl": "http://127.0.0.1:3000",
   "name": "runner-dsh",
   "workspace": ".",
   "stateFile": ".arena-runner/state.json",
   "waitTimeoutMs": 20000,
+  "heartbeatIntervalMs": 5000,
   "dsh": {
     "command": "dsh",
     "argsPrefix": [],
@@ -43,7 +47,8 @@ P1 只支持 DSH headless，单进程、单任务顺序执行。
 }
 ```
 
-- `name` 是工作域里的执行者名字；同一个名字重连会拿回原身份。
+- `id` 是管理接口里的稳定标识；省略时按 `name` 生成稳定短哈希。同名 runner 重连会覆盖旧心跳，不会新建重复实例。
+- `heartbeatIntervalMs` 是注册表心跳间隔，页面用它在 `/runners` 显示在线/离线。
 - `stateFile` 记录任务轮次与 DSH `sessionId`，用于避免重复执行；它属于本地状态，不提交。
 - `dsh.command` 在 Windows 默认解析为 `dsh.cmd`，也可以写绝对路径；配置里写 `dsh` 也会在 Windows 归一为 `dsh.cmd`。
 - 首轮从 `--json` 的 `session` 事件自动创建并记录会话 ID；同一任务的返工轮会沿用该任务之前的 DSH 会话。

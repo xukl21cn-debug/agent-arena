@@ -9,6 +9,10 @@ import type {
   ReplayResponse,
   RoomSummary,
   RoomView,
+  RunnerCommand,
+  RunnerCommandKind,
+  RunnerDetail,
+  RunnerSummary,
   StoneColor,
   WorkTask,
 } from '@arena/shared';
@@ -152,6 +156,14 @@ export const api = {
   takeOverWork: (id: string, reason: string) => request<WorkTask>('/api/work/tasks/' + encodeURIComponent(id) + '/takeover', {
     method: 'POST', body: JSON.stringify({ reason }),
   }),
+  listRunners: (): Promise<RunnerSummary[]> => request<RunnerSummary[]>('/api/runners'),
+  runnerDetail: (id: string): Promise<RunnerDetail> => request<RunnerDetail>(
+    '/api/runners/' + encodeURIComponent(id),
+  ),
+  runnerCommand: (id: string, kind: RunnerCommandKind, taskId?: string): Promise<RunnerCommand> => request<RunnerCommand>(
+    '/api/runners/' + encodeURIComponent(id) + '/commands',
+    { method: 'POST', body: JSON.stringify({ kind, ...(taskId === undefined ? {} : { taskId }) }) },
+  ),
   getRoom(roomId: string): Promise<RoomView> {
     return request<RoomView>(roomPath(roomId));
   },

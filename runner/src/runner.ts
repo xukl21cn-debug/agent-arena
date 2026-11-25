@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs';
-import type { Claim, WorkTask } from '@arena/shared';
+import type { Claim, RunnerTaskRef, WorkTask } from '@arena/shared';
 import type { AgentAdapter } from './adapters/types.js';
 import { fallbackResult, parseAgentResult, type AgentResult } from './result.js';
 import type { SessionStore } from './session-store.js';
@@ -57,6 +57,9 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) 
  * CLI session.
  */
 export class Runner {
+  private activeTask: RunnerTaskRef | null = null;
+  private activeController: AbortController | undefined;
+
   constructor(
     private readonly work: WorkApi,
     private readonly adapter: AgentAdapter,
@@ -64,6 +67,18 @@ export class Runner {
     private readonly workspace: string,
     private readonly logger: RunnerLogger = console,
   ) {}
+
+  /** The task shown by the runner registry while DSH is executing. */
+  currentTask(): RunnerTaskRef | null {
+    return this.activeTask;
+  }
+
+  /** Abort the current DSH process; returns false when nothing is running. */
+  cancelCurrent(): boolean {
+    if (!this.activeController) return false;
+    this.activeController.abort();
+    return true;
+  }
 
   /** Wait once and handle exactly one work-domain event. */
   async runOnce(options: RunnerOptions): Promise<RunOnceOutcome> {
@@ -129,6 +144,12 @@ export class Runner {
     }
 
     this.logger.info(`领取任务 ${task.id}「${task.title}」第 ${claim.round} 轮。`);
+    this.activeTask = { id: task.id, title: task.title, status: 'working', round: claim.round, startedAt: Date.now() };
+    this.activeController = new AbortController();
+    const controller = this.activeController;
+    const forwardAbort = () => controller.abort();
+    signal?.addEventListener('abort', forwardAbort, { once: true });
+    if (signal?.aborted) controller.abort();
     const resumeSessionId = this.sessions.latestSessionForTask(task.id);
     const renewal = setInterval(() => {
       void this.work.renewClaim(task.id, claim.round, claim.id)
@@ -139,7 +160,7 @@ export class Runner {
     let result: AgentResult;
     try {
       const run = await this.adapter.run(task, {
-        ...(signal === undefined ? {} : { signal }),
+        signal: controller.signal,
         ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
         onSessionId: (sessionId) => {
           this.sessions.setSessionId(task.id, claim.round, sessionId);
@@ -162,6 +183,9 @@ export class Runner {
     } catch (error) {
       result = fallbackResult('', `runner 执行 DSH 失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
+      signal?.removeEventListener('abort', forwardAbort);
+      this.activeController = undefined;
+      this.activeTask = null;
       clearInterval(renewal);
     }
 

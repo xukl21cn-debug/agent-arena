@@ -14,6 +14,7 @@ import { GamePage } from './components/game/GamePage';
 import { AppShell } from './components/layout/AppShell';
 import { LobbyPage, noteLobbyEntry } from './components/lobby/LobbyPage';
 import { ReplayPage } from './components/replay/ReplayPage';
+import { RunnersPage } from './components/runners/RunnersPage';
 import { WorkPage } from './components/work/WorkPage';
 
 /** Archive ids become path segments, so they must be safe before we build one. */
@@ -114,6 +115,7 @@ export default function App() {
           <Route element={<LobbyRoute domain="chats" />} path="/chats" />
           <Route element={<ChatRoomRoute />} path="/chats/:roomId" />
           <Route element={<WorkPage />} path="/work" />
+          <Route element={<RunnersPage />} path="/runners" />
           <Route element={<Navigate replace to="/" />} path="*" />
         </Route>
       </Routes>
