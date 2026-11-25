@@ -147,3 +147,4 @@
 | 任务生命周期复用工作域 MCP，runner 只作为 worker 客户端 | 为 runner 新建一套任务 REST/队列 | 任务状态机、租约、复审和证据已经在 `/work/mcp` 里；另造一套会分裂权威状态 |
 | P1 只支持 DSH headless，保留 `AgentAdapter` 接口；多客户端在 P4 | 先做多客户端适配器空壳；或把 DSH 直接写进循环 | 先跑通一个真实闭环，避免为未实现的客户端提前抽象；DSH 适配器本身仍隔离在 `src/adapters/dsh.ts` |
 | 任务轮次与 DSH `sessionId` 落本地状态文件，重复领取时拒绝重复启动 | 只靠内存记录；或每次领取都重新启动 | 进程重启后内存丢失；本地状态文件是 P1 最小的“不重复执行”证据，完整恢复留给 P3 |
+| Runner 管理使用**内存 `RunnerRegistry` + REST 长轮询 + `/ws?kind=runner`**；命令按 runner id 排队，离线不阻塞页面 | 把 runner 状态落盘；让 server 反向 dial runner；为管理面另开 gRPC/消息队列 | 注册表是观测数据，权威任务状态仍在 `WorkStore`；server 重启后旧 MCP 会话本来就不存在，清空注册表不会制造新的状态不一致。长轮询复用工作域的成熟模式，页面刷新仍走现有 `/ws` |

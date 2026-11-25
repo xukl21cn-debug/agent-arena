@@ -1,6 +1,6 @@
 # 开发任务 Runner
 
-**状态：P1 实现完成，独立评审批次已整改，待复审/验收。** 分支：`feat/work-runner`。基线：`main` @ `bbb5b6e`。
+**状态：P1 实现完成（待验收），P2 管理面实现完成（待独立评审）。** 分支：`feat/work-runner`。基线：`main` @ `bbb5b6e`。
 
 ## 1. 背景
 
@@ -101,7 +101,7 @@ Web 只通过 REST/WS 请求 server，不直接访问 runner。server 内部增�
 - 已定：模型凭据由 DSH 自己读取启动环境、会话工作目录的 `.env` 或 `$DSH_HOME/.env`；runner 不保存或转发凭据。
 - 已定：P1 的失败通道就是 `submit_work_result.unresolved`，不改工作域事件类型；agent 最终回复无法解析时同样回落为 `unresolved`。
 - 已定：保留 `AgentAdapter` 接口，P1 只实现 DSH headless；Codex/AGY/ZCode 在 P4 接入。
-- P2 的 `/runners` 页面最小是否只做只读状态 + 重试/取消，启动/停止 runner 由用户手动管理？
+- P2 已按此边界实现：`/runners` 显示注册表列表、在线/离线、当前任务和最近事件；页面只发任务级 `cancel` 命令，启动/停止 runner 进程仍由用户负责。
 - 多 runner 并发是否需要扩展工作域的单一 worker 身份，还是多实例只作为同一 worker 的执行槽？
 
 ## 9. 阶段记录
@@ -109,4 +109,4 @@ Web 只通过 REST/WS 请求 server，不直接访问 runner。server 内部增�
 | 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
 |---|---|---|---|---|
 | P1 最小闭环 | `e63cde9`（P1）、`3dbfa10`（评审整改）、`7973284`（收尾） | `pnpm test`：server 33 文件 / 467 测试，runner 7 文件 / 29 测试；fake CLI 端到端覆盖领取→执行→提交；真实 DSH smoke：任务 `c65ac982-c027-422d-82be-5725d794a16c` 领取后由会话 `session-524b306c-6c1a-4d2c-b57b-a752eb7c41f3` 执行，临时 smoke 工作区提交 `68cd891650bfe7fc5a4868064796fd2840d7a779`（不在本仓库对象库），看板进入 `pending_review`。 | 本机 DSH 的 `workspace-write` 在 Windows ACL 授权处失败，真实验收改用 `danger-full-access`；需在 ACL 正常环境复验 workspace-write。断线重连、重启恢复、超时/取消的完整语义留给 P3。 | 独立评审：1 项阻塞与 2 项高优先级已整改，复审通过；待用户验收与 ACL 环境复验 |
-
+| P2 管理与观测 | `272ea63` | server 36 文件 / 475 测试，runner 8 文件 / 31 测试；手动 `/runners` 在线、离线、命令排队与重连消费。 | 注册表在内存；server 重启后注册记录与命令队列清空，runner 进程启动/停止仍由用户负责。 | 待独立评审 |

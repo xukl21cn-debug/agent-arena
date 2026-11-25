@@ -136,7 +136,7 @@ cp runner/runner.config.example.json runner.config.json
 pnpm runner -- --config runner.config.json
 ```
 
-`workspace` 要和服务端 `ARENA_WORK_WORKSPACE` 指向同一个目录。配置、结果约定和当前范围见 [runner/README.md](runner/README.md)。
+`workspace` 要和服务端 `ARENA_WORK_WORKSPACE` 指向同一个目录。启动后打开 `/runners` 可以查看 runner 在线状态、当前任务和最近事件；配置、结果约定和当前范围见 [runner/README.md](runner/README.md)。
 
 ## 对局流程
 
