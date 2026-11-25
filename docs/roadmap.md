@@ -26,7 +26,7 @@
 
 **2026-11-25 P1 最小闭环实现完成，独立评审复审通过，待用户验收与 ACL 环境复验。** 新增 `@arena/runner` 本机执行器：以 worker 身份连接 `/work/mcp`，领取任务后启动 DSH headless，自动记录会话 ID 并把结构化结果回投工作看板。真实 DSH smoke 已进入 `pending_review`；本机 `workspace-write` 的 Windows ACL 授权失败，验收改用 `danger-full-access`，需在 ACL 正常环境复验。详见 [runner proposal](proposals/work-runner.md)。
 
-**2026-11-25 P2 管理与观测实现完成，待独立评审。** 新增 `/runners` 页面和 `RunnerRegistry`：显示 runner 在线/离线、当前任务、最近事件；任务级 `cancel` 命令通过 REST 长轮询排队，runner 重连后消费。runner 进程启动/停止仍由用户负责。
+**2026-11-25 P2 管理与观测实现完成，独立评审通过，待用户验收。** 新增 `/runners` 页面和 `RunnerRegistry`：显示 runner 在线/离线、当前任务、最近事件；任务级 `cancel` 命令通过 REST 长轮询排队，runner 重连后消费；server 重启后运行中的 runner 会自动重新注册。runner 进程启动/停止仍由用户负责。
 
 ## 尚未排期
 

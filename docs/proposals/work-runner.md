@@ -1,6 +1,6 @@
 # 开发任务 Runner
 
-**状态：P1 实现完成（待验收），P2 管理面实现完成（待独立评审）。** 分支：`feat/work-runner`。基线：`main` @ `bbb5b6e`。
+**状态：P1 实现完成（待验收），P2 管理面实现完成（独立评审通过，待用户验收）。** 分支：`feat/work-runner`。基线：`main` @ `bbb5b6e`。
 
 ## 1. 背景
 
@@ -72,7 +72,7 @@ Web 只通过 REST/WS 请求 server，不直接访问 runner。server 内部增�
 - runner 启动后 `POST /api/runners/register`，定期心跳；通过长轮询 `GET /api/runners/:id/commands` 或现有 `/ws` 接收 server 排队的命令；
 - `RunnerRegistry` 从一开始就按 `runnerId` 建 Map，允许同时注册多个实例；每个实例独立心跳、命令队列和事件游标。稳定 ID 由 runner 配置生成，重复 ID 视为重连或拒绝旧实例，需明确定义；
 - server 不反向 dial runner，runner 离线时页面显示 `offline`，不会让 REST 请求挂住；
-- 最小接口：`GET /api/runners`、`GET /api/runners/:id`、`GET /api/runners/:id/events`、`POST /api/runners/:id/commands`；
+- 最小接口：`GET /api/runners`、`GET /api/runners/:id`（含最近事件）、`POST /api/runners/:id/heartbeat`、`POST /api/runners/:id/events`、`GET /api/runners/:id/commands`（长轮询）、`POST /api/runners/:id/commands`；
 - **多实例注册不等于多任务并发**：工作域目前只有单一 worker 身份，两个 runner 不能各自独立 `join_work` 后无协调地抢任务。P1 先单 runner；P2 允许注册多个实例但只派发到一个；真正的多 runner 并发需要扩展工作域的 worker 身份和领取模型，放到 P4；
 - 如果只做单实例 demo，也可以让 server 调 runner 的本地 HTTP 端口，但这会引入地址配置、进程生命周期和离线阻塞问题，不建议作为长期形态。
 
@@ -109,4 +109,4 @@ Web 只通过 REST/WS 请求 server，不直接访问 runner。server 内部增�
 | 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
 |---|---|---|---|---|
 | P1 最小闭环 | `e63cde9`（P1）、`3dbfa10`（评审整改）、`7973284`（收尾） | `pnpm test`：server 33 文件 / 467 测试，runner 7 文件 / 29 测试；fake CLI 端到端覆盖领取→执行→提交；真实 DSH smoke：任务 `c65ac982-c027-422d-82be-5725d794a16c` 领取后由会话 `session-524b306c-6c1a-4d2c-b57b-a752eb7c41f3` 执行，临时 smoke 工作区提交 `68cd891650bfe7fc5a4868064796fd2840d7a779`（不在本仓库对象库），看板进入 `pending_review`。 | 本机 DSH 的 `workspace-write` 在 Windows ACL 授权处失败，真实验收改用 `danger-full-access`；需在 ACL 正常环境复验 workspace-write。断线重连、重启恢复、超时/取消的完整语义留给 P3。 | 独立评审：1 项阻塞与 2 项高优先级已整改，复审通过；待用户验收与 ACL 环境复验 |
-| P2 管理与观测 | `272ea63` | server 36 文件 / 476 测试，runner 8 文件 / 31 测试；手动 `/runners` 在线、离线、命令排队与重连消费。 | 注册表在内存；server 重启后注册记录与命令队列清空，runner 进程启动/停止仍由用户负责。 | 待独立评审 |
+| P2 管理与观测 | `272ea63`、`dd8a752`、待提交（评审整改） | server 36 文件 / 476 测试，runner 8 文件 / 32 测试；手动 `/runners` 在线、离线、命令排队与重连消费；cancel 命令端到端测试覆盖杀进程与 unresolved 回投。 | 注册表在内存；server 重启后注册记录与命令队列清空（runner 现会自动重新注册），runner 进程启动/停止仍由用户负责。已知缺口留给 P3：命令队列无上限且已消费段不裁剪；命令游标缺 registry 实例代次，旧游标落在新区间时可能静默跳过新命令。 | 独立评审：无阻塞与高危，建议进入用户验收；中优先级整改见左 |

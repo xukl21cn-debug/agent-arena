@@ -47,7 +47,7 @@ P1 只支持 DSH headless，单进程、单任务顺序执行。
 }
 ```
 
-- `id` 是管理接口里的稳定标识；省略时按 `name` 生成稳定短哈希。同名 runner 重连会覆盖旧心跳，不会新建重复实例。
+- `id` 是管理接口里的稳定标识；省略时按 `name` 生成稳定短哈希。同 `id` 重连会覆盖旧心跳，不会新建重复实例；server 重启清空注册表后，运行中的 runner 会在下次心跳时自动重新注册。
 - `heartbeatIntervalMs` 是注册表心跳间隔，页面用它在 `/runners` 显示在线/离线。
 - `stateFile` 记录任务轮次与 DSH `sessionId`，用于避免重复执行；它属于本地状态，不提交。
 - `dsh.command` 在 Windows 默认解析为 `dsh.cmd`，也可以写绝对路径；配置里写 `dsh` 也会在 Windows 归一为 `dsh.cmd`。

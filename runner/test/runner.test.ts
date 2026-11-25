@@ -1,23 +1,31 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Claim, WorkTask } from '@arena/shared';
 import { afterEach, beforeEach, expect, it } from 'vitest';
+import { DshHeadlessAdapter } from '../src/adapters/dsh.js';
 import type { AgentAdapter, AgentRunResult } from '../src/adapters/types.js';
 import { Runner } from '../src/runner.js';
 import { SessionStore } from '../src/session-store.js';
 import type { WorkClient, WorkWaitResult } from '../src/work-client.js';
 
+const fixture = fileURLToPath(new URL('./fixtures/fake-dsh.mjs', import.meta.url));
+
 let dir: string;
 let store: SessionStore;
+const originalMode = process.env.FAKE_DSH_MODE;
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'arena-runner-loop-'));
   store = new SessionStore(path.join(dir, 'state.json'));
+  delete process.env.FAKE_DSH_MODE;
 });
 
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
+  if (originalMode === undefined) delete process.env.FAKE_DSH_MODE;
+  else process.env.FAKE_DSH_MODE = originalMode;
 });
 
 function task(): WorkTask {
@@ -167,4 +175,34 @@ it('continues a rework round in the task\'s previous DSH session', async () => {
   );
   await runner.runOnce({ waitTimeoutMs: 10 });
   expect(resumed).toBe('session-round-1');
+});
+
+it('kills a hung DSH process on cancel and submits an unresolved result', async () => {
+  process.env.FAKE_DSH_MODE = 'hang';
+  const work = new FakeWork({ reason: 'assigned', task: task(), claim: claim() });
+  const runner = new Runner(
+    work as unknown as WorkClient,
+    new DshHeadlessAdapter({
+      command: process.execPath,
+      argsPrefix: [fixture],
+      profile: 'headless',
+      permissionMode: null,
+      approvalPolicy: null,
+      extraDirs: [],
+      timeoutMs: 60_000,
+    }),
+    store,
+    dir,
+  );
+  const running = runner.runOnce({ waitTimeoutMs: 10 });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(runner.currentTask()).toMatchObject({ id: 'task-1', round: 1 });
+  expect(runner.cancelCurrent()).toBe(true);
+  await running;
+  expect(runner.currentTask()).toBeNull();
+  expect(work.submits).toHaveLength(1);
+  expect(work.submits[0]?.result).toMatchObject({
+    unresolved: expect.stringContaining('退出码'),
+  });
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'submitted' });
 });

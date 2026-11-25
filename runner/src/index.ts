@@ -3,7 +3,7 @@ import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { DshHeadlessAdapter } from './adapters/dsh.js';
 import { loadRunnerConfig } from './config.js';
-import { RunnerManagementClient } from './management-client.js';
+import { RunnerManagementClient, RunnerManagementError } from './management-client.js';
 import { Runner } from './runner.js';
 import { SessionStore } from './session-store.js';
 import { WorkClient } from './work-client.js';
@@ -45,9 +45,24 @@ async function main(): Promise<void> {
     await management.event('info', 'runner started');
     console.error(`[runner] 已加入工作域：${joined.name}（${joined.participantId}），注册 id ${config.id}。`);
     const runner = new Runner(work, adapter, sessions, config.workspace);
-    const heartbeatTimer = setInterval(() => {
+    // A server restart clears the in-memory registry; a live runner process
+    // must re-register instead of going permanently invisible.
+    const reRegister = async (trigger: string): Promise<void> => {
+      try {
+        await management.register();
+        await management.event('info', `runner re-registered (${trigger})`);
+        console.error('[runner] 注册表已失效，已自动重新注册。');
+      } catch (error) {
+        console.error('[runner] 重新注册失败：', error instanceof Error ? error.message : error);
+      }
+    };
+    const isUnregistered = (error: unknown): boolean =>
+      error instanceof RunnerManagementError && error.code === 'RUNNER_NOT_FOUND';    const heartbeatTimer = setInterval(() => {
       void management.heartbeat(runner.currentTask())
-        .catch((error) => console.error('[runner] 心跳失败：', error instanceof Error ? error.message : error));
+        .catch((error) => {
+          if (isUnregistered(error)) void reRegister('heartbeat');
+          else console.error('[runner] 心跳失败：', error instanceof Error ? error.message : error);
+        });
     }, config.heartbeatIntervalMs);
     heartbeatTimer.unref();
     const commandLoop = (async () => {
@@ -69,7 +84,8 @@ async function main(): Promise<void> {
           sessions.setCommandCursor(afterSeq);
         } catch (error) {
           if (controller.signal.aborted) break;
-          console.error('[runner] 命令轮询失败：', error instanceof Error ? error.message : error);
+          if (isUnregistered(error)) await reRegister('command poll');
+          else console.error('[runner] 命令轮询失败：', error instanceof Error ? error.message : error);
           await new Promise((resolve) => setTimeout(resolve, 2_000));
         }
       }

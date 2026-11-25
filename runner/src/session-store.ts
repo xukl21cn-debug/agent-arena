@@ -92,7 +92,8 @@ export class SessionStore {
   }
 
   setCommandCursor(seq: number): void {
-    if (!Number.isInteger(seq) || seq < this.commandSeq) return;
+    // Empty long-polls return the same cursor; skip the write in that case.
+    if (!Number.isInteger(seq) || seq <= this.commandSeq) return;
     this.commandSeq = seq;
     this.save();
   }
