@@ -24,7 +24,7 @@
 
 ## Runner 自动执行
 
-**2026-11-25 P1 最小闭环实现完成，独立评审批次已整改，待复审/验收。** 新增 `@arena/runner` 本机执行器：以 worker 身份连接 `/work/mcp`，领取任务后启动 DSH headless，自动记录会话 ID 并把结构化结果回投工作看板。真实 DSH smoke 已进入 `pending_review`；本机 `workspace-write` 的 Windows ACL 授权失败，验收改用 `danger-full-access`，需在 ACL 正常环境复验。详见 [runner proposal](proposals/work-runner.md)。
+**2026-11-25 P1 最小闭环实现完成，独立评审复审通过，待用户验收与 ACL 环境复验。** 新增 `@arena/runner` 本机执行器：以 worker 身份连接 `/work/mcp`，领取任务后启动 DSH headless，自动记录会话 ID 并把结构化结果回投工作看板。真实 DSH smoke 已进入 `pending_review`；本机 `workspace-write` 的 Windows ACL 授权失败，验收改用 `danger-full-access`，需在 ACL 正常环境复验。详见 [runner proposal](proposals/work-runner.md)。
 
 ## 尚未排期
 
