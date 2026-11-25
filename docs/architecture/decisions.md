@@ -138,3 +138,12 @@
 | 删除时**解除该房间的持久化订阅**（`GameRoom.dispose()` / `ChatManager` 的 unsubscribe） | 只从注册表移除并删文件 | 挂起的长轮询或进行中的请求会在删除后把旧状态写回磁盘，重启后房间「复活」 |
 | 删除**不删棋谱** | 连归档一起删 | 归档是这间房唯一留下的价值，回放还要用；`repository.delete` 只 unlink 房间文件 |
 | 大厅的「新建」按域放在页头，不按棋种分组 | 每个分组一个新建按钮 | 房间的棋种要等第一局开始才定，在「围棋」分组下建房会得到一张标着五子棋的卡片 |
+
+## 11. 开发任务 Runner
+
+| 决策 | 放弃的选项 | 为什么 |
+|---|---|---|
+| Runner 作为独立 `runner` workspace 包，主动连接 server 的 `/work/mcp` | 嵌进 server 进程；或让 server 反向 dial runner 的本地端口 | 本机工具不该扩大 server 的职责；反向 dial 会引入地址配置、进程生命周期和离线阻塞。runner 主动连 server 时，server 离线只影响 runner 自己 |
+| 任务生命周期复用工作域 MCP，runner 只作为 worker 客户端 | 为 runner 新建一套任务 REST/队列 | 任务状态机、租约、复审和证据已经在 `/work/mcp` 里；另造一套会分裂权威状态 |
+| P1 只支持 DSH headless，保留 `AgentAdapter` 接口；多客户端在 P4 | 先做多客户端适配器空壳；或把 DSH 直接写进循环 | 先跑通一个真实闭环，避免为未实现的客户端提前抽象；DSH 适配器本身仍隔离在 `src/adapters/dsh.ts` |
+| 任务轮次与 DSH `sessionId` 落本地状态文件，重复领取时拒绝重复启动 | 只靠内存记录；或每次领取都重新启动 | 进程重启后内存丢失；本地状态文件是 P1 最小的“不重复执行”证据，完整恢复留给 P3 |
