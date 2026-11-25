@@ -143,14 +143,18 @@ export class RunnerRegistry {
     record.lastSeenAt = this.now();
     record.lastStatus = 'online';
     if (wasOffline) this.notify(record);
+    // A runner may have persisted a cursor from a previous server process.
+    // A fresh registry has no command with that sequence, so start over rather
+    // than waiting forever for seq 7 when this process only has seq 1.
+    const effectiveAfterSeq = afterSeq > record.nextCommandSeq - 1 ? 0 : afterSeq;
     const drain = (): RunnerCommandBatch | undefined => {
-      const commands = record.commands.filter((command) => command.seq > afterSeq);
+      const commands = record.commands.filter((command) => command.seq > effectiveAfterSeq);
       if (commands.length === 0) return undefined;
-      return { commands, nextSeq: commands.at(-1)?.seq ?? afterSeq };
+      return { commands, nextSeq: commands.at(-1)?.seq ?? effectiveAfterSeq };
     };
     const immediate = drain();
     if (immediate) return immediate;
-    if (signal?.aborted) return { commands: [], nextSeq: afterSeq };
+    if (signal?.aborted) return { commands: [], nextSeq: effectiveAfterSeq };
 
     return new Promise<RunnerCommandBatch>((resolve) => {
       let settled = false;
@@ -166,8 +170,8 @@ export class RunnerRegistry {
         const batch = drain();
         if (batch) finish(batch);
       };
-      const onAbort = (): void => finish({ commands: [], nextSeq: afterSeq });
-      const timer = setTimeout(() => finish({ commands: [], nextSeq: afterSeq }), timeoutMs);
+      const onAbort = (): void => finish({ commands: [], nextSeq: effectiveAfterSeq });
+      const timer = setTimeout(() => finish({ commands: [], nextSeq: effectiveAfterSeq }), timeoutMs);
       record.waiters.add(wake);
       signal?.addEventListener('abort', onAbort, { once: true });
     });

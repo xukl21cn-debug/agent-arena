@@ -109,4 +109,4 @@ Web 只通过 REST/WS 请求 server，不直接访问 runner。server 内部增�
 | 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
 |---|---|---|---|---|
 | P1 最小闭环 | `e63cde9`（P1）、`3dbfa10`（评审整改）、`7973284`（收尾） | `pnpm test`：server 33 文件 / 467 测试，runner 7 文件 / 29 测试；fake CLI 端到端覆盖领取→执行→提交；真实 DSH smoke：任务 `c65ac982-c027-422d-82be-5725d794a16c` 领取后由会话 `session-524b306c-6c1a-4d2c-b57b-a752eb7c41f3` 执行，临时 smoke 工作区提交 `68cd891650bfe7fc5a4868064796fd2840d7a779`（不在本仓库对象库），看板进入 `pending_review`。 | 本机 DSH 的 `workspace-write` 在 Windows ACL 授权处失败，真实验收改用 `danger-full-access`；需在 ACL 正常环境复验 workspace-write。断线重连、重启恢复、超时/取消的完整语义留给 P3。 | 独立评审：1 项阻塞与 2 项高优先级已整改，复审通过；待用户验收与 ACL 环境复验 |
-| P2 管理与观测 | `272ea63` | server 36 文件 / 475 测试，runner 8 文件 / 31 测试；手动 `/runners` 在线、离线、命令排队与重连消费。 | 注册表在内存；server 重启后注册记录与命令队列清空，runner 进程启动/停止仍由用户负责。 | 待独立评审 |
+| P2 管理与观测 | `272ea63` | server 36 文件 / 476 测试，runner 8 文件 / 31 测试；手动 `/runners` 在线、离线、命令排队与重连消费。 | 注册表在内存；server 重启后注册记录与命令队列清空，runner 进程启动/停止仍由用户负责。 | 待独立评审 |

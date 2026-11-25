@@ -46,6 +46,14 @@ describe('RunnerRegistry', () => {
     expect((await registry.waitForCommands('runner-1', 0, 5)).commands).toEqual([command]);
   });
 
+  it('resets a cursor left over from a previous server process', async () => {
+    const registry = new RunnerRegistry(1_000, () => 1_000);
+    registry.register({ id: 'runner-1', name: 'Local', workspace: '/tmp/ws', version: '0.1.0' });
+    const parked = registry.waitForCommands('runner-1', 7, 500);
+    const command = registry.enqueue('runner-1', 'cancel');
+    expect(await parked).toMatchObject({ commands: [command] });
+  });
+
   it('turns stale runners offline and notifies subscribers once', () => {
     let now = 1_000;
     const registry = new RunnerRegistry(1_000, () => now);
