@@ -1,0 +1,108 @@
+/*
+ * Tailwind and shadcn/ui foundation.
+ *
+ * The existing pages keep their hand-written SCSS; this file only supplies the
+ * utilities and design tokens used by new shadcn components. Preflight is
+ * intentionally not imported: `base.scss` already resets the page, and
+ * Tailwind's global reset would change margins and form controls across the
+ * existing game, chat and work pages.
+ */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import 'tw-animate-css';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Bridge the shadcn token names onto the arena palette in `_tokens.scss`.
+ * New components therefore inherit the same graphite / lacquer-gold identity
+ * as the existing pages instead of shipping shadcn's default neutral theme.
+ */
+:root {
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--panel);
+  --card-foreground: var(--text);
+  --popover: var(--bg-raised);
+  --popover-foreground: var(--text);
+  --primary: var(--gold);
+  --primary-foreground: var(--on-gold);
+  --secondary: var(--control-top);
+  --secondary-foreground: var(--text);
+  --muted: var(--bg-raised);
+  --muted-foreground: var(--text-dim);
+  --accent: var(--control-top);
+  --accent-foreground: var(--text);
+  --destructive: var(--seal);
+  --destructive-foreground: #fffdf8;
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--gold);
+  --chart-1: var(--gold);
+  --chart-2: var(--ok);
+  --chart-3: var(--seal);
+  --chart-4: var(--wood-light);
+  --chart-5: var(--text-dim);
+  --radius: 0.875rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --font-sans: var(--font-body);
+  --font-serif: var(--font-display);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* shadcn's border and form-control utilities assume the parts of preflight we
+   actually need. Set only those here so existing pages keep their own reset. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  button {
+    appearance: none;
+    border: 0;
+    background-color: transparent;
+  }
+
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+}
