@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -47,4 +47,22 @@ it('allows a new claim for a later round', () => {
   store.markSubmitted('task-1', 1);
   expect(store.begin({ taskId: 'task-1', round: 2, claimId: 'claim-2' })).toBe(true);
   expect(store.get('task-1', 2)).toMatchObject({ status: 'running', claimId: 'claim-2' });
+});
+
+it('keeps the latest session id for a task across rework rounds', () => {
+  const store = new SessionStore(file, () => 1_000);
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  store.setSessionId('task-1', 1, 'session-round-1');
+  store.markSubmitted('task-1', 1);
+  expect(store.latestSessionForTask('task-1')).toBe('session-round-1');
+});
+
+it('moves a corrupt state file aside instead of overwriting it', () => {
+  writeFileSync(file, 'not json', 'utf8');
+  const store = new SessionStore(file, () => 1_000);
+  expect(store.get('task-1', 1)).toBeUndefined();
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  const files = readdirSync(dir);
+  expect(files.some((name) => name.startsWith('state.json.corrupt-'))).toBe(true);
+  expect(files).toContain('state.json');
 });

@@ -12,7 +12,6 @@
   "scripts": {
     "dev": "pnpm build:shared && concurrently -k -n shared,server,web -c cyan,yellow,green \"pnpm --filter @arena/shared dev\" \"pnpm --filter @arena/server dev\" \"pnpm --filter @arena/web dev\"",
     "dev:server": "pnpm build:shared && pnpm --filter @arena/server dev",
-    "dev:runner": "pnpm build:shared && pnpm --filter @arena/runner dev",
     "build:shared": "pnpm --filter @arena/shared build",
     "build:server": "pnpm --filter @arena/server build",
     "build:web": "pnpm --filter @arena/web build",

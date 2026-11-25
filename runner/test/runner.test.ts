@@ -79,7 +79,7 @@ class FakeWork {
   }
 }
 
-const adapter = (impl: () => Promise<AgentRunResult>): AgentAdapter => ({ run: impl });
+const adapter = (impl: (task: WorkTask, options?: { resumeSessionId?: string }) => Promise<AgentRunResult>): AgentAdapter => ({ run: impl });
 
 it('submits parsed evidence exactly once for an assigned task', async () => {
   const work = new FakeWork({ reason: 'assigned', task: task(), claim: claim() });
@@ -139,4 +139,32 @@ it('acknowledges a finished task', async () => {
   );
   expect(await runner.runOnce({ waitTimeoutMs: 10 })).toBe('acknowledged');
   expect(work.acked).toEqual([{ taskId: 'task-1', round: 1 }]);
+});
+
+it('continues a rework round in the task\'s previous DSH session', async () => {
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  store.setSessionId('task-1', 1, 'session-round-1');
+  store.markSubmitted('task-1', 1);
+  const rework = {
+    ...task(),
+    activeRound: 2,
+    rounds: [{ round: 1, createdAt: 1 }, { round: 2, createdAt: 2 }],
+  };
+  const work = new FakeWork({
+    reason: 'assigned',
+    task: rework,
+    claim: { id: 'claim-2', kind: 'work', round: 2, expiresAt: Date.now() + 60_000 },
+  });
+  let resumed: string | undefined;
+  const runner = new Runner(
+    work as unknown as WorkClient,
+    adapter(async (_task, options) => {
+      resumed = options?.resumeSessionId;
+      return { text: resultText, reasonKind: 'completed', exitCode: 0, stderr: '' };
+    }),
+    store,
+    dir,
+  );
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(resumed).toBe('session-round-1');
 });

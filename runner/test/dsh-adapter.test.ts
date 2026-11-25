@@ -38,7 +38,6 @@ function config(overrides: Partial<DshConfig> = {}): DshConfig {
     command: process.execPath,
     argsPrefix: [fixture],
     profile: 'headless',
-    sessionId: null,
     permissionMode: null,
     approvalPolicy: null,
     extraDirs: [],
@@ -85,6 +84,21 @@ it('reports a startup error event', async () => {
   const result = await new DshHeadlessAdapter(config()).run(task());
   expect(result.exitCode).toBe(1);
   expect(result.reasonKind).toBe('error');
+  expect(result.stderr).toContain('fake startup failure');
+});
+
+it('falls back to committed text chunks when final.text is empty', async () => {
+  process.env.FAKE_DSH_MODE = 'empty-final';
+  const result = await new DshHeadlessAdapter(config()).run(task());
+  expect(result.reasonKind).toBe('completed');
+  expect(result.text).toContain('```arena-result');
+});
+
+it('terminates a hung process and reports timeout', async () => {
+  process.env.FAKE_DSH_MODE = 'hang';
+  const result = await new DshHeadlessAdapter(config({ timeoutMs: 300 })).run(task());
+  expect(result.reasonKind).toBe('timeout');
+  expect(result.exitCode).not.toBe(0);
 });
 
 it('rejects when the configured command cannot be started', async () => {

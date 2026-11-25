@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 export type SessionStatus = 'running' | 'submitted' | 'failed';
@@ -51,7 +51,15 @@ export class SessionStore {
       }
     } catch (error) {
       // A corrupt local state file must not prevent the runner from starting.
-      console.warn(`[runner] ignoring corrupt session state ${this.file}:`, error instanceof Error ? error.message : error);
+      // Keep the broken file as evidence instead of letting the next save
+      // overwrite it, then continue with an empty in-memory map.
+      const backup = `${this.file}.corrupt-${this.now()}`;
+      try {
+        renameSync(this.file, backup);
+        console.warn(`[runner] moved corrupt session state ${this.file} to ${backup}:`, error instanceof Error ? error.message : error);
+      } catch (renameError) {
+        console.warn(`[runner] ignoring corrupt session state ${this.file}:`, renameError instanceof Error ? renameError.message : renameError);
+      }
     }
   }
 
@@ -59,12 +67,28 @@ export class SessionStore {
     mkdirSync(path.dirname(this.file), { recursive: true });
     const payload: StateFile = { version: 1, records: [...this.records.values()] };
     const temp = `${this.file}.tmp`;
-    writeFileSync(temp, JSON.stringify(payload, null, 2), 'utf8');
+    const fd = openSync(temp, 'w');
+    try {
+      writeFileSync(fd, JSON.stringify(payload, null, 2), 'utf8');
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
     renameSync(temp, this.file);
   }
 
   get(taskId: string, round: number): SessionRecord | undefined {
     return this.records.get(keyOf(taskId, round));
+  }
+
+  /** The latest DSH session seen for a task, used to continue its rework round. */
+  latestSessionForTask(taskId: string): string | undefined {
+    let found: SessionRecord | undefined;
+    for (const record of this.records.values()) {
+      if (record.taskId !== taskId || record.sessionId === undefined) continue;
+      if (found === undefined || record.round > found.round) found = record;
+    }
+    return found?.sessionId;
   }
 
   /**

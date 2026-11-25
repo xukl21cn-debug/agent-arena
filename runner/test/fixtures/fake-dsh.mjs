@@ -14,6 +14,10 @@ process.stdin.on('end', () => {
     console.log(JSON.stringify({ type: 'error', message: 'fake startup failure' }));
     process.exit(1);
   }
+  if (mode === 'hang') {
+    setTimeout(() => {}, 60_000);
+    return;
+  }
 
   const result = {
     summary: `fake dsh read ${input.length} bytes`,
@@ -26,6 +30,10 @@ process.stdin.on('end', () => {
     ? 'done without a result block'
     : `done\n\`\`\`arena-result\n${JSON.stringify(result)}\n\`\`\``;
   console.log(JSON.stringify({ type: 'text', text }));
+  if (mode === 'empty-final') {
+    console.log(JSON.stringify({ type: 'final', sessionId, reason: { kind: 'completed' }, text: '' }));
+    return;
+  }
   if (mode !== 'no-final') {
     console.log(JSON.stringify({ type: 'final', sessionId, reason: { kind: 'completed' }, text }));
   }

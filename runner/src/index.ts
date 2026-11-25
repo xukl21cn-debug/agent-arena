@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { DshHeadlessAdapter } from './adapters/dsh.js';
 import { loadRunnerConfig } from './config.js';
@@ -27,6 +28,10 @@ async function main(): Promise<void> {
   await work.connect();
   try {
     const joined = await work.join();
+    const joinedWorkspace = realpathSync(joined.workspace);
+    if (joinedWorkspace !== config.workspace) {
+      throw new Error(`工作域工作区（${joinedWorkspace}）与 runner 配置（${config.workspace}）不一致，拒绝启动。`);
+    }
     console.error(`[runner] 已加入工作域：${joined.name}（${joined.participantId}）。`);
     const runner = new Runner(work, adapter, sessions, config.workspace);
     if (values.once) {

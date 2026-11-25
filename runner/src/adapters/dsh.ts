@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import readline from 'node:readline';
 import type { WorkTask } from '@arena/shared';
 import type { DshConfig } from '../config.js';
@@ -14,6 +14,20 @@ interface DshEvent {
 
 const MAX_STDERR = 64 * 1024;
 
+/** Terminate the whole process tree, not just the `cmd.exe`/shell wrapper. */
+function killTree(child: ChildProcess): void {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+    return;
+  }
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    child.kill('SIGKILL');
+  }
+}
+
 /**
  * DSH's one-shot headless surface. Each invocation is one process; a persisted
  * `--session-id` resumes the conversation in that process's recorded cwd.
@@ -27,8 +41,7 @@ export class DshHeadlessAdapter implements AgentAdapter {
       '--profile', this.config.profile,
       '--json',
     ];
-    const resumeSessionId = options.resumeSessionId ?? this.config.sessionId;
-    if (resumeSessionId) args.push('--session-id', resumeSessionId);
+    if (options.resumeSessionId) args.push('--session-id', options.resumeSessionId);
     if (this.config.permissionMode) args.push('--permission-mode', this.config.permissionMode);
     if (this.config.approvalPolicy) args.push('--approval-policy', this.config.approvalPolicy);
     for (const dir of this.config.extraDirs) args.push('--add-dir', dir);
@@ -40,6 +53,7 @@ export class DshHeadlessAdapter implements AgentAdapter {
         env: { ...process.env },
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
+        detached: process.platform !== 'win32',
         shell: process.platform === 'win32' && /\.(?:cmd|bat)$/iu.test(this.config.command),
       });
       let sessionId: string | undefined;
@@ -60,21 +74,22 @@ export class DshHeadlessAdapter implements AgentAdapter {
         settled = true;
         clearTimeout(timer);
         options.signal?.removeEventListener('abort', onAbort);
+        const errorMessage = errorEvent?.message ? `${stderr}\n[event] ${errorEvent.message}` : stderr;
         resolve({
           ...(sessionId === undefined ? {} : { sessionId }),
-          text: finalEvent?.text ?? textChunks.join('\n'),
+          text: finalEvent?.text && finalEvent.text.trim() !== '' ? finalEvent.text : textChunks.join('\n'),
           reasonKind: timedOut ? 'timeout' : (finalEvent?.reason?.kind ?? (errorEvent ? 'error' : null)),
           exitCode,
-          stderr,
+          stderr: errorMessage.slice(-MAX_STDERR),
         });
       };
 
-      const onAbort = () => { child.kill(); };
+      const onAbort = () => { killTree(child); };
       options.signal?.addEventListener('abort', onAbort, { once: true });
 
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill();
+        killTree(child);
       }, this.config.timeoutMs);
 
       child.on('error', (error) => {

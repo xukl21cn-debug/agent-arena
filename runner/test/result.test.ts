@@ -37,6 +37,11 @@ describe('parseAgentResult', () => {
     expect(parsed).toMatchObject({ ok: false });
   });
 
+  it('ignores a plain json code block', () => {
+    const parsed = parseAgentResult(`\`\`\`json\n${JSON.stringify(valid)}\n\`\`\``);
+    expect(parsed).toMatchObject({ ok: false, reason: expect.stringContaining('arena-result') });
+  });
+
   it('treats an empty unresolved field as absent', () => {
     const parsed = parseAgentResult(`\`\`\`arena-result\n${JSON.stringify({ ...valid, unresolved: '' })}\n\`\`\``);
     expect(parsed.ok).toBe(true);

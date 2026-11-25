@@ -1,6 +1,6 @@
 # 开发任务 Runner
 
-**状态：P1 实现完成，待独立审核。** 分支：`feat/work-runner`。基线：`main` @ `bbb5b6e`。
+**状态：P1 实现完成，独立评审批次已整改，待复审/验收。** 分支：`feat/work-runner`。基线：`main` @ `bbb5b6e`。
 
 ## 1. 背景
 
@@ -97,7 +97,7 @@ Web 只通过 REST/WS 请求 server，不直接访问 runner。server 内部增�
 
 ## 8. 开放问题
 
-- P1 已按此默认实现：首轮从 `--json` 的 `session` 事件取并记录 `sessionId`；`dsh.sessionId` 可覆盖为已有的 headless 会话 ID。DSH Web GUI 会话不能由 headless 采纳。
+- P1 已按此默认实现：首轮从 `--json` 的 `session` 事件取并记录 `sessionId`；同一任务的返工轮沿用该 task 之前的 DSH 会话。P1 不提供从配置文件指定已有会话的入口；DSH Web GUI 会话不能由 headless 采纳。
 - 已定：模型凭据由 DSH 自己读取启动环境、会话工作目录的 `.env` 或 `$DSH_HOME/.env`；runner 不保存或转发凭据。
 - 已定：P1 的失败通道就是 `submit_work_result.unresolved`，不改工作域事件类型；agent 最终回复无法解析时同样回落为 `unresolved`。
 - 已定：保留 `AgentAdapter` 接口，P1 只实现 DSH headless；Codex/AGY/ZCode 在 P4 接入。
@@ -108,5 +108,5 @@ Web 只通过 REST/WS 请求 server，不直接访问 runner。server 内部增�
 
 | 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
 |---|---|---|---|---|
-| P1 最小闭环 | `e63cde9` | `pnpm test`：server 33 文件 / 467 测试，runner 7 文件 / 22 测试；fake CLI 端到端覆盖领取→执行→提交；真实 DSH smoke：任务 `c65ac982-c027-422d-82be-5725d794a16c` 领取后由会话 `session-524b306c-6c1a-4d2c-b57b-a752eb7c41f3` 执行，提交 `68cd891650bfe7fc5a4868064796fd2840d7a779`，看板进入 `pending_review`。 | 本机 DSH 的 `workspace-write` 在 Windows ACL 授权处失败，真实验收改用 `danger-full-access`；需在 ACL 正常环境复验 workspace-write。重启恢复、超时/取消留给 P3。 | 待独立审核 |
+| P1 最小闭环 | `e63cde9` | `pnpm test`：server 33 文件 / 467 测试，runner 7 文件 / 29 测试；fake CLI 端到端覆盖领取→执行→提交；真实 DSH smoke：任务 `c65ac982-c027-422d-82be-5725d794a16c` 领取后由会话 `session-524b306c-6c1a-4d2c-b57b-a752eb7c41f3` 执行，临时 smoke 工作区提交 `68cd891650bfe7fc5a4868064796fd2840d7a779`（不在本仓库对象库），看板进入 `pending_review`。 | 本机 DSH 的 `workspace-write` 在 Windows ACL 授权处失败，真实验收改用 `danger-full-access`；需在 ACL 正常环境复验 workspace-write。断线重连、重启恢复、超时/取消的完整语义留给 P3。 | 独立评审已提出 1 项阻塞（本地状态原子写/损坏文件保护）与 2 项高优先级（会话续接、Windows 命令解析）；已修复并补测试，待复审 |
 

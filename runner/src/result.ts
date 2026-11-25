@@ -1,8 +1,7 @@
 import path from 'node:path';
 import { z } from 'zod';
 
-const text = (max: number) => z.string().trim().min(1).max(max);
-const relative = text(1024).refine((file) =>
+const text = (max: number) => z.string().trim().min(1).max(max);const relative = text(1024).refine((file) =>
   !path.posix.isAbsolute(file) && !path.win32.isAbsolute(file)
   && !file.includes(':') && !file.includes('\0') && !file.split(/[\\/]/u).includes('..'));
 const artifact = z.object({
@@ -27,6 +26,7 @@ const optionalUnresolved = z.preprocess(
   text(2000).optional(),
 );
 
+/** Mirrors server `resultInput`; kept local so runner does not import server internals. */
 export const agentResultSchema = z.object({
   summary: text(8000),
   files: z.array(relative).max(200).default([]),
@@ -57,10 +57,7 @@ export interface FailedAgentResult {
  */
 export function parseAgentResult(text: string): ParsedAgentResult | FailedAgentResult {
   const arenaBlocks = [...text.matchAll(/```arena-result\s*\r?\n([\s\S]*?)```/giu)];
-  const blocks = arenaBlocks.length > 0
-    ? arenaBlocks
-    : [...text.matchAll(/```json\s*\r?\n([\s\S]*?)```/giu)];
-  const block = blocks.at(-1)?.[1]?.trim();
+  const block = arenaBlocks.at(-1)?.[1]?.trim();
   if (!block) return { ok: false, reason: '未找到 ```arena-result 代码块' };
   let value: unknown;
   try {

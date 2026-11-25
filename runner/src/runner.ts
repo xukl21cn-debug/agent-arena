@@ -108,7 +108,7 @@ export class Runner {
         '',
         `runner 工作区（${this.workspace}）与任务工作区（${workspace}）不一致，未执行。`,
       );
-      await this.work.submitResult(task.id, claim.round, claim.id, result);
+      await this.submitWithRetry(task.id, claim.round, claim.id, result);
       this.sessions.markSubmitted(task.id, claim.round, 'workspace mismatch');
       return;
     }
@@ -129,16 +129,18 @@ export class Runner {
     }
 
     this.logger.info(`领取任务 ${task.id}「${task.title}」第 ${claim.round} 轮。`);
+    const resumeSessionId = this.sessions.latestSessionForTask(task.id);
     const renewal = setInterval(() => {
       void this.work.renewClaim(task.id, claim.round, claim.id)
         .then((value) => this.logger.info(`任务 ${task.id} 租约续到 ${new Date(value.expiresAt).toISOString()}。`))
         .catch((error) => this.logger.warn(`任务 ${task.id} 租约续期失败：${error instanceof Error ? error.message : String(error)}`));
-    }, 60_000);
+    }, Math.max(1_000, Math.floor((claim.expiresAt - Date.now()) / 2)));
     renewal.unref();
     let result: AgentResult;
     try {
       const run = await this.adapter.run(task, {
         ...(signal === undefined ? {} : { signal }),
+        ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
         onSessionId: (sessionId) => {
           this.sessions.setSessionId(task.id, claim.round, sessionId);
           this.logger.info(`任务 ${task.id} 的 DSH 会话：${sessionId}`);
@@ -149,6 +151,8 @@ export class Runner {
       const failure: string[] = [];
       if (run.exitCode !== 0) failure.push(`DSH 退出码 ${run.exitCode}`);
       if (run.reasonKind !== 'completed') failure.push(`DSH 最终状态 ${run.reasonKind ?? '未知'}`);
+      const stderrTail = run.stderr.trim().slice(-1_000);
+      if (stderrTail) failure.push(`DSH stderr：${stderrTail}`);
       if (failure.length > 0) {
         result = {
           ...result,
@@ -162,12 +166,29 @@ export class Runner {
     }
 
     try {
-      await this.work.submitResult(task.id, claim.round, claim.id, result);
+      await this.submitWithRetry(task.id, claim.round, claim.id, result);
       this.sessions.markSubmitted(task.id, claim.round);
       this.logger.info(`任务 ${task.id} 第 ${claim.round} 轮结果已提交。`);
     } catch (error) {
       this.sessions.markFailed(task.id, claim.round, error instanceof Error ? error.message : String(error));
       throw error;
     }
+  }
+
+  /** A short retry covers a transient MCP/HTTP failure before P3 adds a durable outbox. */
+  private async submitWithRetry(taskId: string, round: number, claimId: string, result: AgentResult): Promise<void> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        await this.work.submitResult(taskId, round, claimId, result);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt === 3) break;
+        this.logger.warn(`任务 ${taskId} 第 ${round} 轮提交失败（第 ${attempt} 次），2 秒后重试：${error instanceof Error ? error.message : String(error)}`);
+        await sleep(2_000);
+      }
+    }
+    throw lastError;
   }
 }

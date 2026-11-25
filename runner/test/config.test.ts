@@ -18,7 +18,7 @@ it('loads a config file and resolves workspace relative to it', () => {
   writeFileSync(path.join(dir, 'runner.config.json'), JSON.stringify({
     name: 'runner-test',
     workspace: '.',
-    dsh: { permissionMode: 'workspace-write', approvalPolicy: 'never' },
+    dsh: { command: 'dsh', permissionMode: 'workspace-write', approvalPolicy: 'never' },
   }));
   const config = loadRunnerConfig('runner.config.json', dir);
   expect(config).toMatchObject({
@@ -45,4 +45,12 @@ it('uses safe unattended defaults when no file is present', () => {
 
 it('rejects an explicitly named missing config', () => {
   expect(() => loadRunnerConfig('missing.json', dir)).toThrow(/not found/u);
+});
+
+it('rejects a non-existent extra writable directory', () => {
+  writeFileSync(path.join(dir, 'runner.config.json'), JSON.stringify({
+    workspace: '.',
+    dsh: { extraDirs: ['missing-dir'] },
+  }));
+  expect(() => loadRunnerConfig('runner.config.json', dir)).toThrow(/extraDirs/u);
 });

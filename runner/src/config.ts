@@ -9,8 +9,6 @@ export interface DshConfig {
   argsPrefix: string[];
   /** DSH profile name. The shipped one-shot profile is `headless`. */
   profile: string;
-  /** Optional existing headless session to adopt instead of creating one. */
-  sessionId: string | null;
   /** Permission preset passed to DSH; `null` leaves the session default. */
   permissionMode: string | null;
   /** Approval policy for unattended runs; `null` leaves the session default. */
@@ -115,6 +113,8 @@ export function loadRunnerConfig(
   if (approvalPolicy !== null && approvalPolicy !== 'ask' && approvalPolicy !== 'never') {
     throw new Error('dsh.approvalPolicy must be "ask", "never", or null.');
   }
+  const rawCommand = text(dshRaw.command, process.platform === 'win32' ? 'dsh.cmd' : 'dsh', 'dsh.command');
+  const command = process.platform === 'win32' && rawCommand === 'dsh' ? 'dsh.cmd' : rawCommand;
 
   return {
     serverUrl: text(raw.serverUrl, DEFAULT_SERVER_URL, 'serverUrl').replace(/\/+$/u, ''),
@@ -123,14 +123,13 @@ export function loadRunnerConfig(
     stateFile,
     waitTimeoutMs: integer(raw.waitTimeoutMs, DEFAULT_WAIT_TIMEOUT_MS, 'waitTimeoutMs', 1_000, 30_000),
     dsh: {
-      command: text(dshRaw.command, process.platform === 'win32' ? 'dsh.cmd' : 'dsh', 'dsh.command'),
+      command,
       argsPrefix: stringArray(dshRaw.argsPrefix, 'dsh.argsPrefix'),
       profile: text(dshRaw.profile, 'headless', 'dsh.profile'),
-      sessionId: optionalText(dshRaw.sessionId, 'dsh.sessionId'),
       permissionMode,
       approvalPolicy,
       extraDirs: stringArray(dshRaw.extraDirs, 'dsh.extraDirs')
-        .map((entry) => path.resolve(workspace, entry)),
+        .map((entry, index) => resolveRelative(workspace, entry, `dsh.extraDirs[${index}]`)),
       timeoutMs: integer(dshRaw.timeoutMs, DEFAULT_DSH_TIMEOUT_MS, 'dsh.timeoutMs', 60_000, 4 * 60 * 60_000),
     },
   };

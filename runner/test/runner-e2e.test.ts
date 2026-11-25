@@ -67,7 +67,6 @@ it('turns a queued task into a submitted work round through the fake DSH CLI', a
         command: process.execPath,
         argsPrefix: [fixture],
         profile: 'headless',
-        sessionId: null,
         permissionMode: null,
         approvalPolicy: null,
         extraDirs: [],
