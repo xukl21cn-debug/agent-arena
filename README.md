@@ -52,8 +52,8 @@ node dist/index.js
 ### 测试与检查
 
 ```bash
-pnpm test        # 引擎、房间、HTTP/WS/MCP 集成测试
-pnpm typecheck   # server + web 类型检查
+pnpm test        # 引擎、房间、HTTP/WS/MCP 集成测试 + runner 单元/接线测试
+pnpm typecheck   # shared + server + web + runner 类型检查
 ```
 
 ### 双 AI 自测
@@ -126,6 +126,17 @@ pnpm duel --room duel2 --keep
 | `record_merge` / `cancel_task` | 记录合并证据或取消任务 |
 
 两个客户端如何接单、续租和重连，见[工作看板操作步骤](docs/dev-workflow.md#工作看板)。
+
+### 自动执行（runner）
+
+本机 `runner` 作为 worker 连接 `/work/mcp`，领取任务后启动 `dsh --profile headless --json`，把最终回复里的 `arena-result` 结构化结果回投到工作看板。P1 只支持 DSH，单 runner、单任务顺序执行。
+
+```bash
+cp runner/runner.config.example.json runner.config.json
+pnpm runner -- --config runner.config.json
+```
+
+`workspace` 要和服务端 `ARENA_WORK_WORKSPACE` 指向同一个目录。配置、结果约定和当前范围见 [runner/README.md](runner/README.md)。
 
 ## 对局流程
 

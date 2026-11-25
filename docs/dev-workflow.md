@@ -42,7 +42,7 @@ pwsh -File scripts/dev-isolated.ps1 -Only dev
 
 ## 工作看板
 
-从大厅进入「开发任务」或打开[本地看板](http://127.0.0.1:5173/work)。后端需监听回环地址。默认工作区是本仓库，另用 checkout 时在启动前设置 `ARENA_WORK_WORKSPACE` 为该目录的绝对路径。
+从大厅进入「开发任务」或打开[本地看板](http://127.0.0.1:5173/work)。后端需监听回环地址。默认工作区是本仓库，另用 checkout 时在启动前设置 `ARENA_WORK_WORKSPACE` 为该目录的绝对路径。需要自动执行时，可按 [runner 配置](../runner/README.md)启动本机 runner；它作为 worker 领取任务并驱动 DSH headless，结果仍回到同一看板。
 
 1. 执行会话连接 `arena-work`，以 `worker` 和固定名字调用 `join_work`，再调用 `wait_for_work` 等待。统筹会话以 `coordinator` 加入。用用户确认的 Proposal 或架构文档派单。协议要求建单附件标为 `brief`、每轮复审附件标为 `review`，两者都取自同一主文档。[四步流程](workflow.md#复杂架构重构)
 2. 领取执行或复审时省略 `taskId`。等已知任务状态变化时带上 `taskId` 与已见的 `afterStatus`。默认领取租约 30 分钟，长任务调用 `renew_claim`。
