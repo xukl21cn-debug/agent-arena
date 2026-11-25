@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { z } from 'zod';
 
-const text = (max: number) => z.string().trim().min(1).max(max);const relative = text(1024).refine((file) =>
+const text = (max: number) => z.string().trim().min(1).max(max);
+const relative = text(1024).refine((file) =>
   !path.posix.isAbsolute(file) && !path.win32.isAbsolute(file)
   && !file.includes(':') && !file.includes('\0') && !file.split(/[\\/]/u).includes('..'));
 const artifact = z.object({

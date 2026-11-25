@@ -43,7 +43,7 @@ export class SessionStore {
     if (!existsSync(this.file)) return;
     try {
       const parsed = JSON.parse(readFileSync(this.file, 'utf8')) as StateFile;
-      if (parsed.version !== 1 || !Array.isArray(parsed.records)) return;
+      if (parsed.version !== 1 || !Array.isArray(parsed.records)) throw new Error('unsupported state file shape');
       for (const record of parsed.records) {
         if (typeof record.taskId === 'string' && typeof record.round === 'number') {
           this.records.set(keyOf(record.taskId, record.round), record);
