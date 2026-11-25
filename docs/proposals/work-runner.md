@@ -1,6 +1,6 @@
 # 开发任务 Runner
 
-**状态：需求确认中（草稿）。** 分支：`feat/work-runner`。基线：`main` @ `bbb5b6e`。
+**状态：P1 实现完成，待独立审核。** 分支：`feat/work-runner`。基线：`main` @ `bbb5b6e`。
 
 ## 1. 背景
 
@@ -97,9 +97,16 @@ Web 只通过 REST/WS 请求 server，不直接访问 runner。server 内部增�
 
 ## 8. 开放问题
 
-- P1 默认由 runner 首轮自动创建并记录 `sessionId`（从 `--json` 的 `session` 事件取）；用户可选择提供已有 headless 会话 ID 作为覆盖。DSH Web GUI 会话不能由 headless 采纳。
-- Runner 是否需要读取 `.env`/环境变量中的模型凭据，还是由调用方预置？
-- 失败时 `submit_work_result` 的 `unresolved` 字段是唯一失败通道，还是需要补工作域事件类型？
-- 第一阶段是否只支持 DSH，还是先做适配器接口空壳以降低后续返工？
+- P1 已按此默认实现：首轮从 `--json` 的 `session` 事件取并记录 `sessionId`；`dsh.sessionId` 可覆盖为已有的 headless 会话 ID。DSH Web GUI 会话不能由 headless 采纳。
+- 已定：模型凭据由 DSH 自己读取启动环境、会话工作目录的 `.env` 或 `$DSH_HOME/.env`；runner 不保存或转发凭据。
+- 已定：P1 的失败通道就是 `submit_work_result.unresolved`，不改工作域事件类型；agent 最终回复无法解析时同样回落为 `unresolved`。
+- 已定：保留 `AgentAdapter` 接口，P1 只实现 DSH headless；Codex/AGY/ZCode 在 P4 接入。
 - P2 的 `/runners` 页面最小是否只做只读状态 + 重试/取消，启动/停止 runner 由用户手动管理？
 - 多 runner 并发是否需要扩展工作域的单一 worker 身份，还是多实例只作为同一 worker 的执行槽？
+
+## 9. 阶段记录
+
+| 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
+|---|---|---|---|---|
+| P1 最小闭环 | `e63cde9` | `pnpm test`：server 33 文件 / 467 测试，runner 7 文件 / 22 测试；fake CLI 端到端覆盖领取→执行→提交；真实 DSH smoke：任务 `c65ac982-c027-422d-82be-5725d794a16c` 领取后由会话 `session-524b306c-6c1a-4d2c-b57b-a752eb7c41f3` 执行，提交 `68cd891650bfe7fc5a4868064796fd2840d7a779`，看板进入 `pending_review`。 | 本机 DSH 的 `workspace-write` 在 Windows ACL 授权处失败，真实验收改用 `danger-full-access`；需在 ACL 正常环境复验 workspace-write。重启恢复、超时/取消留给 P3。 | 待独立审核 |
+
