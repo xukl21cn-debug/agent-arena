@@ -36,7 +36,9 @@ button {
   font-family: inherit;
 }
 
-:focus-visible {
+/* Old pages get the shared keyboard outline; shadcn components carry their
+   own focus-visible ring and must not stack the white outline on top of it. */
+:focus-visible:not([data-slot]) {
   outline: 2px solid var(--text);
   outline-offset: 2px;
 }

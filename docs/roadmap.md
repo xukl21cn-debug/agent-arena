@@ -28,6 +28,10 @@
 
 **2026-11-26 用户验收通过，已合入 `main`（合并提交 `63485bc`）。** 新增 `/runners` 页面和 `RunnerRegistry`：显示 runner 在线/离线、当前任务、最近事件；任务级 `cancel` 命令通过 REST 长轮询排队，runner 重连后消费；server 重启后运行中的 runner 会自动重新注册。runner 进程启动/停止仍由用户负责。
 
+## 页面派单（P2.5）
+
+**2026-11-26 实现完成，待验收。** `/work` 新增「新建任务」表单和待复审任务的人工「通过 / 返工」操作：看板用户以本地 coordinator 身份派单，runner 自动领取；任务仍走同一工作域状态机。
+
 ## 尚未排期
 
 - **runner 后续阶段。** P1、P2 已实现；P3 重启/超时/取消恢复、P4 多客户端与并发仍待排期。聊天常驻成员形态（P4-C3）已决定不做：会话断开自动交还已覆盖「收工不交还」的故障模式（见上），pass_turn 与租约 sweep 作为其余兜底。开发任务的「自动回投」目标会话空闲/未开时自动拉起接单，headless/`codex exec resume`/`--resume` 续跑已调研证实可行（本机 `docs/archive/review-2026-11-24/research/`），等真实多客户端排队接活的场景出现再做。若轮流发言限制讨论，再评估 `mentions` 或 `free` 模式。[聊天模型](../server/src/chat/model.ts)

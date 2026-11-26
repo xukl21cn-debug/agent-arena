@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { ServerMessage, WorkTask, WorkTaskSummary } from '@arena/shared';
-import { api, errorMessage } from '../api';
+import { api, errorMessage, type CreateWorkTaskInput } from '../api';
 import { errorText } from '../errors';
 
 interface WorkBoard {
@@ -12,6 +12,8 @@ interface WorkBoard {
   error: string | null;
   connect(): () => void;
   select(id: string): Promise<void>;
+  create(input: CreateWorkTaskInput): Promise<void>;
+  review(decision: 'approve' | 'rework', summary: string, findings?: string): Promise<void>;
   approve(): Promise<void>;
   takeover(reason: string): Promise<void>;
 }
@@ -54,6 +56,33 @@ export const useWorkStore = create<WorkBoard>((set, get) => {
     },
     approve: () => mutate(api.approveWorkMerge),
     takeover: (reason) => mutate((id) => api.takeOverWork(id, reason)),
+    async create(input) {
+      if (get().busy) return;
+      set({ busy: true, error: null });
+      try {
+        const task = await api.createWorkTask(input);
+        set({ selected: task.id, detail: task });
+        apply(task);
+      } catch (error) {
+        set({ error: errorMessage(error) });
+        throw error;
+      } finally {
+        set({ busy: false });
+      }
+    },
+    async review(decision, summary, findings) {
+      const { selected, busy } = get();
+      if (!selected || busy) return;
+      set({ busy: true, error: null });
+      try {
+        apply(await api.reviewWorkTask(selected, { decision, summary, ...(findings === undefined ? {} : { findings }) }));
+      } catch (error) {
+        set({ error: errorMessage(error) });
+        throw error;
+      } finally {
+        set({ busy: false });
+      }
+    },
     connect() {
       let closed = false;
       let timer: ReturnType<typeof setTimeout> | undefined;

@@ -6,6 +6,9 @@ import type { Claim, WorkParticipant, WorkRole, WorkRound, WorkTask, WorkTaskSum
 import { resolveArtifact, taskSchema, WorkError, type ClaimInput, type CreateInput, type MergeInput, type ResultInput, type ReviewInput } from './model.js';
 
 type Identity = WorkParticipant & { role: WorkRole };
+export const HUMAN_COORDINATOR_ID = 'w_human_0';
+const HUMAN_COORDINATOR_NAME = '看板用户';
+const humanActor: Identity = { id: HUMAN_COORDINATOR_ID, name: HUMAN_COORDINATOR_NAME, role: 'coordinator' };
 type Operation = ClaimInput & { kind: Claim['kind'] };
 type WaitReason = 'assigned' | 'in_progress' | 'review_requested' | 'reviewing' | 'finished'
   | 'pending_merge_approval' | 'merge_approved' | 'needs_attention' | 'cancelled' | 'done' | 'timeout';
@@ -175,6 +178,51 @@ export class WorkStore {
       docs: input.docs.map((doc) => resolveArtifact(this.workspace, doc)),
       coordinator: { id: actor.id, name: actor.name }, worker: { id: worker.id, name: worker.name },
       activeRound: 1, rounds: [{ round: 1, createdAt: now }], createdAt: now, updatedAt: now,
+    });
+  }
+
+  /** Dispatch from the local work page; the human operator is the coordinator. */
+  createForHuman(input: CreateInput): WorkTask {
+    return this.create(humanActor, input);
+  }
+
+  /**
+   * Human review from the work page. It claims the review internally because
+   * the browser has no MCP session to hold a claim across two REST calls.
+   */
+  reviewForHuman(
+    taskId: string,
+    input: { decision: 'approve' | 'rework'; summary: string; findings?: string },
+  ): WorkTask {
+    const task = this.get(taskId);
+    if (task.coordinator.id !== HUMAN_COORDINATOR_ID) {
+      throw new WorkError('NOT_COORDINATOR', '该任务不是看板派发的任务，不能由看板复审。');
+    }
+    if (task.status !== 'pending_review') {
+      throw new WorkError('INVALID_STATE', '任务当前不在待复审状态。');
+    }
+    if (input.decision === 'rework' && !input.findings?.trim()) {
+      throw new WorkError('INVALID_REQUEST', '要求返工时请填写具体意见。');
+    }
+    if (input.decision === 'approve' && !activeRound(task).work?.commits.length) {
+      throw new WorkError('INVALID_STATE', '这一轮没有可合并的提交。');
+    }
+    const claim: Claim = {
+      id: randomUUID(),
+      kind: 'review',
+      round: task.activeRound,
+      expiresAt: this.now() + this.ttlMs,
+    };
+    const claimed = this.updateRound(task, { ...activeRound(task), reviewClaim: claim }, 'reviewing');
+    const doc = claimed.docs[0]!;
+    return this.submitReview(humanActor, {
+      taskId,
+      round: claimed.activeRound,
+      claimId: claim.id,
+      decision: input.decision,
+      summary: input.summary,
+      ...(input.findings === undefined ? {} : { findings: input.findings }),
+      doc: { kind: 'review', path: doc.path, summary: input.summary.slice(0, 500) },
     });
   }
 

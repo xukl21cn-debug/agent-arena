@@ -50,6 +50,36 @@ describe('work relay persistence', () => {
     expect(() => store.get(task.id, other)).toThrow('找不到');
   });
 
+  it('dispatches a task from the local work page and reviews it as the human coordinator', async () => {
+    const { worker } = join();
+    const task = store.createForHuman(request);
+    expect(task).toMatchObject({ status: 'queued', coordinator: { id: 'w_human_0', name: '看板用户' } });
+    const claimed = await store.wait(worker, options);
+    store.submitWork(worker, { taskId: task.id, round: 1, claimId: claimed.claim!.id }, result);
+    const reviewed = store.reviewForHuman(task.id, { decision: 'approve', summary: '人工复审通过' });
+    expect(reviewed.status).toBe('pending_ack');
+    expect(reviewed.rounds[0]?.review).toMatchObject({ decision: 'approve', summary: '人工复审通过' });
+  });
+
+  it('requires findings when the human reviewer requests rework', async () => {
+    const { worker } = join();
+    const task = store.createForHuman(request);
+    const claimed = await store.wait(worker, options);
+    store.submitWork(worker, { taskId: task.id, round: 1, claimId: claimed.claim!.id }, result);
+    expect(() => store.reviewForHuman(task.id, { decision: 'rework', summary: '需要调整' })).toThrow('具体意见');
+  });
+
+  it('rejects a human approval without commits without leaving the task reviewing', async () => {
+    const { worker } = join();
+    const task = store.createForHuman(request);
+    const claimed = await store.wait(worker, options);
+    store.submitWork(worker, { taskId: task.id, round: 1, claimId: claimed.claim!.id }, {
+      summary: '受阻', files: [], commits: [], tests: [], docs: [], unresolved: '环境不通',
+    });
+    expect(() => store.reviewForHuman(task.id, { decision: 'approve', summary: '通过' })).toThrow('没有可合并的提交');
+    expect(store.get(task.id).status).toBe('pending_review');
+  });
+
   it('serializes claims and preserves both rounds through approval and restart', async () => {
     const { coordinator, worker } = join();
     const task = store.create(coordinator, request);

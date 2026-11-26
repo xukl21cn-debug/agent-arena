@@ -1,8 +1,11 @@
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { Router, type ErrorRequestHandler } from 'express';
 import { z } from 'zod';
 import { isWorkLoopback } from './mcp.js';
-import { id, readArtifact, reason, WorkError } from './model.js';
+import { createInput, id, readArtifact, reason, WorkError } from './model.js';
+import { HUMAN_COORDINATOR_ID } from './store.js';
 import type { WorkStore } from './store.js';
 
 export function isLocalWorkOrigin(origin: string | undefined): boolean {
@@ -12,6 +15,30 @@ export function isLocalWorkOrigin(origin: string | undefined): boolean {
     return ['http:', 'https:'].includes(url.protocol) && isWorkLoopback(url.hostname);
   } catch {
     return false;
+  }
+}
+
+const text = (max: number) => z.string().trim().min(1).max(max);
+const createBody = createInput.omit({ requestId: true }).extend({ requestId: text(200).optional() });
+const reviewBody = z.object({
+  decision: z.enum(['approve', 'rework']),
+  summary: text(8000),
+  findings: text(8000).optional(),
+});
+
+function gitContext(workspace: string): { branch: string | null; base: string | null } {
+  try {
+    const git = (args: string[]): string =>
+      execFileSync('git', ['-C', workspace, ...args], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    return {
+      branch: git(['rev-parse', '--abbrev-ref', 'HEAD']),
+      base: git(['rev-parse', 'HEAD']),
+    };
+  } catch {
+    return { branch: null, base: null };
   }
 }
 
@@ -26,8 +53,29 @@ export function createWorkRouter(store: WorkStore): Router {
     next();
   });
 
+  router.get('/context', (_req, res) => {
+    res.json({
+      workspace: store.workspace,
+      humanCoordinatorId: HUMAN_COORDINATOR_ID,
+      ...gitContext(store.workspace),
+    });
+  });
+  router.post('/tasks', (req, res) => {
+    if (!req.is('application/json')) throw new WorkError('INVALID_REQUEST', '请发送 JSON 请求。');
+    const body = createBody.parse(req.body);
+    const input = createInput.parse({
+      ...body,
+      requestId: body.requestId ?? `web-${randomUUID()}`,
+    });
+    res.status(201).json(store.createForHuman(input));
+  });
   router.get('/tasks', (_req, res) => res.json(store.list()));
   router.get('/tasks/:id', (req, res) => res.json(store.get(id.parse(req.params.id))));
+  router.post('/tasks/:id/review', (req, res) => {
+    if (!req.is('application/json')) throw new WorkError('INVALID_REQUEST', '请发送 JSON 请求。');
+    const body = reviewBody.parse(req.body);
+    res.json(store.reviewForHuman(id.parse(req.params.id), body));
+  });
   router.get('/tasks/:id/artifact', (req, res) => {
     const task = store.get(id.parse(req.params.id));
     const docs = [...task.docs];
