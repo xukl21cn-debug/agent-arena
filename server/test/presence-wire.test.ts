@@ -13,6 +13,10 @@ import { PresenceRegistry } from '../src/game/rooms/presence';
 import { attachWebSocket } from '../src/ws';
 import { MemoryRoomRepository } from '../src/game/rooms/repository';
 import { RoomManager } from '../src/game/rooms/room-manager';
+import { tempDataDir } from './helpers/temp-data-dir';
+
+const data = tempDataDir('presence-wire');
+afterAll(() => data.cleanup());
 
 let server: Server;
 let wss: WebSocketServer;
@@ -54,7 +58,7 @@ beforeAll(async () => {
   });
   manager.initializeDefaultRoom();
 
-  server = createServer(createApp(manager, loadConfig({})));
+  server = createServer(createApp(manager, loadConfig({ ARENA_DATA_DIR: data.dir })));
   wss = attachWebSocket(server, manager, { presence });
 
   await new Promise<void>((resolve, reject) => {

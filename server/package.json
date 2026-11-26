@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
+  "engines": {
+    "node": ">=22.13"
+  },
   "files": [
     "dist",
     "scripts"

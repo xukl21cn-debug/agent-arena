@@ -4,15 +4,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { ChatManager } from './chat/manager.js';
+import { SqliteChatStore } from './chat/store.js';
 import { loadConfig } from './config.js';
 import { startChatSweep } from './chat/sweep.js';
 import { PresenceRegistry } from './game/rooms/presence.js';
 import { attachWebSocket } from './ws.js';
-import { FileRoomRepository } from './game/rooms/repository.js';
+import { ArenaDatabase } from './db/database.js';
+import { SqliteRoomRepository } from './game/rooms/sqlite-repository.js';
 import { RoomManager } from './game/rooms/room-manager.js';
 import { isWorkLoopback } from './work/mcp.js';
+import { closeServer } from './shutdown.js';
 import { WorkStore } from './work/store.js';
 import { startWorkSweep } from './work/sweep.js';
+import { SqliteWorkTaskStore } from './work/sqlite-store.js';
 import { RunnerRegistry } from './runner/registry.js';
 import { startRunnerSweep } from './runner/sweep.js';
 
@@ -47,8 +51,10 @@ function main(): void {
   }
 
   const presence = new PresenceRegistry();
-  const repository = new FileRoomRepository(config.dataDir, {
+  const database = new ArenaDatabase(config.databaseFile);
+  const repository = new SqliteRoomRepository(database, {
     archiveLimit: config.archiveLimit,
+    importFrom: config.dataDir,
   });
   const manager = new RoomManager({
     repository,
@@ -63,12 +69,18 @@ function main(): void {
   const defaultRoom = manager.initializeDefaultRoom();
 
   // Same recovery for the chat domain: transcripts survive a restart.
-  const chat = new ChatManager(config.dataDir);
+  const chat = new ChatManager(config.dataDir, new SqliteChatStore(database, config.dataDir));
   chat.restoreAll();
   const restoredChats = chat.list().length;
 
   const work = isWorkLoopback(config.host)
-    ? new WorkStore(config.dataDir, config.workWorkspace, config.workClaimTtlMs)
+    ? new WorkStore(
+      config.dataDir,
+      config.workWorkspace,
+      config.workClaimTtlMs,
+      undefined,
+      new SqliteWorkTaskStore(database, config.dataDir),
+    )
     : undefined;
   const runner = new RunnerRegistry();
   const app = createApp(manager, config, { webDist, chat, work, runner });
@@ -103,14 +115,15 @@ function main(): void {
     console.log(`[arena] API   ${base}/api/runners  (runner registry)`);
     console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
     console.log(`[arena] data  ${config.dataDir}`);
+    console.log(`[arena] db    ${database.file}`);
     console.log(
       `[arena] room  "${defaultRoom.id}" (${defaultRoom.getState().status})`,
     );
     console.log(
-      `[arena] rooms  ${restoredCount} restored from ${repository.roomsDirectory}`,
+      `[arena] rooms  ${restoredCount} restored from ${database.file}`,
     );
     console.log(
-      `[arena] chats  ${restoredChats} restored from ${chat.chatDirectory}`,
+      `[arena] chats  ${restoredChats} restored from ${database.file}`,
     );
     if (serveWeb) {
       console.log(`[arena] web   ${base}/`);
@@ -121,17 +134,44 @@ function main(): void {
     }
   });
 
+  let shuttingDown = false;
+  let databaseClosed = false;
+  const closeDatabase = (): void => {
+    if (databaseClosed) return;
+    databaseClosed = true;
+    try {
+      database.close();
+    } catch (error) {
+      console.error('[arena] 关闭数据库失败:', error instanceof Error ? error.message : error);
+    }
+  };
+
   const shutdown = (signal: string): void => {
+    if (shuttingDown) {
+      // Second Ctrl+C: stop waiting for the graceful path.
+      closeDatabase();
+      process.exit(1);
+    }
+    shuttingDown = true;
     console.log(`[arena] ${signal} received, shutting down`);
     clearInterval(sweepTimer);
     clearInterval(chatSweepTimer);
     clearInterval(workSweepTimer);
     clearInterval(runnerSweepTimer);
-    wss.close();
-    server.close(() => {
-      process.exit(0);
-    });
-    setTimeout(() => process.exit(1), 3_000).unref();
+    // An open browser tab holds an upgraded WebSocket socket, which the HTTP
+    // server cannot close by itself; `closeServer` closes those first so this
+    // path finishes in milliseconds. The database is closed on the way out of
+    // either path: that is what checkpoints the WAL back into `arena.db`, and
+    // what makes "copy the one file" a real backup.
+    const exit = (code: number): void => {
+      closeDatabase();
+      process.exit(code);
+    };
+    void closeServer(server, wss).then(
+      () => exit(0),
+      () => exit(1),
+    );
+    setTimeout(() => exit(1), 3_000).unref();
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));

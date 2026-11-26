@@ -10,7 +10,7 @@
 
 ## 快速开始
 
-本仓库的开发与测试使用 Node.js 24.x、pnpm 10.29.2。根包声明的 Node 下限是 20，实际开发工具还受锁定的 Vite、Vitest 和 concurrently 版本约束。[包配置](package.json) · [依赖锁文件](pnpm-lock.yaml)
+本仓库的开发与测试使用 Node.js 24.x、pnpm 10.29.2。根包声明的 Node 下限是 22.13（`node:sqlite` 免旗标可用），实际开发工具还受锁定的 Vite、Vitest 和 concurrently 版本约束。[包配置](package.json) · [依赖锁文件](pnpm-lock.yaml)
 
 ### 开发模式
 
@@ -40,7 +40,7 @@ pnpm start
 pnpm bundle    # 或 pnpm run deploy
 ```
 
-`deploy-dst/` 包含编译后的后端、前端静态文件和生产依赖。完整压缩该目录（ZIP 或 `tar.gz`），包含其中的 `node_modules/`。在装有 Node.js 20 或更新版本的目标机解压并运行下面的命令即可。
+`deploy-dst/` 包含编译后的后端、前端静态文件和生产依赖。完整压缩该目录（ZIP 或 `tar.gz`），包含其中的 `node_modules/`。在装有 Node.js 22.13 或更新版本的目标机解压并运行下面的命令即可。
 
 ```bash
 cd deploy-dst
@@ -162,10 +162,17 @@ pnpm runner -- --config runner.config.json
 | `WAIT_MAX_MS` | 60000 | `wait_for_turn` 上限 |
 | `ARENA_SERVER_URL` | `http://127.0.0.1:3000` | Vite 开发代理转发的后端地址 |
 | `DEFAULT_ROOM_ID` | default | 默认房间 |
-| `ARENA_DATA_DIR` | `<repo>/data` | 落盘根目录，下分 `rooms/` `chat/` `archive/` `work/` |
+| `ARENA_DATA_DIR` | `<repo>/data` | 数据根目录；SQLite 库 `arena.db` 与旧版 JSON 导入源都在这里 |
+| `ARENA_DB_PATH` | `<dataDir>/arena.db` | SQLite 数据库文件，棋局、棋谱、聊天、工作任务共用 |
 | `ARENA_WORK_WORKSPACE` | 仓库根目录 | 工作域的绝对路径 |
 | `ARENA_WORK_CLAIM_TTL_MS` | 1800000 | 领取租约，范围 60000–14400000 毫秒 |
 | `ARENA_ARCHIVE_LIMIT` | 20 | 每个房间保留多少局归档对局 |
+
+## 数据与备份
+
+四个域的权威状态都在 `data/arena.db`（SQLite，WAL 模式，同目录另有 `-wal` / `-shm`）。正常关停（含 `Ctrl+C`）会断开连接、关闭数据库并把 WAL 合并回主文件，因此**停服后复制 `arena.db` 一个文件就是完整备份**；服务还在跑时直接复制会丢掉 `-wal` 里尚未合并的写入，要么先停服，要么用 `VACUUM INTO` 导出一致快照。库文件被更高版本写过（schema 版本更新）时，当前版本会拒绝启动而不是照常写入。
+
+升级前的 `data/rooms|chat|work|archive` JSON 只在首次启动时导入一次，导入完成会写进库里的标记，之后即使数据被清空也不会重新导入；服务不写回 JSON，也不会自动删这些文件。
 
 ## 开发与文档
 

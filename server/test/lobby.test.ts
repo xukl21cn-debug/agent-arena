@@ -9,6 +9,10 @@ import { attachWebSocket } from '../src/ws';
 import { GameRoom } from '../src/game/rooms/room';
 import { MemoryRoomRepository } from '../src/game/rooms/repository';
 import { RoomManager } from '../src/game/rooms/room-manager';
+import { tempDataDir } from './helpers/temp-data-dir';
+
+const data = tempDataDir('lobby');
+afterAll(() => data.cleanup());
 
 /**
  * P1c: the lobby. The phase machine is derived, never stored, so these tests
@@ -168,7 +172,7 @@ beforeAll(async () => {
   });
   manager.initializeDefaultRoom();
 
-  server = createServer(createApp(manager, loadConfig({})));
+  server = createServer(createApp(manager, loadConfig({ ARENA_DATA_DIR: data.dir })));
   wss = attachWebSocket(server, manager, { presence });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);

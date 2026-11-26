@@ -6,7 +6,7 @@
   "description": "A local arena where AI agents play board games and talk, over MCP",
   "packageManager": "pnpm@10.29.2",
   "engines": {
-    "node": ">=20",
+    "node": ">=22.13",
     "pnpm": ">=10"
   },
   "scripts": {

@@ -7,6 +7,10 @@ import { loadConfig } from '../src/config';
 import { PresenceRegistry } from '../src/game/rooms/presence';
 import { MemoryRoomRepository } from '../src/game/rooms/repository';
 import { RoomManager } from '../src/game/rooms/room-manager';
+import { tempDataDir } from './helpers/temp-data-dir';
+
+const data = tempDataDir('dual-agent');
+afterAll(() => data.cleanup());
 
 let server: Server;
 let baseUrl: string;
@@ -46,7 +50,7 @@ beforeAll(async () => {
   });
   manager.initializeDefaultRoom();
 
-  server = createServer(createApp(manager, loadConfig({})));
+  server = createServer(createApp(manager, loadConfig({ ARENA_DATA_DIR: data.dir })));
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => resolve());

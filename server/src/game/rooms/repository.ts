@@ -31,6 +31,13 @@ export const DEFAULT_ARCHIVE_LIMIT = 20;
 
 export interface RepositoryOptions {
   archiveLimit?: number;
+  /**
+   * Create `<dataDir>/rooms` and `<dataDir>/archive` on construction. The
+   * SQLite importer passes `false`: it only reads the legacy tree, and a
+   * read-only consumer must not resurrect the directories a user just
+   * deleted.
+   */
+  createDirs?: boolean;
 }
 
 function archiveIdOf(persisted: PersistedRoom): string {
@@ -218,15 +225,12 @@ export class FileRoomRepository implements RoomRepository {
 
   constructor(dataDir: string, options: RepositoryOptions = {}) {
     this.roomsDir = path.join(dataDir, 'rooms');
-    mkdirSync(this.roomsDir, { recursive: true });
     this.archiveDir = path.join(dataDir, 'archive');
-    mkdirSync(this.archiveDir, { recursive: true });
+    if (options.createDirs !== false) {
+      mkdirSync(this.roomsDir, { recursive: true });
+      mkdirSync(this.archiveDir, { recursive: true });
+    }
     this.archiveLimit = options.archiveLimit ?? DEFAULT_ARCHIVE_LIMIT;
-  }
-
-  /** Where room files live, for boot logs and diagnostics. */
-  get roomsDirectory(): string {
-    return this.roomsDir;
   }
 
   /**

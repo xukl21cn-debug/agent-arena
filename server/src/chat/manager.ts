@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, openSync, closeSync, fsyncSync, readdirSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { ROOM_ID_PATTERN } from '@arena/shared';
+import type { ChatStore } from './store.js';
 import { ChatRoom } from './chat-room.js';
 import {
   ChatError,
@@ -47,13 +48,17 @@ export class ChatManager {
   private readonly unsubscribes = new Map<string, () => void>();
   private readonly chatDir: string;
 
-  constructor(dataDir: string) {
+  constructor(
+    dataDir: string,
+    private readonly store?: ChatStore,
+  ) {
     this.chatDir = path.join(dataDir, 'chat');
-    mkdirSync(this.chatDir, { recursive: true });
-  }
-
-  get chatDirectory(): string {
-    return this.chatDir;
+    // Only the file mode owns this directory. With a store the JSON tree is a
+    // read-only import source, so recreating it would leave an empty `chat/`
+    // behind after the legacy files were deleted.
+    if (this.store === undefined) {
+      mkdirSync(this.chatDir, { recursive: true });
+    }
   }
 
   private fileFor(roomId: string): string {
@@ -65,6 +70,10 @@ export class ChatManager {
   }
 
   private save(room: ChatRoom): void {
+    if (this.store) {
+      this.store.save(room);
+      return;
+    }
     const file = this.fileFor(room.id);
     const tmp = `${file}.tmp`;
     const json = JSON.stringify(room.toSnapshotFile());
@@ -159,11 +168,15 @@ export class ChatManager {
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  /** Remove the persisted file and the room from memory. */
+  /** Remove the persisted room and the in-memory entry. */
   remove(roomId: string): void {
     this.unsubscribes.get(roomId)?.();
     this.unsubscribes.delete(roomId);
     this.rooms.delete(roomId);
+    if (this.store) {
+      this.store.delete(roomId);
+      return;
+    }
     const file = this.fileFor(roomId);
     if (existsSync(file)) {
       unlinkSync(file);
@@ -196,6 +209,14 @@ export class ChatManager {
    * their transcripts stay queryable. Corrupt files are skipped by load.
    */
   restoreAll(): void {
+    if (this.store) {
+      for (const { roomId, snapshot } of this.store.loadAll()) {
+        if (this.rooms.has(roomId)) continue;
+        const room = this.fromSnapshot(snapshot, roomId, 'sqlite');
+        if (room) this.rooms.set(roomId, room);
+      }
+      return;
+    }
     if (!existsSync(this.chatDir)) {
       return;
     }
@@ -215,6 +236,10 @@ export class ChatManager {
   }
 
   private loadFile(roomId: string): ChatRoom | null {
+    if (this.store) {
+      const snapshot = this.store.load(roomId);
+      return snapshot === null ? null : this.fromSnapshot(snapshot, roomId, 'sqlite');
+    }
     const file = path.join(this.chatDir, `${roomId}.json`);
     let raw: string;
     try {
@@ -222,19 +247,36 @@ export class ChatManager {
     } catch {
       return null;
     }
+    let parsed: ChatRoomSnapshotFile;
     try {
-      const parsed = JSON.parse(raw) as ChatRoomSnapshotFile;
+      parsed = JSON.parse(raw) as ChatRoomSnapshotFile;
+    } catch (error) {
+      console.error(
+        `[chat] skipping corrupt chat room file ${file}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return null;
+    }
+    return this.fromSnapshot(parsed, roomId, file);
+  }
+
+  private fromSnapshot(
+    parsed: ChatRoomSnapshotFile,
+    roomId: string,
+    source: string,
+  ): ChatRoom | null {
+    try {
       if (Object.hasOwn(parsed, 'tasks')) console.warn('[chat] 忽略旧任务字段', roomId);
-      // The file's own id wins as the identity — a renamed file must not
+      // The snapshot's own id wins as the identity — a renamed file must not
       // resurrect a room under the wrong name.
       const room = ChatRoom.fromSnapshotFile(parsed);
-      // Both wiring points (create and this one) must subscribe, or a room
+      // Both wiring points (create and restore) must subscribe, or a room
       // recovered on boot stops persisting its later messages.
       this.track(room);
       return room;
     } catch (error) {
       console.error(
-        `[chat] skipping corrupt chat room file ${file}:`,
+        `[chat] skipping corrupt chat room ${source}:`,
         error instanceof Error ? error.message : error,
       );
       return null;

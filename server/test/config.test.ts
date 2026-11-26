@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe('data directory', () => {
-  it('sits at the repo root, one subdirectory per domain', () => {
+  it('sits at the repo root, whatever the working directory', () => {
     const { dataDir } = loadConfig({});
 
     expect(dataDir).toBe(path.join(repoRoot, 'data'));
@@ -47,5 +47,24 @@ describe('data directory', () => {
     expect(loadConfig({ ARENA_DATA_DIR: override }).dataDir).toBe(override);
     // Blank means "unset", not "root of the filesystem".
     expect(loadConfig({ ARENA_DATA_DIR: '   ' }).dataDir).toBe(DEFAULT_DATA_DIR);
+  });
+});
+
+describe('database file', () => {
+  it('defaults to arena.db inside the data directory', () => {
+    expect(loadConfig({}).databaseFile).toBe(path.join(DEFAULT_DATA_DIR, 'arena.db'));
+
+    const elsewhere = path.join(os.tmpdir(), 'arena-db-elsewhere');
+    expect(loadConfig({ ARENA_DATA_DIR: elsewhere }).databaseFile).toBe(path.join(elsewhere, 'arena.db'));
+  });
+
+  it('does not follow the working directory either', () => {
+    const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'arena-cwd-'));
+    tempDirs.push(elsewhere);
+
+    process.chdir(elsewhere);
+    // A relative path lands next to the repo's data root, never under
+    // `server/` or wherever the server happened to be started from.
+    expect(loadConfig({ ARENA_DB_PATH: 'rel-probe.db' }).databaseFile).toBe(path.join(repoRoot, 'rel-probe.db'));
   });
 });

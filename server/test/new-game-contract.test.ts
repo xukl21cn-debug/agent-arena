@@ -7,6 +7,10 @@ import { createApp } from '../src/app';
 import { loadConfig } from '../src/config';
 import { MemoryRoomRepository } from '../src/game/rooms/repository';
 import { RoomManager } from '../src/game/rooms/room-manager';
+import { tempDataDir } from './helpers/temp-data-dir';
+
+const data = tempDataDir('new-game-contract');
+afterAll(() => data.cleanup());
 
 /**
  * new_game error contract, shared by REST and MCP:
@@ -44,7 +48,7 @@ async function getJson<T>(path: string): Promise<T> {
 beforeAll(async () => {
   const manager = new RoomManager({ repository: new MemoryRoomRepository() });
   manager.initializeDefaultRoom();
-  server = createServer(createApp(manager, loadConfig({})));
+  server = createServer(createApp(manager, loadConfig({ ARENA_DATA_DIR: data.dir })));
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => resolve());
