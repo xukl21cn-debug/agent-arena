@@ -17,14 +17,16 @@ import {
 } from './repository.js';
 
 export interface SqliteRoomRepositoryOptions extends RepositoryOptions {
-  /** When set, import the legacy rooms/archive JSON files if the tables are empty. */
+  /** When set, import the legacy rooms/archive JSON files unless that already happened. */
   importFrom?: string;
 }
 
 /** One-shot import marker; see `ArenaDatabase.metaFlag`. */
 const LEGACY_IMPORTED_FLAG = 'legacy_imported:rooms';
 
-interface PayloadRow {
+/** A row as the reader sees it: the key it is stored under plus the JSON snapshot. */
+interface KeyedRow {
+  id: string;
   payload: string;
 }
 
@@ -54,14 +56,53 @@ function legacyIdsIn(directory: string, pattern: RegExp, label: string): string[
   return ids;
 }
 
-function parsePayload<T>(row: PayloadRow | undefined, label: string): T | null {
+/**
+ * Everything `GameRoom` needs to restore a snapshot: it copies `history` and
+ * `commentary` with spread, and `migrateSnapshot` reads `state`, so a row
+ * without them would throw on every boot. Strict comparisons on purpose —
+ * `ROOM_ID_PATTERN.test(undefined)` matches the string "undefined".
+ */
+function isRestorableRoom(persisted: unknown): persisted is PersistedRoom {
+  if (typeof persisted !== 'object' || persisted === null) return false;
+  const room = persisted as Partial<PersistedRoom>;
+  return (
+    typeof room.id === 'string' &&
+    typeof room.state?.updatedAt === 'string' &&
+    Array.isArray(room.history) &&
+    Array.isArray(room.commentary)
+  );
+}
+
+/** A room row is keyed by the snapshot's own id, and `restoreAll` creates a room under it, so it must be a valid one. */
+const roomKey = (room: PersistedRoom): string => (ROOM_ID_PATTERN.test(room.id) ? room.id : '');
+
+/** An archive row is keyed by the id `archive()` derives from the payload. */
+const archiveKey = (room: PersistedRoom): string => archiveSummaryOf(room).archiveId;
+
+/**
+ * Read one row. A row the app could not have written — unparsable, not a room
+ * snapshot, or stored under another id — is logged and skipped, never thrown:
+ * a throw from here is a failed boot, on every start, until someone edits the
+ * database by hand.
+ */
+function parseRoom(
+  row: KeyedRow | undefined,
+  label: string,
+  keyOf: (room: PersistedRoom) => string,
+): PersistedRoom | null {
   if (row === undefined) return null;
+  let parsed: unknown;
   try {
-    return JSON.parse(row.payload) as T;
+    parsed = JSON.parse(row.payload);
   } catch (error) {
     console.error(`[sqlite-repository] skipping corrupt ${label}:`, error instanceof Error ? error.message : error);
     return null;
   }
+  if (!isRestorableRoom(parsed) || keyOf(parsed) !== row.id) {
+    console.error(`[sqlite-repository] skipping corrupt ${label}: not a room snapshot written under this id`);
+    return null;
+  }
+  return migrateSnapshot(parsed);
 }
 
 /**
@@ -81,9 +122,8 @@ export class SqliteRoomRepository implements RoomRepository {
 
   load(roomId: string): PersistedRoom | null {
     this.assertRoomId(roomId);
-    const row = this.database.db.prepare('SELECT payload FROM rooms WHERE id = ?').get(roomId) as PayloadRow | undefined;
-    const persisted = parsePayload<PersistedRoom>(row, `room ${roomId}`);
-    return persisted === null ? null : migrateSnapshot(persisted);
+    const row = this.database.db.prepare('SELECT id, payload FROM rooms WHERE id = ?').get(roomId) as KeyedRow | undefined;
+    return parseRoom(row, `room ${roomId}`, roomKey);
   }
 
   save(room: GameRoom): void {
@@ -92,11 +132,11 @@ export class SqliteRoomRepository implements RoomRepository {
   }
 
   list(): RoomSummary[] {
-    const rows = this.database.db.prepare('SELECT payload FROM rooms').all() as unknown as PayloadRow[];
+    const rows = this.database.db.prepare('SELECT id, payload FROM rooms').all() as unknown as KeyedRow[];
     const summaries: RoomSummary[] = [];
     for (const row of rows) {
-      const persisted = parsePayload<PersistedRoom>(row, 'room');
-      if (persisted) summaries.push(summarize(migrateSnapshot(persisted)));
+      const persisted = parseRoom(row, `room ${row.id}`, roomKey);
+      if (persisted) summaries.push(summarize(persisted));
     }
     return summaries.sort((a, b) => a.roomId.localeCompare(b.roomId));
   }
@@ -119,17 +159,18 @@ export class SqliteRoomRepository implements RoomRepository {
     if (!ARCHIVE_ID_PATTERN.test(archiveId)) {
       throw new RoomError('INVALID_REQUEST', `Invalid archiveId "${String(archiveId)}".`);
     }
-    const row = this.database.db.prepare('SELECT payload FROM archives WHERE archive_id = ?').get(archiveId) as PayloadRow | undefined;
-    const persisted = parsePayload<PersistedRoom>(row, `archive ${archiveId}`);
-    return persisted === null ? null : migrateSnapshot(persisted);
+    const row = this.database.db
+      .prepare('SELECT archive_id AS id, payload FROM archives WHERE archive_id = ?')
+      .get(archiveId) as KeyedRow | undefined;
+    return parseRoom(row, `archive ${archiveId}`, archiveKey);
   }
 
   listArchives(): ArchiveSummary[] {
-    const rows = this.database.db.prepare('SELECT payload FROM archives').all() as unknown as PayloadRow[];
+    const rows = this.database.db.prepare('SELECT archive_id AS id, payload FROM archives').all() as unknown as KeyedRow[];
     const summaries: ArchiveSummary[] = [];
     for (const row of rows) {
-      const persisted = parsePayload<PersistedRoom>(row, 'archive');
-      if (persisted) summaries.push(archiveSummaryOf(migrateSnapshot(persisted)));
+      const persisted = parseRoom(row, `archive ${row.id}`, archiveKey);
+      if (persisted) summaries.push(archiveSummaryOf(persisted));
     }
     return summaries.sort((a, b) => b.playedAt.localeCompare(a.playedAt));
   }
@@ -180,10 +221,11 @@ export class SqliteRoomRepository implements RoomRepository {
     try {
       const persisted = legacy.load(roomId);
       if (persisted === null) return false;
-      // Validate before binding: a payload without a usable updatedAt throws
-      // inside the transaction, which rolls the whole import back.
-      if (!ROOM_ID_PATTERN.test(persisted.id) || typeof persisted.state?.updatedAt !== 'string') {
-        console.warn(`[sqlite-repository] skipping legacy room ${roomId}: unexpected payload shape`);
+      // The app wrote `<room.id>.json`, so a payload whose id is not its own
+      // file name was renamed or hand-edited, and one that cannot be restored
+      // would fail every boot after this one.
+      if (persisted.id !== roomId || !isRestorableRoom(persisted)) {
+        console.warn(`[sqlite-repository] skipping legacy room ${roomId}: not a room snapshot written under this id`);
         return false;
       }
       this.upsertRoom(persisted);
@@ -201,8 +243,10 @@ export class SqliteRoomRepository implements RoomRepository {
     try {
       const persisted = legacy.loadArchive(archiveId);
       if (persisted === null) return false;
-      if (!ROOM_ID_PATTERN.test(persisted.id)) {
-        console.warn(`[sqlite-repository] skipping legacy archive ${archiveId}: unexpected payload shape`);
+      // `archive()` names a row `<room.id>__<gameId>` from the payload, which is
+      // also the legacy file name; a mismatch means the file was moved or edited.
+      if (!isRestorableRoom(persisted) || archiveSummaryOf(persisted).archiveId !== archiveId) {
+        console.warn(`[sqlite-repository] skipping legacy archive ${archiveId}: not an archive written under this id`);
         return false;
       }
       this.upsertArchive(persisted);
@@ -240,10 +284,12 @@ export class SqliteRoomRepository implements RoomRepository {
 
   private pruneArchives(roomId: string): void {
     const rows = this.database.db.prepare(
-      'SELECT payload FROM archives WHERE room_id = ? ORDER BY played_at DESC, rowid DESC',
-    ).all(roomId) as unknown as PayloadRow[];
+      'SELECT archive_id AS id, payload FROM archives WHERE room_id = ? ORDER BY played_at DESC, rowid DESC',
+    ).all(roomId) as unknown as KeyedRow[];
+    // Corrupt rows are neither counted nor pruned: they are evidence, and
+    // deleting them would hide whatever happened (same as the file store).
     const owned = rows
-      .map((row) => parsePayload<PersistedRoom>(row, 'archive'))
+      .map((row) => parseRoom(row, `archive ${row.id}`, archiveKey))
       .filter((entry): entry is PersistedRoom => entry !== null)
       .map((entry) => archiveSummaryOf(entry));
     const stale = owned.slice(this.archiveLimit);

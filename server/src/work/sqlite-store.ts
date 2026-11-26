@@ -77,6 +77,9 @@ export class SqliteWorkTaskStore implements WorkTaskStore {
       for (const entry of files) {
         try {
           const task = taskSchema.parse(JSON.parse(readFileSync(path.join(directory, entry), 'utf8')));
+          // The file-mode store only ever read `<task.id>.json`; keep that rule
+          // so a renamed or copied file cannot plant a task under another name.
+          if (entry !== `${task.id}.json`) throw new Error('file name does not match the task id');
           this.database.db.prepare(`
             INSERT INTO work_tasks(id, status, updated_at, payload) VALUES (?, ?, ?, ?)
             ON CONFLICT(id) DO NOTHING

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ROOM_ID_PATTERN } from '@arena/shared';
-import type { ChatRoom } from './chat-room.js';
+import { ChatRoom } from './chat-room.js';
 import type { ChatRoomSnapshotFile } from './model.js';
 import { ArenaDatabase } from '../db/database.js';
 
@@ -132,6 +132,11 @@ export class SqliteChatStore implements ChatStore {
           const parsed = JSON.parse(readFileSync(path.join(directory, entry), 'utf8')) as unknown;
           if (parsed === null || typeof parsed !== 'object') throw new Error('payload is not an object');
           const snapshot = parsed as ChatRoomSnapshotFile;
+          // The app wrote `<id>.json` from the snapshot's own id: anything else
+          // was renamed or hand-edited. And a snapshot the room cannot be
+          // rebuilt from must stay out — as a row it would fail on every boot.
+          if (snapshot.id !== roomId) throw new Error('payload id does not match the file name');
+          ChatRoom.fromSnapshotFile(snapshot);
           this.database.db.prepare(`
             INSERT INTO chat_rooms(id, payload, updated_at) VALUES (?, ?, ?)
             ON CONFLICT(id) DO NOTHING

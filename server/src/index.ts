@@ -13,6 +13,7 @@ import { ArenaDatabase } from './db/database.js';
 import { SqliteRoomRepository } from './game/rooms/sqlite-repository.js';
 import { RoomManager } from './game/rooms/room-manager.js';
 import { isWorkLoopback } from './work/mcp.js';
+import { closeServer } from './shutdown.js';
 import { WorkStore } from './work/store.js';
 import { startWorkSweep } from './work/sweep.js';
 import { SqliteWorkTaskStore } from './work/sqlite-store.js';
@@ -157,20 +158,20 @@ function main(): void {
     clearInterval(chatSweepTimer);
     clearInterval(workSweepTimer);
     clearInterval(runnerSweepTimer);
-    wss.close();
-    server.close(() => {
+    // An open browser tab holds an upgraded WebSocket socket, which the HTTP
+    // server cannot close by itself; `closeServer` closes those first so this
+    // path finishes in milliseconds. The database is closed on the way out of
+    // either path: that is what checkpoints the WAL back into `arena.db`, and
+    // what makes "copy the one file" a real backup.
+    const exit = (code: number): void => {
       closeDatabase();
-      process.exit(0);
-    });
-    // An open browser tab holds a keep-alive socket, and `server.close()` waits
-    // for every connection: without this the force-exit timer below wins, the
-    // database is never closed, and the WAL is not checkpointed back into
-    // `arena.db` (which is what makes "copy the one file" a real backup).
-    server.closeAllConnections();
-    setTimeout(() => {
-      closeDatabase();
-      process.exit(1);
-    }, 3_000).unref();
+      process.exit(code);
+    };
+    void closeServer(server, wss).then(
+      () => exit(0),
+      () => exit(1),
+    );
+    setTimeout(() => exit(1), 3_000).unref();
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
