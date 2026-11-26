@@ -5,15 +5,27 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 const relative = text(1024).refine((file) =>
   !path.posix.isAbsolute(file) && !path.win32.isAbsolute(file)
   && !file.includes(':') && !file.includes('\0') && !file.split(/[\\/]/u).includes('..'));
-const artifact = z.object({
-  kind: z.enum(['brief', 'design', 'prompt', 'work_summary', 'code_doc', 'review', 'other']),
-  path: relative,
-  summary: text(500),
-  hash: z.preprocess(
-    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
-    z.string().regex(/^[\da-f]{64}$/i).optional(),
-  ),
-});
+const artifact = z.preprocess(
+  (value) => {
+    // Agents often emit a bare path where the contract wants an object.
+    // Coerce it so usable evidence survives a formatting slip; the summary
+    // mirrors the path, which is still better than dropping the entry.
+    if (typeof value === 'string' && value.trim() !== '') {
+      const trimmed = value.trim();
+      return { kind: 'other', path: trimmed, summary: trimmed };
+    }
+    return value;
+  },
+  z.object({
+    kind: z.enum(['brief', 'design', 'prompt', 'work_summary', 'code_doc', 'review', 'other']),
+    path: relative,
+    summary: text(500),
+    hash: z.preprocess(
+      (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+      z.string().regex(/^[\da-f]{64}$/i).optional(),
+    ),
+  }),
+);
 const test = z.object({
   command: text(500),
   outcome: z.enum(['passed', 'failed']),

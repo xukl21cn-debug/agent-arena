@@ -37,6 +37,15 @@ describe('parseAgentResult', () => {
     expect(parsed).toMatchObject({ ok: false });
   });
 
+  it('coerces bare string docs entries into artifact objects', () => {
+    const parsed = parseAgentResult(`\`\`\`arena-result\n${JSON.stringify({ ...valid, docs: ['docs/runner-acceptance.md'] })}\n\`\`\``);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.docs).toEqual([
+      { kind: 'other', path: 'docs/runner-acceptance.md', summary: 'docs/runner-acceptance.md' },
+    ]);
+  });
+
   it('ignores a plain json code block', () => {
     const parsed = parseAgentResult(`\`\`\`json\n${JSON.stringify(valid)}\n\`\`\``);
     expect(parsed).toMatchObject({ ok: false, reason: expect.stringContaining('arena-result') });

@@ -186,5 +186,9 @@ export function buildPrompt(task: WorkTask): string {
     '  "unresolved": "仅当受阻时填写"',
     '}',
     '```',
+    '字段格式约束（违反会导致回报被拒）：',
+    '- files 是字符串数组；commits 是提交哈希字符串数组；没有就填 []；',
+    '- docs 的元素必须是对象 {"kind":"other","path":"...","summary":"..."}，没有额外文档时保持 []，绝不能填字符串；',
+    '- tests 的元素必须是对象；受阻无法提交时才填 unresolved，否则省略该字段。',
   ].join('\n');
 }
