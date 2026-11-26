@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { ChatManager } from './chat/manager.js';
+import { SqliteChatStore } from './chat/store.js';
 import { loadConfig } from './config.js';
 import { startChatSweep } from './chat/sweep.js';
 import { PresenceRegistry } from './game/rooms/presence.js';
@@ -14,6 +15,7 @@ import { RoomManager } from './game/rooms/room-manager.js';
 import { isWorkLoopback } from './work/mcp.js';
 import { WorkStore } from './work/store.js';
 import { startWorkSweep } from './work/sweep.js';
+import { SqliteWorkTaskStore } from './work/sqlite-store.js';
 import { RunnerRegistry } from './runner/registry.js';
 import { startRunnerSweep } from './runner/sweep.js';
 
@@ -66,12 +68,18 @@ function main(): void {
   const defaultRoom = manager.initializeDefaultRoom();
 
   // Same recovery for the chat domain: transcripts survive a restart.
-  const chat = new ChatManager(config.dataDir);
+  const chat = new ChatManager(config.dataDir, new SqliteChatStore(database, config.dataDir));
   chat.restoreAll();
   const restoredChats = chat.list().length;
 
   const work = isWorkLoopback(config.host)
-    ? new WorkStore(config.dataDir, config.workWorkspace, config.workClaimTtlMs)
+    ? new WorkStore(
+      config.dataDir,
+      config.workWorkspace,
+      config.workClaimTtlMs,
+      undefined,
+      new SqliteWorkTaskStore(database, config.dataDir),
+    )
     : undefined;
   const runner = new RunnerRegistry();
   const app = createApp(manager, config, { webDist, chat, work, runner });
@@ -114,7 +122,7 @@ function main(): void {
       `[arena] rooms  ${restoredCount} restored from ${database.file}`,
     );
     console.log(
-      `[arena] chats  ${restoredChats} restored from ${chat.chatDirectory}`,
+      `[arena] chats  ${restoredChats} restored from ${database.file}`,
     );
     if (serveWeb) {
       console.log(`[arena] web   ${base}/`);

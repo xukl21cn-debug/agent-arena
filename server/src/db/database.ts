@@ -69,5 +69,32 @@ export class ArenaDatabase {
         this.db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)').run(1, Date.now());
       });
     }
+    if (version < 2) {
+      this.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS chat_rooms (
+            id TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS chat_rooms_updated_at ON chat_rooms(updated_at DESC);
+        `);
+        this.db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)').run(2, Date.now());
+      });
+    }
+    if (version < 3) {
+      this.transaction(() => {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS work_tasks (
+            id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            payload TEXT NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS work_tasks_status ON work_tasks(status, updated_at DESC);
+        `);
+        this.db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)').run(3, Date.now());
+      });
+    }
   }
 }

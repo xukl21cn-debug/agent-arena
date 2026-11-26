@@ -3,6 +3,7 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, rea
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { Claim, WorkParticipant, WorkRole, WorkRound, WorkTask, WorkTaskSummary } from '@arena/shared';
+import type { WorkTaskStore } from './persistence.js';
 import { resolveArtifact, taskSchema, WorkError, type ClaimInput, type CreateInput, type MergeInput, type ResultInput, type ReviewInput } from './model.js';
 
 type Identity = WorkParticipant & { role: WorkRole };
@@ -35,18 +36,34 @@ export class WorkStore {
   private wakeScheduled = false;
   readonly workspace: string;
 
-  constructor(dataDir: string, workspace: string, private readonly ttlMs: number, private readonly now = Date.now) {
+  constructor(
+    dataDir: string,
+    workspace: string,
+    private readonly ttlMs: number,
+    private readonly now = Date.now,
+    private readonly store?: WorkTaskStore,
+  ) {
     this.workspace = realpathSync(workspace);
     this.directory = path.join(dataDir, 'work');
     mkdirSync(this.directory, { recursive: true });
-    for (const file of readdirSync(this.directory)) {
-      if (!file.endsWith('.json')) continue;
-      try {
-        const task = taskSchema.parse(JSON.parse(readFileSync(path.join(this.directory, file), 'utf8')));
-        if (file !== task.id + '.json' || task.workspace !== this.workspace) throw new Error('任务文件或工作区不匹配');
+    if (this.store) {
+      for (const task of this.store.loadAll()) {
+        if (task.workspace !== this.workspace) {
+          console.warn('[work] 跳过工作区不匹配的任务', task.id);
+          continue;
+        }
         this.tasks.set(task.id, task);
-      } catch {
-        console.warn('[work] 跳过旧版或无效任务文件', file);
+      }
+    } else {
+      for (const file of readdirSync(this.directory)) {
+        if (!file.endsWith('.json')) continue;
+        try {
+          const task = taskSchema.parse(JSON.parse(readFileSync(path.join(this.directory, file), 'utf8')));
+          if (file !== task.id + '.json' || task.workspace !== this.workspace) throw new Error('任务文件或工作区不匹配');
+          this.tasks.set(task.id, task);
+        } catch {
+          console.warn('[work] 跳过旧版或无效任务文件', file);
+        }
       }
     }
     for (const task of this.tasks.values()) {
@@ -72,17 +89,21 @@ export class WorkStore {
 
   private save(task: WorkTask): WorkTask {
     const updated = { ...task, updatedAt: Math.max(task.updatedAt + 1, this.now()) };
-    const file = path.join(this.directory, task.id + '.json');
-    if (!this.tasks.has(task.id) && existsSync(file)) throw new Error('Task file already exists');
-    const temp = file + '.tmp';
-    const fd = openSync(temp, 'w');
-    try {
-      writeFileSync(fd, JSON.stringify(updated), 'utf8');
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
+    if (this.store) {
+      this.store.save(updated);
+    } else {
+      const file = path.join(this.directory, task.id + '.json');
+      if (!this.tasks.has(task.id) && existsSync(file)) throw new Error('Task file already exists');
+      const temp = file + '.tmp';
+      const fd = openSync(temp, 'w');
+      try {
+        writeFileSync(fd, JSON.stringify(updated), 'utf8');
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+      renameSync(temp, file);
     }
-    renameSync(temp, file);
     this.tasks.set(task.id, updated);
     this.wakeAll();
     for (const listener of this.listeners) {
