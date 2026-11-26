@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import { DshHeadlessAdapter } from './adapters/dsh.js';
 import { loadRunnerConfig } from './config.js';
 import { RunnerManagementClient, RunnerManagementError } from './management-client.js';
-import { Runner } from './runner.js';
+import { cancelCurrentTask, Runner } from './runner.js';
 import { SessionStore } from './session-store.js';
 import { WorkClient } from './work-client.js';
 
@@ -88,12 +88,12 @@ async function main(): Promise<void> {
           const batch = await management.pollCommands(afterSeq, COMMAND_POLL_TIMEOUT_MS, controller.signal);
           for (const command of batch.commands) {
             if (command.kind === 'cancel') {
-              const cancelled = runner.cancelCurrent();
-              await management.event(
-                cancelled ? 'warn' : 'info',
-                cancelled ? '收到取消命令，终止当前 DSH 进程。' : '收到取消命令，但当前没有执行中的任务。',
-                command.taskId,
-              ).catch((error) => console.error('[runner] 取消事件上报失败：', error instanceof Error ? error.message : error));
+              const outcome = cancelCurrentTask(runner, command.taskId);
+              const message = outcome === 'cancelled' ? '收到取消命令，终止当前 DSH 进程。'
+                : outcome === 'other-task' ? `收到针对任务 ${command.taskId} 的取消命令，当前执行的是另一个任务，忽略。`
+                  : '收到取消命令，但当前没有执行中的任务。';
+              await management.event(outcome === 'cancelled' ? 'warn' : 'info', message, command.taskId)
+                .catch((error) => console.error('[runner] 取消事件上报失败：', error instanceof Error ? error.message : error));
             }
           }
           afterSeq = batch.nextSeq;

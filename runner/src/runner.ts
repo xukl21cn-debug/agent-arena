@@ -69,6 +69,21 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve) 
 
 const reasonOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+export type CancelOutcome = 'cancelled' | 'idle' | 'other-task';
+
+/**
+ * Apply a cancel command from the registry to what the runner is executing
+ * now. A command names the task it was meant for: one queued while the runner
+ * was offline belongs to that task and must not stop a different task the
+ * runner has picked up since.
+ */
+export function cancelCurrentTask(runner: Runner, taskId?: string): CancelOutcome {
+  const current = runner.currentTask();
+  if (current === null) return 'idle';
+  if (taskId !== undefined && current.id !== taskId) return 'other-task';
+  return runner.cancelCurrent() ? 'cancelled' : 'idle';
+}
+
 /**
  * The deterministic supervisor: one wait, at most one task execution, then
  * submit. It never decides what the task means; that belongs inside the agent
@@ -272,6 +287,10 @@ export class Runner {
     // A round another process left running under this very claim continues
     // here, in the session that process recorded.
     const resume = existing?.claimId === claim.id && existing.status === 'running';
+    // So does a fresh claim on a round whose earlier attempt was cut short or
+    // never heard back: the agent is told either way.
+    const continuing = !resume && existing !== undefined
+      && ['interrupted', 'abandoned', 'failed'].includes(existing.status);
     const resumeSessionId = resume && existing.sessionId !== undefined
       ? existing.sessionId
       : this.sessions.latestSessionForTask(task.id);
@@ -298,7 +317,7 @@ export class Runner {
       const run = await this.adapter.run(task, {
         signal: controller.signal,
         ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
-        ...(resume ? { preamble: RESUME_PREAMBLE } : {}),
+        ...(resume || continuing ? { preamble: RESUME_PREAMBLE } : {}),
         onSessionId: (sessionId) => {
           this.sessions.setSessionId(task.id, claim.round, sessionId);
           this.logger.info(`任务 ${task.id} 的 DSH 会话：${sessionId}`);

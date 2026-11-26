@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Plus } from 'lucide-react';
-import type { ArtifactRef, TestEvidence, WorkStatus, WorkTask } from '@arena/shared';
+import { interruptedDuringWork, type ArtifactRef, type TestEvidence, type WorkStatus, type WorkTask } from '@arena/shared';
 import { Button } from '@/components/ui/button';
 import { api } from '../../api';
 import { useWorkStore } from '../../store/work';
@@ -46,12 +46,20 @@ function TaskDetail({ task, canReview }: { task: WorkTask; canReview: boolean })
   const busy = useWorkStore((store) => store.busy);
   const approve = useWorkStore((store) => store.approve);
   const takeover = useWorkStore((store) => store.takeover);
+  const cancel = useWorkStore((store) => store.cancel);
+  const resume = useWorkStore((store) => store.resume);
   const [reason, setReason] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   const [reviewOpen, setReviewOpen] = useState(false);
   const handleTakeover = (event: FormEvent) => {
     event.preventDefault();
     if (reason.trim()) void takeover(reason.trim());
   };
+  const handleCancel = (event: FormEvent) => {
+    event.preventDefault();
+    if (cancelReason.trim()) void cancel(cancelReason.trim());
+  };
+  const open = task.status !== 'done' && task.status !== 'cancelled';
   return (
     <section className="panel work-detail" aria-label="任务详情">
       <div className="work-title">
@@ -60,6 +68,11 @@ function TaskDetail({ task, canReview }: { task: WorkTask; canReview: boolean })
       {canReview && task.status === 'pending_review' && (
         <Button className="work-approve" type="button" onClick={() => setReviewOpen(true)}>
           复审任务
+        </Button>
+      )}
+      {interruptedDuringWork(task) && (
+        <Button className="work-approve" type="button" disabled={busy} onClick={() => void resume()}>
+          继续本轮
         </Button>
       )}
       {task.status === 'pending_merge_approval' && (
@@ -98,6 +111,12 @@ function TaskDetail({ task, canReview }: { task: WorkTask; canReview: boolean })
         <form className="work-takeover" onSubmit={handleTakeover}>
           <label>接管原因 <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={2000} required /></label>
           <button className="btn btn--ghost" type="submit" disabled={busy || !reason.trim()}>接管任务</button>
+        </form>
+      )}
+      {open && (
+        <form className="work-takeover" aria-label="取消任务" onSubmit={handleCancel}>
+          <label>取消原因 <input value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} maxLength={2000} required /></label>
+          <button className="btn btn--ghost" type="submit" disabled={busy || !cancelReason.trim()}>取消任务</button>
         </form>
       )}
       {task.merge && (

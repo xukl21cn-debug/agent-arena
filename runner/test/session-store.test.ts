@@ -117,6 +117,18 @@ it('keeps a result on disk until the server has it', () => {
   expect(new SessionStore(file).pendingSubmissions()).toEqual([]);
 });
 
+it('carries the session over to a later claim on the same round', () => {
+  const store = new SessionStore(file, () => 1_000);
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  store.setSessionId('task-1', 1, 'session-first-attempt');
+  store.markInterrupted('task-1', 1);
+  // The round continues on a new claim; if this attempt is cut short before it
+  // reports a session, the one the first attempt used must still be known.
+  expect(store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-2' })).toBe(true);
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'running', claimId: 'claim-2', sessionId: 'session-first-attempt' });
+  expect(store.latestSessionForTask('task-1')).toBe('session-first-attempt');
+});
+
 it('counts the server\'s rejections of one result', () => {
   const store = new SessionStore(file, () => 1_000);
   store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });

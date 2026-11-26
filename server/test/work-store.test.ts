@@ -184,3 +184,78 @@ describe('work relay persistence', () => {
     }
   });
 });
+
+describe('interrupted rounds and board cancellation', () => {
+  /** A claimed round whose runner died: the lease is never renewed and runs out. */
+  async function interruptedTask(): Promise<{ worker: ReturnType<typeof join>['worker']; taskId: string; claimId: string }> {
+    const { worker } = join();
+    const task = store.createForHuman(request);
+    const claimed = await store.wait(worker, options);
+    expect(claimed.reason).toBe('assigned');
+    clock += lease + 1;
+    expect(store.get(task.id)).toMatchObject({ status: 'needs_attention', issue: '领取租约已过期。请确认现场后处理。' });
+    return { worker, taskId: task.id, claimId: claimed.claim!.id };
+  }
+
+  it('continues an interrupted round as a fresh claim on the same round', async () => {
+    const { worker, taskId, claimId } = await interruptedTask();
+    const resumed = store.resumeRound(taskId);
+    expect(resumed).toMatchObject({ status: 'rework_requested', activeRound: 1, issue: '已请求继续第 1 轮，等待执行者领取。' });
+    expect(resumed.rounds[0]?.workClaim).toBeUndefined();
+
+    // The worker gets the same round back under a new claim.
+    const again = await store.wait(worker, options);
+    expect(again).toMatchObject({ reason: 'assigned', task: { id: taskId, activeRound: 1 } });
+    expect(again.claim).toMatchObject({ kind: 'work', round: 1 });
+    expect(again.claim!.id).not.toBe(claimId);
+
+    // The continued round is handed in under the new claim; the old one stays dead.
+    expect(() => store.submitWork(worker, { taskId, round: 1, claimId }, result)).toThrow('失效');
+    store.submitWork(worker, { taskId, round: 1, claimId: again.claim!.id }, result);
+    expect(store.get(taskId)).toMatchObject({
+      status: 'pending_review',
+      rounds: [{ work: { claimId: again.claim!.id }, workClaim: undefined }],
+    });
+  });
+
+  it('refuses to continue a task that is not waiting on an interrupted execution', async () => {
+    const { worker } = join();
+    const task = store.createForHuman(request);
+    expect(() => store.resumeRound(task.id)).toThrow('只有执行途中被打断');
+    const claimed = await store.wait(worker, options);
+    store.submitWork(worker, { taskId: task.id, round: 1, claimId: claimed.claim!.id }, result);
+    // Cut short during review instead: the round already has its work result.
+    store.takeover(task.id, '统筹失联。');
+    expect(store.get(task.id).status).toBe('needs_attention');
+    expect(() => store.resumeRound(task.id)).toThrow(
+      expect.objectContaining({ message: '只有执行途中被打断的轮次可以继续。', hint: '复审或合并阶段出问题的任务请接管或取消。' }),
+    );
+    expect(store.get(task.id).status).toBe('needs_attention');
+  });
+
+  it('cancels a running task from the board whoever dispatched it, and frees the board', async () => {
+    const { coordinator, worker } = join();
+    const task = store.create(coordinator, request);
+    const claimed = await store.wait(worker, options);
+    expect(claimed.reason).toBe('assigned');
+
+    const cancelled = store.cancelForHuman(task.id, '方向变了，不再需要。');
+    expect(cancelled).toMatchObject({ status: 'cancelled', issue: '方向变了，不再需要。' });
+    expect(cancelled.rounds[0]?.workClaim).toBeUndefined();
+    // Cancelling twice is harmless.
+    expect(store.cancelForHuman(task.id, '再点一次')).toMatchObject({ status: 'cancelled' });
+    // The runner's stale claim is refused, so nothing lands on a cancelled task.
+    expect(() => store.submitWork(worker, { taskId: task.id, round: 1, claimId: claimed.claim!.id }, result)).toThrow('失效');
+    // And the next task is picked up right away instead of waiting behind it.
+    const next = store.createForHuman({ ...request, requestId: 'request-2' });
+    expect(await store.wait(worker, options)).toMatchObject({ reason: 'assigned', task: { id: next.id } });
+  });
+
+  it('still asks the coordinator for a confirmation before cancelling a running task', async () => {
+    const { coordinator, worker } = join();
+    const task = store.create(coordinator, request);
+    await store.wait(worker, options);
+    expect(() => store.cancel(coordinator, task.id, '先不强制')).toThrow('仍可能在执行');
+    expect(store.cancel(coordinator, task.id, '确认现场后强制取消', true).status).toBe('cancelled');
+  });
+});

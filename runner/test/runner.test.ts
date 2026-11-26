@@ -3,10 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Claim, WorkTask } from '@arena/shared';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DshHeadlessAdapter } from '../src/adapters/dsh.js';
 import type { AgentAdapter, AgentRunResult } from '../src/adapters/types.js';
-import { Runner, RESUME_PREAMBLE, type RunnerEvents } from '../src/runner.js';
+import { cancelCurrentTask, RESUME_PREAMBLE, Runner, type RunnerEvents } from '../src/runner.js';
 import { SessionStore } from '../src/session-store.js';
 import { WorkClientError, type WorkClient, type WorkWaitResult } from '../src/work-client.js';
 import type { AgentResult } from '../src/result.js';
@@ -409,4 +409,59 @@ it('does not take a lost worker identity as a verdict on the result', async () =
   expect(work.submitAttempts).toBe(8);
   expect(store.get('task-1', 1)?.status).toBe('submitting');
   expect(events).toEqual([]);
+});
+
+it('applies a cancel command only to the task it names', async () => {
+  process.env.FAKE_DSH_MODE = 'hang';
+  const work = new FakeWork({ reason: 'assigned', task: task(), claim: claim() });
+  const runner = new Runner(
+    work as unknown as WorkClient,
+    new DshHeadlessAdapter({
+      command: process.execPath,
+      argsPrefix: [fixture],
+      profile: 'headless',
+      permissionMode: null,
+      approvalPolicy: null,
+      extraDirs: [],
+      timeoutMs: 60_000,
+    }),
+    store,
+    dir,
+    quiet,
+  );
+  const running = runner.runOnce({ waitTimeoutMs: 10 });
+  await vi.waitFor(() => expect(runner.currentTask()).toMatchObject({ id: 'task-1' }));
+
+  // A command queued for another task, as after a runner was offline, is ignored.
+  expect(cancelCurrentTask(runner, 'task-other')).toBe('other-task');
+  expect(runner.currentTask()).toMatchObject({ id: 'task-1' });
+  // One for this task stops it.
+  expect(cancelCurrentTask(runner, 'task-1')).toBe('cancelled');
+  await running;
+  expect(runner.currentTask()).toBeNull();
+  expect(cancelCurrentTask(runner, 'task-1')).toBe('idle');
+  expect(cancelCurrentTask(runner)).toBe('idle');
+  expect(work.submits).toHaveLength(1);
+});
+
+it('tells the agent its earlier attempt was cut short when a round continues under a new claim', async () => {
+  leftRunningByAnotherProcess('claim-old', 'session-first-try');
+  store.markInterrupted('task-1', 1, '服务端状态 needs_attention');
+  const fresh = { ...claim(), id: 'claim-new' };
+  const work = new FakeWork({ reason: 'assigned', task: working(fresh), claim: fresh });
+  let seen: { resumeSessionId?: string; preamble?: string } = {};
+  const runner = new Runner(
+    work as unknown as WorkClient,
+    adapter(async (_task, options) => {
+      seen = { resumeSessionId: options?.resumeSessionId, preamble: options?.preamble };
+      return okRun();
+    }),
+    store,
+    dir,
+    quiet,
+  );
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(seen).toEqual({ resumeSessionId: 'session-first-try', preamble: RESUME_PREAMBLE });
+  expect(work.submits[0]).toMatchObject({ round: 1, claimId: 'claim-new' });
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'submitted', claimId: 'claim-new', sessionId: 'session-first-try' });
 });

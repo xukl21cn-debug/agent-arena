@@ -199,6 +199,9 @@ export class SessionStore {
       startedAt: now,
       updatedAt: now,
       instanceId: this.instanceId,
+      // A later claim on the same round keeps the session the earlier attempt
+      // used, so it is still there if this attempt is cut short as well.
+      ...(existing?.sessionId === undefined ? {} : { sessionId: existing.sessionId }),
     });
     this.save();
     return true;

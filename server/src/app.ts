@@ -57,7 +57,7 @@ export function createApp(
   }
   app.use(express.json({ limit: '64kb' }));
 
-  if (work) app.use('/api/work', createWorkRouter(work));
+  if (work) app.use('/api/work', createWorkRouter(work, options.runner));
   if (options.runner) app.use('/api/runners', createRunnerRouter(options.runner));
   app.use('/api', createApiRouter(manager, config));
   mountMcpHttp(app, manager, config);

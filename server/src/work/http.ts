@@ -42,7 +42,13 @@ function gitContext(workspace: string): { branch: string | null; base: string | 
   }
 }
 
-export function createWorkRouter(store: WorkStore): Router {
+/** What the work page needs from the runner registry to stop a running task. */
+export interface TaskKillSwitch {
+  list(): Array<{ id: string; currentTask: { id: string } | null }>;
+  enqueue(id: string, kind: 'cancel', taskId?: string): unknown;
+}
+
+export function createWorkRouter(store: WorkStore, runners?: TaskKillSwitch): Router {
   const router = Router();
   router.use((req, res, next) => {
     if (!isWorkLoopback(req.hostname) || !isLocalWorkOrigin(req.headers.origin)) {
@@ -96,6 +102,23 @@ export function createWorkRouter(store: WorkStore): Router {
   router.post('/tasks/:id/takeover', (req, res) => {
     const body = z.object({ reason }).parse(req.body);
     res.json(store.takeover(id.parse(req.params.id), body.reason));
+  });
+  router.post('/tasks/:id/cancel', (req, res) => {
+    const body = z.object({ reason }).parse(req.body);
+    const taskId = id.parse(req.params.id);
+    const task = store.cancelForHuman(taskId, body.reason);
+    // The task is cancelled whatever the process does. A runner still executing
+    // it also gets the command, named for this task: one queued while the runner
+    // was offline must not stop a different task it runs later.
+    if (runners) {
+      for (const runner of runners.list()) {
+        if (runner.currentTask?.id === taskId) runners.enqueue(runner.id, 'cancel', taskId);
+      }
+    }
+    res.json(task);
+  });
+  router.post('/tasks/:id/resume', (req, res) => {
+    res.json(store.resumeRound(id.parse(req.params.id)));
   });
   router.use(workErrorHandler());
   return router;

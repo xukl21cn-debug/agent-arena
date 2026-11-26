@@ -3,6 +3,7 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, rea
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { Claim, WorkParticipant, WorkRole, WorkRound, WorkTask, WorkTaskSummary } from '@arena/shared';
+import { interruptedDuringWork } from '@arena/shared';
 import type { WorkTaskStore } from './persistence.js';
 import { resolveArtifact, taskSchema, WorkError, type ClaimInput, type CreateInput, type MergeInput, type ResultInput, type ReviewInput } from './model.js';
 
@@ -453,11 +454,39 @@ export class WorkStore {
   cancel(actor: Identity, taskId: string, reason: string, force = false): WorkTask {
     this.requireRole(actor, 'coordinator');
     const task = this.get(taskId, actor);
-    if (task.status === 'cancelled') return task;
-    if (task.status === 'done') throw new WorkError('INVALID_STATE', '任务已完成。');
     if (['working', 'reviewing', 'merge_approved', 'needs_attention'].includes(task.status) && !force) {
       throw new WorkError('TASK_ACTIVE', '任务仍可能在执行。', '确认现场后强制取消，并记录原因。');
     }
+    return this.cancelTask(task, reason);
+  }
+
+  /**
+   * Cancel from the work page. The person at the board is not bound to one
+   * coordinator identity, and cancels outright with a reason.
+   */
+  cancelForHuman(taskId: string, reason: string): WorkTask {
+    return this.cancelTask(this.get(taskId), reason);
+  }
+
+  /**
+   * Continue a round that was interrupted: the task goes back to the worker as
+   * a fresh claim on the same round, to be executed in the task's session.
+   */
+  resumeRound(taskId: string): WorkTask {
+    const task = this.get(taskId);
+    if (!interruptedDuringWork(task)) {
+      throw new WorkError('INVALID_STATE', '只有执行途中被打断的轮次可以继续。', '复审或合并阶段出问题的任务请接管或取消。');
+    }
+    return this.save({
+      ...task,
+      status: 'rework_requested',
+      issue: `已请求继续第 ${task.activeRound} 轮，等待执行者领取。`,
+    });
+  }
+
+  private cancelTask(task: WorkTask, reason: string): WorkTask {
+    if (task.status === 'cancelled') return task;
+    if (task.status === 'done') throw new WorkError('INVALID_STATE', '任务已完成。');
     return this.updateRound({ ...task, issue: reason }, { ...activeRound(task), workClaim: undefined, reviewClaim: undefined }, 'cancelled');
   }
 }
