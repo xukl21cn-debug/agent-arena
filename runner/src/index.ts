@@ -11,7 +11,15 @@ import { WorkClient } from './work-client.js';
 const COMMAND_POLL_TIMEOUT_MS = 20_000;
 
 async function main(): Promise<void> {
+  // `pnpm runner -- --config x` forwards the `--` literally, and parseArgs
+  // would then treat everything after it as rejected positionals. Drop one
+  // leading separator so both `pnpm runner --config x` and the documented
+  // `--` form parse identically.
+  const argv = process.argv.slice(2);
+  const separator = argv.indexOf('--');
+  const scriptArgs = separator === -1 ? argv : [...argv.slice(0, separator), ...argv.slice(separator + 1)];
   const { values } = parseArgs({
+    args: scriptArgs,
     options: {
       config: { type: 'string', short: 'c' },
       once: { type: 'boolean', default: false },
