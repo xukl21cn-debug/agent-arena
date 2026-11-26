@@ -116,5 +116,5 @@ server/src/work/store.ts         # 从 WorkStore 的 fs 逻辑抽出 WorkReposit
 
 | 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
 |---|---|---|---|---|
-| S1 rooms/archives | 待提交 | server 38 文件 / 483 测试；新增 SQLite repository、重启恢复、归档裁剪和 legacy JSON 导入测试 | 旧 JSON 仍保留；chat/work 仍为 JSON；无迁移进度 UI | 待独立评审 |
+| S1 rooms/archives | `e6a6e57` | server 38 文件 / 483 测试；新增 SQLite repository、重启恢复、归档裁剪和 legacy JSON 导入测试 | 旧 JSON 仍保留；chat/work 仍为 JSON；无迁移进度 UI | 待独立评审 |
 
