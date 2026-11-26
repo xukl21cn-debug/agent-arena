@@ -101,3 +101,14 @@ export interface WorkTaskSummary {
   workerName: string;
   updatedAt: number;
 }
+
+/**
+ * A task waiting for a person because its execution was cut short: the current
+ * round has neither a work result nor a review, so that round can simply be
+ * continued. A task that ran into trouble during review or merge cannot.
+ */
+export function interruptedDuringWork(task: Pick<WorkTask, 'status' | 'rounds' | 'activeRound'>): boolean {
+  if (task.status !== 'needs_attention') return false;
+  const round = task.rounds[task.activeRound - 1];
+  return round !== undefined && round.work === undefined && round.review === undefined;
+}

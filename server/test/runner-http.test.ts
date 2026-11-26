@@ -60,6 +60,15 @@ it('registers a runner, records events, and releases a queued command', async ()
 
   const commands = await json('/api/runners/runner-http/commands?afterSeq=0&timeoutMs=1000');
   expect(commands).toMatchObject({ commands: [{ seq: 1, kind: 'cancel' }], nextSeq: 1 });
+  // The batch names the registry it came from. A cursor that belongs to another
+  // registry starts over, so nothing queued after a restart is skipped; the
+  // runner sending the right epoch back is understood as "already dealt with".
+  const epoch = (commands as { epoch: string }).epoch;
+  expect(epoch).toBe(registry.epoch);
+  expect(await json('/api/runners/runner-http/commands?afterSeq=5&timeoutMs=1000&epoch=previous-server'))
+    .toMatchObject({ commands: [{ seq: 1, kind: 'cancel' }], nextSeq: 1, epoch });
+  expect(await json(`/api/runners/runner-http/commands?afterSeq=1&timeoutMs=1000&epoch=${epoch}`))
+    .toEqual({ commands: [], nextSeq: 1, epoch });
   expect(await json('/api/runners/runner-http')).toMatchObject({
     id: 'runner-http',
     events: [{ seq: 1, message: 'hello' }],

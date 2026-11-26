@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp } from '../../server/src/app.js';
 import { loadConfig } from '../../server/src/config.js';
 import { RoomManager } from '../../server/src/game/rooms/room-manager.js';
@@ -83,6 +83,195 @@ it('turns a queued task into a submitted work round through the fake DSH CLI', a
     });
     expect(sessions.get(String(task.id), 1)).toMatchObject({ status: 'submitted', sessionId: 'session-fake' });
   } finally {
+    await runnerClient.close();
+  }
+});
+
+it('resumes a round after the runner process that started it is gone', async () => {
+  await call('join_work', { role: 'coordinator', name: 'coordinator' });
+  const killed = new WorkClient(url.origin, 'runner-e2e');
+  await killed.connect();
+  await killed.join();
+  const task = await call('create_task', {
+    requestId: 'runner-resume',
+    title: 'Resumed runner',
+    requirement: 'Survive the process that started it.',
+    branch: 'feat/probe',
+    base: 'a'.repeat(40),
+    acceptance: ['The round is handed in exactly once'],
+    docs: [{ kind: 'brief', path: 'brief.md', summary: 'Scope' }],
+  });
+
+  // The runner claims the task and is then killed: its session is never closed,
+  // so the server keeps the round `working` under that claim.
+  const assigned = await killed.waitForWork(3_000);
+  expect(assigned.reason).toBe('assigned');
+  const claim = assigned.claim!;
+  const dead = new SessionStore(path.join(dir, 'state.json'), Date.now, 'killed-process');
+  dead.begin({ taskId: String(task.id), round: 1, claimId: claim.id });
+  dead.setSessionId(String(task.id), 1, 'session-before-crash');
+
+  // The next process finds the round, continues it in the recorded session and
+  // hands it in under the same claim.
+  const runnerClient = new WorkClient(url.origin, 'runner-e2e');
+  await runnerClient.connect();
+  try {
+    await runnerClient.join();
+    const sessions = new SessionStore(path.join(dir, 'state.json'), Date.now, 'next-process');
+    const runner = new Runner(
+      runnerClient,
+      new DshHeadlessAdapter({
+        command: process.execPath,
+        argsPrefix: [fixture],
+        profile: 'headless',
+        permissionMode: null,
+        approvalPolicy: null,
+        extraDirs: [],
+        timeoutMs: 10_000,
+      }),
+      sessions,
+      dir,
+      { logger: { info() {}, warn() {}, error() {} } },
+    );
+    // The server's shortest accepted poll; the resume itself happens before it.
+    await runner.runOnce({ waitTimeoutMs: 1_000 });
+    expect(await call('get_task', { taskId: task.id })).toMatchObject({
+      status: 'pending_review',
+      rounds: [{ work: { summary: expect.stringContaining('resumed session-before-crash'), claimId: claim.id } }],
+    });
+    expect(sessions.get(String(task.id), 1)).toMatchObject({ status: 'submitted' });
+  } finally {
+    await runnerClient.close();
+  }
+});
+
+it('continues an interrupted round after the board asks for it', async () => {
+  const rest = async (path: string, body: unknown = {}) =>
+    (await fetch(new URL(path, url.origin + '/'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json() as Promise<Record<string, unknown>>;
+  await call('join_work', { role: 'coordinator', name: 'coordinator' });
+  const killed = new WorkClient(url.origin, 'runner-e2e');
+  await killed.connect();
+  await killed.join();
+  const task = await call('create_task', {
+    requestId: 'runner-continue',
+    title: 'Continued round',
+    requirement: 'Be finished after the runner that started it vanished.',
+    branch: 'feat/probe',
+    base: 'a'.repeat(40),
+    acceptance: ['The same round is completed on a new claim'],
+    docs: [{ kind: 'brief', path: 'brief.md', summary: 'Scope' }],
+  });
+  const taskId = String(task.id);
+  const assigned = await killed.waitForWork(3_000);
+  const firstClaim = assigned.claim!.id;
+  const dead = new SessionStore(path.join(dir, 'state.json'), Date.now, 'killed-process');
+  dead.begin({ taskId, round: 1, claimId: firstClaim });
+  dead.setSessionId(taskId, 1, 'session-first-attempt');
+
+  // A person takes the stalled task over and asks for the round to continue.
+  expect(await rest(`/api/work/tasks/${taskId}/takeover`, { reason: '执行者失联。' })).toMatchObject({ status: 'needs_attention' });
+  expect(await rest(`/api/work/tasks/${taskId}/resume`)).toMatchObject({ status: 'rework_requested', activeRound: 1 });
+
+  const runnerClient = new WorkClient(url.origin, 'runner-e2e');
+  await runnerClient.connect();
+  try {
+    await runnerClient.join();
+    const sessions = new SessionStore(path.join(dir, 'state.json'), Date.now, 'next-process');
+    const events: Array<[string, string, string | undefined]> = [];
+    const runner = new Runner(
+      runnerClient,
+      new DshHeadlessAdapter({
+        command: process.execPath,
+        argsPrefix: [fixture],
+        profile: 'headless',
+        permissionMode: null,
+        approvalPolicy: null,
+        extraDirs: [],
+        timeoutMs: 10_000,
+      }),
+      sessions,
+      dir,
+      {
+        logger: { info() {}, warn() {}, error() {} },
+        events: { emit: async (level, message, id) => { events.push([level, message, id]); } },
+      },
+    );
+    await runner.runOnce({ waitTimeoutMs: 1_000 });
+    // The same round, on a claim of its own, in the session the first attempt used.
+    expect(await call('get_task', { taskId })).toMatchObject({
+      status: 'pending_review',
+      activeRound: 1,
+      rounds: [{ work: { summary: expect.stringContaining('resumed session-first-attempt') } }],
+    });
+    const work = (await call('get_task', { taskId })).rounds as Array<{ work: { claimId: string } }>;
+    expect(work[0]!.work.claimId).not.toBe(firstClaim);
+    expect(events).toEqual([
+      ['warn', expect.stringContaining('在执行中被中断'), taskId],
+      ['info', expect.stringContaining('继续执行'), taskId],
+      ['info', `任务 ${taskId} 的 DSH 会话：session-fake`, taskId],
+      ['info', `任务 ${taskId} 第 1 轮执行完成。`, taskId],
+    ]);
+    // The record now belongs to the new claim, with the session the run reported.
+    expect(sessions.get(taskId, 1)).toMatchObject({ status: 'submitted', claimId: work[0]!.work.claimId, sessionId: 'session-fake' });
+  } finally {
+    await runnerClient.close();
+  }
+});
+
+it('hands in the round when the server restarts while DSH is running', async () => {
+  await call('join_work', { role: 'coordinator', name: 'coordinator' });
+  process.env.FAKE_DSH_MODE = 'slow';
+  const port = (server.address() as { port: number }).port;
+  const runnerClient = new WorkClient(url.origin, 'runner-e2e');
+  await runnerClient.connect();
+  try {
+    await runnerClient.join();
+    const task = await call('create_task', {
+      requestId: 'runner-restart',
+      title: 'Server restart mid-run',
+      requirement: 'The round survives the server going away.',
+      branch: 'feat/probe',
+      base: 'a'.repeat(40),
+      acceptance: ['The result is handed in once the server is back'],
+      docs: [{ kind: 'brief', path: 'brief.md', summary: 'Scope' }],
+    });
+    const runner = new Runner(
+      runnerClient,
+      new DshHeadlessAdapter({
+        command: process.execPath,
+        argsPrefix: [fixture],
+        profile: 'headless',
+        permissionMode: null,
+        approvalPolicy: null,
+        extraDirs: [],
+        timeoutMs: 10_000,
+      }),
+      new SessionStore(path.join(dir, 'state.json')),
+      dir,
+      { logger: { info() {}, warn() {}, error() {} }, retryDelayMs: 50 },
+    );
+    const running = runner.runOnce({ waitTimeoutMs: 1_000 });
+    await vi.waitFor(async () => {
+      expect((await call('get_task', { taskId: task.id })).status).toBe('working');
+    });
+
+    // Same port, same data, new process: the runner's session is gone.
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    const restarted = new WorkStore(dir, dir, 60_000);
+    server = createServer(createApp(new RoomManager(), loadConfig({ ARENA_DATA_DIR: dir, ARENA_WORK_WORKSPACE: dir }), { work: restarted }));
+    await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+
+    await running;
+    coordinator = new Client({ name: 'coordinator', version: '1' });
+    await coordinator.connect(new StreamableHTTPClientTransport(url));
+    await call('join_work', { role: 'coordinator', name: 'coordinator' });
+    expect(await call('get_task', { taskId: task.id })).toMatchObject({
+      status: 'pending_review',
+      rounds: [{ work: { summary: expect.stringContaining('fake dsh read') } }],
+    });
+  } finally {
+    delete process.env.FAKE_DSH_MODE;
     await runnerClient.close();
   }
 });

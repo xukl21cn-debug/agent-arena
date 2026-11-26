@@ -173,6 +173,12 @@ export const api = {
   takeOverWork: (id: string, reason: string) => request<WorkTask>('/api/work/tasks/' + encodeURIComponent(id) + '/takeover', {
     method: 'POST', body: JSON.stringify({ reason }),
   }),
+  cancelWork: (id: string, reason: string) => request<WorkTask>('/api/work/tasks/' + encodeURIComponent(id) + '/cancel', {
+    method: 'POST', body: JSON.stringify({ reason }),
+  }),
+  resumeWork: (id: string) => request<WorkTask>('/api/work/tasks/' + encodeURIComponent(id) + '/resume', {
+    method: 'POST', body: '{}',
+  }),
   workContext: (): Promise<WorkContextDto> => request<WorkContextDto>('/api/work/context'),
   createWorkTask: (input: CreateWorkTaskInput): Promise<WorkTask> => request<WorkTask>('/api/work/tasks', {
     method: 'POST', body: JSON.stringify(input),

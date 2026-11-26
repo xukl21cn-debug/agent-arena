@@ -67,7 +67,19 @@ export interface RunnerCommand {
   requestedAt: number;
 }
 
+/**
+ * Where a runner stopped reading commands. The epoch names the registry
+ * instance the number belongs to: after a server restart the numbering starts
+ * over, and a bare number from before would land inside the new sequence.
+ */
+export interface RunnerCommandCursor {
+  seq: number;
+  epoch?: string;
+}
+
 export interface RunnerCommandBatch {
   commands: RunnerCommand[];
   nextSeq: number;
+  /** The registry instance this batch was read from; send it back as the cursor's epoch. */
+  epoch: string;
 }

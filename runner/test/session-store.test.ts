@@ -1,4 +1,5 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -39,6 +40,8 @@ it('refuses to start the same claim twice', () => {
   const store = new SessionStore(file, () => 1_000);
   expect(store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' })).toBe(true);
   expect(store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' })).toBe(false);
+  // A resume is for rounds another process left behind, not for one's own.
+  expect(store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' }, { resume: true })).toBe(false);
 });
 
 it('allows a new claim for a later round', () => {
@@ -57,11 +60,15 @@ it('keeps the latest session id for a task across rework rounds', () => {
   expect(store.latestSessionForTask('task-1')).toBe('session-round-1');
 });
 
-it('persists the runner command cursor', () => {
+it('persists the runner command cursor together with the registry it belongs to', () => {
   const store = new SessionStore(file, () => 1_000);
-  expect(store.commandCursor()).toBe(0);
-  store.setCommandCursor(7);
-  expect(new SessionStore(file, () => 2_000).commandCursor()).toBe(7);
+  expect(store.commandCursor()).toEqual({ seq: 0 });
+  store.setCommandCursor({ seq: 7, epoch: 'server-a' });
+  expect(new SessionStore(file, () => 2_000).commandCursor()).toEqual({ seq: 7, epoch: 'server-a' });
+  // After a server restart the numbering starts over: a lower sequence that
+  // belongs to a new registry is a step forward and must be kept.
+  store.setCommandCursor({ seq: 1, epoch: 'server-b' });
+  expect(new SessionStore(file, () => 3_000).commandCursor()).toEqual({ seq: 1, epoch: 'server-b' });
 });
 
 it('moves a corrupt state file aside instead of overwriting it', () => {
@@ -72,4 +79,113 @@ it('moves a corrupt state file aside instead of overwriting it', () => {
   const files = readdirSync(dir);
   expect(files.some((name) => name.startsWith('state.json.corrupt-'))).toBe(true);
   expect(files).toContain('state.json');
+});
+
+// Windows only: this is where replacing an open file is refused.
+it.skipIf(process.platform !== 'win32')('waits out a replace that another process refuses for a moment', async () => {
+  const store = new SessionStore(file, () => 1_000);
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  // What an antivirus scan or the indexer does to a file that was just written:
+  // open it without sharing delete, so it cannot be replaced for a while.
+  const marker = path.join(dir, 'holding');
+  const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
+  const holder = spawn('pwsh', ['-NoProfile', '-Command', [
+    `$h = [IO.File]::Open(${quote(file)}, 'Open', 'ReadWrite', 'None')`,
+    `[IO.File]::WriteAllText(${quote(marker)}, 'ok')`,
+    'Start-Sleep -Milliseconds 800',
+    '$h.Dispose()',
+  ].join('; ')], { stdio: 'ignore' });
+  try {
+    const deadline = Date.now() + 5_000;
+    while (!existsSync(marker) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(existsSync(marker)).toBe(true);
+
+    // The save waits for the handle instead of failing in whichever loop saved.
+    const started = Date.now();
+    store.markSubmitted('task-1', 1);
+    expect(Date.now() - started).toBeGreaterThan(300);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ records: [{ status: 'submitted' }] });
+  } finally {
+    holder.kill();
+  }
+}, 15_000);
+
+it('lets a new process resume a round another one left running', () => {
+  const first = new SessionStore(file, () => 1_000, 'process-a');
+  first.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  first.setSessionId('task-1', 1, 'session-before-crash');
+  expect(first.orphans()).toEqual([]);
+
+  const second = new SessionStore(file, () => 2_000, 'process-b');
+  expect(second.orphans()).toEqual([expect.objectContaining({ claimId: 'claim-1', instanceId: 'process-a' })]);
+  // Still the same claim in play, so a plain begin is refused...
+  expect(second.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' })).toBe(false);
+  // ...and a resume takes it over, keeping what the dead process recorded.
+  expect(second.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' }, { resume: true })).toBe(true);
+  expect(second.get('task-1', 1)).toMatchObject({
+    status: 'running', instanceId: 'process-b', sessionId: 'session-before-crash', startedAt: 1_000, updatedAt: 2_000,
+  });
+  expect(second.orphans()).toEqual([]);
+});
+
+it('counts a running record without an instance id as another process\'s', () => {
+  // What a state file written before instance ids existed looks like.
+  writeFileSync(file, JSON.stringify({
+    version: 1,
+    records: [{ taskId: 'task-1', round: 1, claimId: 'claim-1', status: 'running', startedAt: 1, updatedAt: 2 }],
+  }), 'utf8');
+  expect(new SessionStore(file).orphans()).toHaveLength(1);
+});
+
+it('keeps a result on disk until the server has it', () => {
+  const result = { summary: 'done', files: [], commits: ['abcdef0'], tests: [], docs: [] };
+  const store = new SessionStore(file, () => 1_000);
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  store.setResult('task-1', 1, result);
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'submitting', result });
+
+  // A later process finds it and hands it in without running anything again.
+  const later = new SessionStore(file, () => 2_000, 'later-process');
+  expect(later.pendingSubmissions()).toEqual([expect.objectContaining({ claimId: 'claim-1', result })]);
+  later.markSubmitted('task-1', 1);
+  expect(new SessionStore(file).pendingSubmissions()).toEqual([]);
+});
+
+it('carries the session over to a later claim on the same round', () => {
+  const store = new SessionStore(file, () => 1_000);
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  store.setSessionId('task-1', 1, 'session-first-attempt');
+  store.markInterrupted('task-1', 1);
+  // The round continues on a new claim; if this attempt is cut short before it
+  // reports a session, the one the first attempt used must still be known.
+  expect(store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-2' })).toBe(true);
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'running', claimId: 'claim-2', sessionId: 'session-first-attempt' });
+  expect(store.latestSessionForTask('task-1')).toBe('session-first-attempt');
+});
+
+it('counts the server\'s rejections of one result', () => {
+  const store = new SessionStore(file, () => 1_000);
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  expect(store.countRejection('task-1', 1)).toBe(1);
+  expect(store.countRejection('task-1', 1)).toBe(2);
+  expect(store.get('task-1', 1)?.rejections).toBe(2);
+});
+
+it('keeps only the latest hundred settled records and every live one', () => {
+  let now = 0;
+  const store = new SessionStore(file, () => (now += 1));
+  for (let index = 1; index <= 130; index += 1) {
+    store.begin({ taskId: `done-${index}`, round: 1, claimId: `claim-${index}` });
+    store.markSubmitted(`done-${index}`, 1);
+  }
+  store.begin({ taskId: 'live', round: 1, claimId: 'live-claim' });
+
+  const saved = new SessionStore(file);
+  expect(saved.get('live', 1)?.status).toBe('running');
+  const settled = (JSON.parse(readFileSync(file, 'utf8')) as { records: Array<{ taskId: string }> }).records
+    .filter((record) => record.taskId !== 'live');
+  expect(settled).toHaveLength(100);
+  expect(saved.get('done-30', 1)).toBeUndefined();
+  expect(saved.get('done-31', 1)).toBeDefined();
+  expect(saved.get('done-130', 1)).toBeDefined();
 });

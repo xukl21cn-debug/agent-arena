@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import type { RunnerTaskRef } from '@arena/shared';
 import { DshHeadlessAdapter } from './adapters/dsh.js';
 import { loadRunnerConfig } from './config.js';
 import { RunnerManagementClient, RunnerManagementError } from './management-client.js';
-import { Runner } from './runner.js';
+import { reapOrphanedAgent } from './orphan.js';
+import { cancelCurrentTask, Runner } from './runner.js';
 import { SessionStore } from './session-store.js';
 import { WorkClient } from './work-client.js';
 
@@ -27,15 +29,21 @@ async function main(): Promise<void> {
     allowPositionals: false,
   });
   const config = loadRunnerConfig(values.config);
-  const work = new WorkClient(config.serverUrl, config.name);
-  const sessions = new SessionStore(config.stateFile);
-  const adapter = new DshHeadlessAdapter(config.dsh);
   const management = new RunnerManagementClient(
     config.serverUrl,
     config.id,
     config.name,
     config.workspace,
   );
+  // The work domain binds the worker identity to the MCP session. After a
+  // server restart the client opens a new session and rejoins under its own
+  // name; say so where the runner is watched.
+  const work = new WorkClient(config.serverUrl, config.name, () => {
+    console.error('[runner] 工作域会话已失效，已重新连接并重新加入。');
+    void management.event('info', '工作域会话失效，已重新连接并重新加入。').catch(() => undefined);
+  });
+  const sessions = new SessionStore(config.stateFile);
+  const adapter = new DshHeadlessAdapter(config.dsh);
   const controller = new AbortController();
   const stop = () => controller.abort();
   process.once('SIGINT', stop);
@@ -52,7 +60,6 @@ async function main(): Promise<void> {
     await management.register();
     await management.event('info', 'runner started');
     console.error(`[runner] 已加入工作域：${joined.name}（${joined.participantId}），注册 id ${config.id}。`);
-    const runner = new Runner(work, adapter, sessions, config.workspace);
     // A server restart clears the in-memory registry; a live runner process
     // must re-register instead of going permanently invisible.
     const reRegister = async (trigger: string): Promise<void> => {
@@ -65,31 +72,44 @@ async function main(): Promise<void> {
       }
     };
     const isUnregistered = (error: unknown): boolean =>
-      error instanceof RunnerManagementError && error.code === 'RUNNER_NOT_FOUND';    const heartbeatTimer = setInterval(() => {
-      void management.heartbeat(runner.currentTask())
+      error instanceof RunnerManagementError && error.code === 'RUNNER_NOT_FOUND';
+    // The board finds the runner to stop through the task the registry says it
+    // is executing. A periodic heartbeat alone lags by up to one interval, so a
+    // task cancelled right after it was claimed would not be stopped at all:
+    // the heartbeat also goes out whenever the task the runner is on changes.
+    const heartbeat = (task: RunnerTaskRef | null): void => {
+      void management.heartbeat(task)
         .catch((error) => {
           if (isUnregistered(error)) void reRegister('heartbeat');
           else console.error('[runner] 心跳失败：', error instanceof Error ? error.message : error);
         });
-    }, config.heartbeatIntervalMs);
+    };
+    const runner = new Runner(work, adapter, sessions, config.workspace, {
+      events: { emit: (level, message, taskId) => management.event(level, message, taskId) },
+      // Every agent is started with these two arguments; the reaper checks them
+      // before trusting a pid read back from the state file.
+      reap: (pid) => reapOrphanedAgent(pid, `--profile ${config.dsh.profile} --json`),
+      onTaskChange: heartbeat,
+    });
+    const heartbeatTimer = setInterval(() => heartbeat(runner.currentTask()), config.heartbeatIntervalMs);
     heartbeatTimer.unref();
     const commandLoop = (async () => {
-      let afterSeq = sessions.commandCursor();
+      let cursor = sessions.commandCursor();
       while (!controller.signal.aborted) {
         try {
-          const batch = await management.pollCommands(afterSeq, COMMAND_POLL_TIMEOUT_MS, controller.signal);
+          const batch = await management.pollCommands(cursor, COMMAND_POLL_TIMEOUT_MS, controller.signal);
           for (const command of batch.commands) {
             if (command.kind === 'cancel') {
-              const cancelled = runner.cancelCurrent();
-              await management.event(
-                cancelled ? 'warn' : 'info',
-                cancelled ? '收到取消命令，终止当前 DSH 进程。' : '收到取消命令，但当前没有执行中的任务。',
-                command.taskId,
-              ).catch((error) => console.error('[runner] 取消事件上报失败：', error instanceof Error ? error.message : error));
+              const outcome = cancelCurrentTask(runner, command.taskId);
+              const message = outcome === 'cancelled' ? '收到取消命令，终止当前 DSH 进程。'
+                : outcome === 'other-task' ? `收到针对任务 ${command.taskId} 的取消命令，当前执行的是另一个任务，忽略。`
+                  : '收到取消命令，但当前没有执行中的任务。';
+              await management.event(outcome === 'cancelled' ? 'warn' : 'info', message, command.taskId)
+                .catch((error) => console.error('[runner] 取消事件上报失败：', error instanceof Error ? error.message : error));
             }
           }
-          afterSeq = batch.nextSeq;
-          sessions.setCommandCursor(afterSeq);
+          cursor = { seq: batch.nextSeq, epoch: batch.epoch };
+          sessions.setCommandCursor(cursor);
         } catch (error) {
           if (controller.signal.aborted) break;
           if (isUnregistered(error)) await reRegister('command poll');

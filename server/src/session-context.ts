@@ -14,6 +14,12 @@ export interface SessionContext {
   sessionId?: string;
   /** `clientInfo.name` the client reported during initialize. */
   client?: string;
+  /**
+   * Aborts when the connection carrying this call goes away before its
+   * response is written, i.e. the client process died mid-call. The transport's
+   * own signal does not cover that case.
+   */
+  signal?: AbortSignal;
 }
 
 export const sessionContext = new AsyncLocalStorage<SessionContext>();

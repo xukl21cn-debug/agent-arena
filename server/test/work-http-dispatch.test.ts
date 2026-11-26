@@ -7,6 +7,7 @@ import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { RoomManager } from '../src/game/rooms/room-manager.js';
 import { WorkStore } from '../src/work/store.js';
+import type { RunnerRegistry } from '../src/runner/registry.js';
 
 let dir: string;
 let server: Server;
@@ -18,16 +19,33 @@ beforeEach(async () => {
   writeFileSync(path.join(dir, 'brief.md'), '# Scope');
   store = new WorkStore(dir, dir, 60_000);
   store.join('worker', 'runner', 'worker-session');
-  server = createServer(createApp(new RoomManager(), loadConfig({ ARENA_DATA_DIR: dir, ARENA_WORK_WORKSPACE: dir }), { work: store }));
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  base = new URL('http://127.0.0.1:' + (server.address() as { port: number }).port);
+  base = await startApp();
 });
 
 afterEach(async () => {
-  server.closeAllConnections();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await stopApp();
   rmSync(dir, { recursive: true, force: true });
 });
+
+async function startApp(extra: { runner?: RunnerRegistry } = {}): Promise<URL> {
+  server = createServer(createApp(new RoomManager(), loadConfig({ ARENA_DATA_DIR: dir, ARENA_WORK_WORKSPACE: dir }), { work: store, ...extra }));
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  return new URL('http://127.0.0.1:' + (server.address() as { port: number }).port);
+}
+
+async function stopApp(): Promise<void> {
+  server.closeAllConnections();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+}
+
+const dispatch = {
+  title: 'Page dispatched task',
+  requirement: 'Do the small thing.',
+  branch: 'feat/probe',
+  base: 'a'.repeat(40),
+  acceptance: ['Handled through REST'],
+  docs: [{ kind: 'brief', path: 'brief.md', summary: 'Scope' }],
+};
 
 async function post(pathname: string, body: unknown): Promise<Response> {
   return fetch(new URL(pathname, base), {
@@ -65,4 +83,38 @@ it('dispatches a task from the work page and reviews it through REST', async () 
   });
   expect(reviewed.status).toBe(200);
   expect(await reviewed.json()).toMatchObject({ status: 'pending_ack', rounds: [{ review: { decision: 'approve' } }] });
+});
+
+it('cancels a running task, stops the runner on it, and continues an interrupted task', async () => {
+  const task = await (await post('/api/work/tasks', dispatch)).json() as { id: string };
+  // A runner holds the task.
+  expect((await store.wait(store.actorFor('worker-session')!, { timeoutMs: 50 })).reason).toBe('assigned');
+
+  // Restart the app with a registry that reports which runner executes what.
+  await stopApp();
+  const commands: Array<[string, string, string | undefined]> = [];
+  const runners = {
+    list: () => [{ id: 'runner-1', currentTask: { id: task.id } }, { id: 'runner-2', currentTask: null }],
+    enqueue: (id: string, kind: string, taskId?: string) => { commands.push([id, kind, taskId]); },
+  };
+  base = await startApp({ runner: runners as unknown as RunnerRegistry });
+
+  // A reason is required, and nothing is told to stop before the task is cancelled.
+  expect((await post(`/api/work/tasks/${task.id}/cancel`, {})).status).toBe(400);
+  expect(commands).toEqual([]);
+
+  const cancelled = await post(`/api/work/tasks/${task.id}/cancel`, { reason: '方向变了。' });
+  expect(cancelled.status).toBe(200);
+  expect(await cancelled.json()).toMatchObject({ status: 'cancelled', issue: '方向变了。' });
+  // Only the runner executing that task is told, and the command names the task.
+  expect(commands).toEqual([['runner-1', 'cancel', task.id]]);
+
+  // An interrupted task continues through its own route, and only that one.
+  const second = await (await post('/api/work/tasks', { ...dispatch, title: 'Cut short' })).json() as { id: string };
+  store.takeover(second.id, '执行者失联。');
+  const resumed = await post(`/api/work/tasks/${second.id}/resume`, {});
+  expect(resumed.status).toBe(200);
+  expect(await resumed.json()).toMatchObject({ status: 'rework_requested', issue: expect.stringContaining('继续第 1 轮') });
+  expect((await post(`/api/work/tasks/${second.id}/resume`, {})).status).toBe(409);
+  expect((await post(`/api/work/tasks/${task.id}/resume`, {})).status).toBe(409);
 });

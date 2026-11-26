@@ -16,6 +16,8 @@ interface WorkBoard {
   review(decision: 'approve' | 'rework', summary: string, findings?: string): Promise<void>;
   approve(): Promise<void>;
   takeover(reason: string): Promise<void>;
+  cancel(reason: string): Promise<void>;
+  resume(): Promise<void>;
 }
 
 function upsert(tasks: WorkTaskSummary[], task: WorkTask): WorkTaskSummary[] {
@@ -56,6 +58,8 @@ export const useWorkStore = create<WorkBoard>((set, get) => {
     },
     approve: () => mutate(api.approveWorkMerge),
     takeover: (reason) => mutate((id) => api.takeOverWork(id, reason)),
+    cancel: (reason) => mutate((id) => api.cancelWork(id, reason)),
+    resume: () => mutate(api.resumeWork),
     async create(input) {
       if (get().busy) return;
       set({ busy: true, error: null });
