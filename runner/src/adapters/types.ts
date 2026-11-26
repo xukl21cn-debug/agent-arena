@@ -7,6 +7,8 @@ export interface AgentRunOptions {
   preamble?: string;
   /** Called as soon as the CLI reports its session identity. */
   onSessionId?: (sessionId: string) => void;
+  /** Called with the CLI process id as soon as it is started. */
+  onPid?: (pid: number | undefined) => void;
   signal?: AbortSignal;
 }
 

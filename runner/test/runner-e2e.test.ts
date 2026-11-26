@@ -131,7 +131,7 @@ it('resumes a round after the runner process that started it is gone', async () 
       }),
       sessions,
       dir,
-      { info() {}, warn() {}, error() {} },
+      { logger: { info() {}, warn() {}, error() {} } },
     );
     // The server's shortest accepted poll; the resume itself happens before it.
     await runner.runOnce({ waitTimeoutMs: 1_000 });
@@ -191,8 +191,10 @@ it('continues an interrupted round after the board asks for it', async () => {
       }),
       sessions,
       dir,
-      { info() {}, warn() {}, error() {} },
-      { emit: async (level, message, id) => { events.push([level, message, id]); } },
+      {
+        logger: { info() {}, warn() {}, error() {} },
+        events: { emit: async (level, message, id) => { events.push([level, message, id]); } },
+      },
     );
     await runner.runOnce({ waitTimeoutMs: 1_000 });
     // The same round, on a claim of its own, in the session the first attempt used.
@@ -246,9 +248,7 @@ it('hands in the round when the server restarts while DSH is running', async () 
       }),
       new SessionStore(path.join(dir, 'state.json')),
       dir,
-      { info() {}, warn() {}, error() {} },
-      undefined,
-      50,
+      { logger: { info() {}, warn() {}, error() {} }, retryDelayMs: 50 },
     );
     const running = runner.runOnce({ waitTimeoutMs: 1_000 });
     await vi.waitFor(async () => {

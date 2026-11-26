@@ -9,7 +9,7 @@ import { createApp } from '../../server/src/app.js';
 import { loadConfig } from '../../server/src/config.js';
 import { RoomManager } from '../../server/src/game/rooms/room-manager.js';
 import { WorkStore } from '../../server/src/work/store.js';
-import { WorkClient } from '../src/work-client.js';
+import { WorkClient, WorkClientError } from '../src/work-client.js';
 
 let dir: string;
 let server: Server;
@@ -127,5 +127,49 @@ it('opens a new session and rejoins after the server restarts, keeping the claim
     expect(submitted).toMatchObject({ id: task.id, status: 'pending_review' });
   } finally {
     await runner.close();
+  }
+});
+
+it('joins again when it finds itself unjoined, and survives a rejoin that was refused', async () => {
+  await call('join_work', { role: 'coordinator', name: 'coordinator' });
+  const port = (server.address() as { port: number }).port;
+  const runner = new WorkClient(url.origin, 'runner-wire');
+  await runner.connect();
+  const attempts: WorkClient[] = [];
+  let intruder: WorkClient | undefined;
+  try {
+    const joined = await runner.join();
+    const task = await call('create_task', request);
+
+    // The server restarts, and before this runner is back another worker has
+    // taken the role, so the rejoin that follows the dead session is refused.
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    const restarted = new WorkStore(dir, dir, 60_000);
+    server = createServer(createApp(new RoomManager(), loadConfig({ ARENA_DATA_DIR: dir, ARENA_WORK_WORKSPACE: dir }), { work: restarted }));
+    await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+    // The first connection after the restart can be reset, as above.
+    await vi.waitFor(async () => {
+      intruder = new WorkClient(url.origin, 'someone-else');
+      attempts.push(intruder);
+      await intruder.connect();
+      await intruder.join();
+    }, { timeout: 5_000, interval: 250 });
+    await vi.waitFor(async () => {
+      const error = await runner.getTask(String(task.id)).catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(WorkClientError);
+      expect((error as WorkClientError).code).toBe('ROLE_TAKEN');
+    }, { timeout: 5_000, interval: 250 });
+
+    // The refusal is what the caller sees each time, and it is all it takes for
+    // the next call, once the role is free, to join again and go through.
+    await intruder!.leave();
+    await vi.waitFor(async () => {
+      expect(await runner.getTask(String(task.id))).toMatchObject({ id: task.id });
+    }, { timeout: 5_000, interval: 250 });
+    expect(await runner.join()).toMatchObject({ participantId: joined.participantId });
+  } finally {
+    for (const client of attempts) await client.close().catch(() => undefined);
+    await runner.close().catch(() => undefined);
   }
 });

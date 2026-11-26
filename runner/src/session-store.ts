@@ -53,6 +53,8 @@ export interface SessionRecord {
   instanceId?: string;
   /** The result waiting for the server; present from `submitting` on. */
   result?: AgentResult;
+  /** The agent process of the running attempt, so a later runner can end it if this one is killed. */
+  agentPid?: number;
   /** How many times the server answered a hand-in with a rejection. */
   rejections?: number;
   note?: string;
@@ -218,6 +220,8 @@ export class SessionStore {
         && existing.instanceId !== this.instanceId;
       if (!takeover) return false;
       existing.instanceId = this.instanceId;
+      // The attempt of the dead process is over; this one starts its own agent.
+      delete existing.agentPid;
       existing.updatedAt = this.now();
       this.save();
       return true;
@@ -241,6 +245,16 @@ export class SessionStore {
     const record = this.records.get(keyOf(taskId, round));
     if (!record) return;
     record.sessionId = sessionId;
+    record.updatedAt = this.now();
+    this.save();
+  }
+
+  /** The agent process this runner started for the round. */
+  setAgentPid(taskId: string, round: number, pid: number | undefined): void {
+    const record = this.records.get(keyOf(taskId, round));
+    if (!record) return;
+    if (pid === undefined) delete record.agentPid;
+    else record.agentPid = pid;
     record.updatedAt = this.now();
     this.save();
   }

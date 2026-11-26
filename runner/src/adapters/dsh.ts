@@ -56,6 +56,8 @@ export class DshHeadlessAdapter implements AgentAdapter {
         detached: process.platform !== 'win32',
         shell: process.platform === 'win32' && /\.(?:cmd|bat)$/iu.test(this.config.command),
       });
+      // Recorded so a later runner can end this process if this one is killed.
+      options.onPid?.(child.pid);
       let sessionId: string | undefined;
       const reportSession = (id: string) => {
         if (sessionId === id) return;

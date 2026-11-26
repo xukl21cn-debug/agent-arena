@@ -3,6 +3,7 @@ import type { Claim, RunnerEventLevel, RunnerTaskRef, WorkTask } from '@arena/sh
 import type { AgentAdapter } from './adapters/types.js';
 import { fallbackResult, parseAgentResult, type AgentResult } from './result.js';
 import type { SessionRecord, SessionStore } from './session-store.js';
+import type { ReapOutcome } from './orphan.js';
 import { WorkClientError } from './work-client.js';
 
 export interface RunnerLogger {
@@ -48,6 +49,14 @@ interface WorkApi {
 /** How many times the server may reject a result before the runner stops retrying. */
 const MAX_REJECTIONS = 5;
 
+/**
+ * Answers from the server that say nothing about the result itself. A lost
+ * identity or a role held by someone else is retried like a connection
+ * failure; counting them would mark a good result as rejected while the
+ * server is unreachable for the runner in particular.
+ */
+const NOT_A_VERDICT: ReadonlySet<string> = new Set(['IDENTITY_REQUIRED', 'ROLE_TAKEN']);
+
 /** Quick tries for one hand-in while the server cannot be reached at all. */
 const HAND_IN_ATTEMPTS = 3;
 
@@ -84,6 +93,24 @@ export function cancelCurrentTask(runner: Runner, taskId?: string): CancelOutcom
   return runner.cancelCurrent() ? 'cancelled' : 'idle';
 }
 
+/** What the runner may report and do beyond running rounds; all of it optional. */
+export interface RunnerHooks {
+  logger?: RunnerLogger;
+  /** Where the runner reports what happens to a round: the registry's event log. */
+  events?: RunnerEvents;
+  /**
+   * Ends an agent process a killed runner left behind, and says what became of
+   * it. Without it a surviving agent is left running.
+   */
+  reap?: (pid: number) => Promise<ReapOutcome>;
+  /** Called with the task the runner starts or stops executing, null when it stops. */
+  onTaskChange?: (task: RunnerTaskRef | null) => void;
+  /** Pause between the quick tries of one hand-in. */
+  retryDelayMs?: number;
+  /** Pause between polls while the work domain has nothing to hand out. */
+  pauseMs?: number;
+}
+
 /**
  * The deterministic supervisor: one wait, at most one task execution, then
  * submit. It never decides what the task means; that belongs inside the agent
@@ -98,23 +125,36 @@ export class Runner {
   private waitedTaskId: string | null = null;
   /** The task already reported as blocking the board; one event per task, not one per poll. */
   private blockedOn: string | null | undefined;
+  private readonly logger: RunnerLogger;
+  private readonly events: RunnerEvents | undefined;
+  private readonly reap: ((pid: number) => Promise<ReapOutcome>) | undefined;
+  private readonly onTaskChange: ((task: RunnerTaskRef | null) => void) | undefined;
+  private readonly retryDelayMs: number;
+  private readonly pauseMs: number;
 
   constructor(
     private readonly work: WorkApi,
     private readonly adapter: AgentAdapter,
     private readonly sessions: SessionStore,
     private readonly workspace: string,
-    private readonly logger: RunnerLogger = console,
-    private readonly events?: RunnerEvents,
-    /** Pause between the quick tries of one hand-in. */
-    private readonly retryDelayMs = 2_000,
-    /** Pause between polls while the work domain has nothing to hand out. */
-    private readonly pauseMs = 5_000,
-  ) {}
+    hooks: RunnerHooks = {},
+  ) {
+    this.logger = hooks.logger ?? console;
+    this.events = hooks.events;
+    this.reap = hooks.reap;
+    this.onTaskChange = hooks.onTaskChange;
+    this.retryDelayMs = hooks.retryDelayMs ?? 2_000;
+    this.pauseMs = hooks.pauseMs ?? 5_000;
+  }
 
   /** The task shown by the runner registry while DSH is executing. */
   currentTask(): RunnerTaskRef | null {
     return this.activeTask;
+  }
+
+  private useTask(task: RunnerTaskRef | null): void {
+    this.activeTask = task;
+    this.onTaskChange?.(task);
   }
 
   /** Abort the current DSH process; returns false when nothing is running. */
@@ -234,9 +274,9 @@ export class Runner {
       await this.report('info', `${what}的结果不再提交：${reason}`, record.taskId);
       return;
     }
-    // A lost worker identity is not a verdict on the result; it is retried
-    // like a connection failure. Any other answer from the server counts.
-    if (error instanceof WorkClientError && error.code !== 'IDENTITY_REQUIRED') {
+    // A lost identity or a held role is not a verdict on the result; it is
+    // retried like a connection failure. Any other answer from the server counts.
+    if (error instanceof WorkClientError && !NOT_A_VERDICT.has(error.code)) {
       const rejections = this.sessions.countRejection(record.taskId, record.round);
       if (rejections >= MAX_REJECTIONS) {
         this.sessions.markFailed(record.taskId, record.round, reason);
@@ -249,13 +289,17 @@ export class Runner {
   }
 
   /**
-   * A round another process left `running`. The server decides: with the claim
-   * still standing the round continues in its own session; otherwise it is
-   * recorded as interrupted and reported for a person to continue or cancel.
+   * A round another process left `running`. First the agent that process
+   * started is ended if it is still running, whatever the server says: nobody
+   * holds its claim any more, and resuming on top of it would put two agents
+   * on one working tree. Then the server decides: with the claim still
+   * standing the round continues in its own session; otherwise it is recorded
+   * as interrupted and reported for a person to continue or cancel.
    */
   private async recover(record: SessionRecord, signal?: AbortSignal): Promise<void> {
     const what = `任务 ${record.taskId} 第 ${record.round} 轮`;
     const session = record.sessionId ?? '未知';
+    await this.reapOrphan(record);
     let task: WorkTask;
     try {
       task = await this.work.getTask(record.taskId);
@@ -285,6 +329,22 @@ export class Runner {
     );
   }
 
+  private async reapOrphan(record: SessionRecord): Promise<void> {
+    const pid = record.agentPid;
+    if (this.reap === undefined || pid === undefined) return;
+    let outcome: ReapOutcome;
+    try {
+      outcome = await this.reap(pid);
+    } catch (error) {
+      // Not knowing is not a reason to stop: say so and carry on.
+      this.logger.warn(`任务 ${record.taskId} 第 ${record.round} 轮：无法确认上一个 DSH 进程是否还在（${reasonOf(error)}），照常处理。`);
+      return;
+    }
+    if (outcome !== 'killed') return;
+    this.logger.warn(`任务 ${record.taskId} 第 ${record.round} 轮：上一个 runner 被终止时留下的 DSH 进程（pid ${pid}）还在运行，已先结束它。`);
+    await this.report('warn', `任务 ${record.taskId} 第 ${record.round} 轮：上一个 runner 被终止时留下的 DSH 进程（pid ${pid}）还在运行，已先结束它。`, record.taskId);
+  }
+
   private async execute(task: WorkTask, claim: Claim, signal?: AbortSignal): Promise<void> {
     const workspace = realpathSync(task.workspace);
     const handIn = { taskId: task.id, round: claim.round, claimId: claim.id };
@@ -307,13 +367,10 @@ export class Runner {
         this.logger.warn(`任务 ${task.id} 第 ${claim.round} 轮的结果尚待提交，跳过重复执行。`);
         return;
       }
-      if (existing.status === 'running' && existing.instanceId === this.sessions.instanceId) {
-        this.logger.warn(`任务 ${task.id} 第 ${claim.round} 轮已在执行，跳过重复执行。`);
-        return;
-      }
     }
     // A round another process left running under this very claim continues
-    // here, in the session that process recorded.
+    // here, in the session that process recorded. A round this process is
+    // already running is not started again: `begin` refuses to hand it over.
     const resume = existing?.claimId === claim.id && existing.status === 'running';
     // So does a fresh claim on a round whose earlier attempt was cut short or
     // never heard back: the agent is told either way.
@@ -339,7 +396,7 @@ export class Runner {
       );
     }
     this.cancelRequested = false;
-    this.activeTask = { id: task.id, title: task.title, status: 'working', round: claim.round, startedAt: Date.now() };
+    this.useTask({ id: task.id, title: task.title, status: 'working', round: claim.round, startedAt: Date.now() });
     this.activeController = new AbortController();
     const controller = this.activeController;
     const forwardAbort = () => controller.abort();
@@ -359,6 +416,9 @@ export class Runner {
         signal: controller.signal,
         ...(resumeSessionId === undefined ? {} : { resumeSessionId }),
         ...(resume || continuing ? { preamble: RESUME_PREAMBLE } : {}),
+        onPid: (pid) => {
+          this.sessions.setAgentPid(task.id, claim.round, pid);
+        },
         onSessionId: (sessionId) => {
           this.sessions.setSessionId(task.id, claim.round, sessionId);
           this.logger.info(`任务 ${task.id} 的 DSH 会话：${sessionId}`);
@@ -384,7 +444,7 @@ export class Runner {
     } finally {
       signal?.removeEventListener('abort', forwardAbort);
       this.activeController = undefined;
-      this.activeTask = null;
+      this.useTask(null);
       clearInterval(renewal);
     }
 

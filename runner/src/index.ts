@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { realpathSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import type { RunnerTaskRef } from '@arena/shared';
 import { DshHeadlessAdapter } from './adapters/dsh.js';
 import { loadRunnerConfig } from './config.js';
 import { RunnerManagementClient, RunnerManagementError } from './management-client.js';
+import { reapOrphanedAgent } from './orphan.js';
 import { cancelCurrentTask, Runner } from './runner.js';
 import { SessionStore } from './session-store.js';
 import { WorkClient } from './work-client.js';
@@ -58,9 +60,6 @@ async function main(): Promise<void> {
     await management.register();
     await management.event('info', 'runner started');
     console.error(`[runner] 已加入工作域：${joined.name}（${joined.participantId}），注册 id ${config.id}。`);
-    const runner = new Runner(work, adapter, sessions, config.workspace, console, {
-      emit: (level, message, taskId) => management.event(level, message, taskId),
-    });
     // A server restart clears the in-memory registry; a live runner process
     // must re-register instead of going permanently invisible.
     const reRegister = async (trigger: string): Promise<void> => {
@@ -73,13 +72,26 @@ async function main(): Promise<void> {
       }
     };
     const isUnregistered = (error: unknown): boolean =>
-      error instanceof RunnerManagementError && error.code === 'RUNNER_NOT_FOUND';    const heartbeatTimer = setInterval(() => {
-      void management.heartbeat(runner.currentTask())
+      error instanceof RunnerManagementError && error.code === 'RUNNER_NOT_FOUND';
+    // The board finds the runner to stop through the task the registry says it
+    // is executing. A periodic heartbeat alone lags by up to one interval, so a
+    // task cancelled right after it was claimed would not be stopped at all:
+    // the heartbeat also goes out whenever the task the runner is on changes.
+    const heartbeat = (task: RunnerTaskRef | null): void => {
+      void management.heartbeat(task)
         .catch((error) => {
           if (isUnregistered(error)) void reRegister('heartbeat');
           else console.error('[runner] 心跳失败：', error instanceof Error ? error.message : error);
         });
-    }, config.heartbeatIntervalMs);
+    };
+    const runner = new Runner(work, adapter, sessions, config.workspace, {
+      events: { emit: (level, message, taskId) => management.event(level, message, taskId) },
+      // Every agent is started with these two arguments; the reaper checks them
+      // before trusting a pid read back from the state file.
+      reap: (pid) => reapOrphanedAgent(pid, `--profile ${config.dsh.profile} --json`),
+      onTaskChange: heartbeat,
+    });
+    const heartbeatTimer = setInterval(() => heartbeat(runner.currentTask()), config.heartbeatIntervalMs);
     heartbeatTimer.unref();
     const commandLoop = (async () => {
       let cursor = sessions.commandCursor();
