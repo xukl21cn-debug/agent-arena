@@ -91,7 +91,7 @@ export function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps) {
             <Label htmlFor="work-requirement">需求</Label>
             <Textarea id="work-requirement" value={requirement} onChange={(event) => setRequirement(event.target.value)} rows={4} placeholder="说清目标、边界和不要做什么。" />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid items-start gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="work-branch">分支</Label>
               <Input id="work-branch" value={branch} onChange={(event) => setBranch(event.target.value)} placeholder="feat/xxx" />
@@ -99,9 +99,9 @@ export function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps) {
             <div className="grid gap-1.5">
               <Label htmlFor="work-base">基线提交</Label>
               <Input id="work-base" value={base} onChange={(event) => setBase(event.target.value)} placeholder="40/64 位提交哈希" className="font-mono text-xs" />
-              <p className="text-[11px] text-muted-foreground">自动填入当前工作区 HEAD；可改成任务要求的基线。</p>
             </div>
           </div>
+          <p className="-mt-2 text-[11px] text-muted-foreground">自动填入当前工作区 HEAD；可改成任务要求的基线。</p>
           <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
