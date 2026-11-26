@@ -120,6 +120,7 @@ export function WorkPage() {
   const { connect, tasks, select, selected, detail, loading, error } = useWorkStore();
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [humanCoordinatorId, setHumanCoordinatorId] = useState<string | null>(null);
+  const blockedByAttention = tasks.some((task) => task.status === 'needs_attention');
   useEffect(() => connect(), [connect]);
   useEffect(() => {
     void api.workContext().then((context) => setHumanCoordinatorId(context.humanCoordinatorId)).catch(() => undefined);
@@ -139,6 +140,9 @@ export function WorkPage() {
         </div>
       </div>
       {error && <p className="error-bar" role="alert">{error}</p>}
+      {blockedByAttention && (
+        <p className="error-bar" role="status">有任务待接管，runner 暂时不会领取新任务；请先在任务详情处理待接管记录。</p>
+      )}
       <main className="work-board">
         <nav className="panel work-list" aria-label="任务列表">
           <h2 className="panel-title">任务列表</h2>
