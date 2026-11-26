@@ -23,6 +23,7 @@ export function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps) {
   const [acceptance, setAcceptance] = useState('');
   const [briefPath, setBriefPath] = useState('');
   const [briefSummary, setBriefSummary] = useState('已确认的任务说明');
+  const [commitToBranch, setCommitToBranch] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,6 +45,7 @@ export function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps) {
     setAcceptance('');
     setBriefPath('');
     setBriefSummary('已确认的任务说明');
+    setCommitToBranch(true);
     setError(null);
   };
 
@@ -54,10 +56,13 @@ export function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps) {
       setError('标题、需求、分支、基线、验收标准和 brief 路径都需要填写。');
       return;
     }
+    const requirementText = commitToBranch
+      ? requirement.trim()
+      : `${requirement.trim()}\n\n完成后不要创建任何 git 提交，不要切换分支；把改动保留在工作区，并在结果中说明未提交。`;
     try {
       await createTask({
         title: title.trim(),
-        requirement: requirement.trim(),
+        requirement: requirementText,
         branch: branch.trim(),
         base: base.trim(),
         acceptance: lines,
@@ -94,8 +99,23 @@ export function NewTaskDialog({ open, onOpenChange }: NewTaskDialogProps) {
             <div className="grid gap-1.5">
               <Label htmlFor="work-base">基线提交</Label>
               <Input id="work-base" value={base} onChange={(event) => setBase(event.target.value)} placeholder="40/64 位提交哈希" className="font-mono text-xs" />
+              <p className="text-[11px] text-muted-foreground">自动填入当前工作区 HEAD；可改成任务要求的基线。</p>
             </div>
           </div>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={commitToBranch}
+              onChange={(event) => setCommitToBranch(event.target.checked)}
+              className="mt-0.5 size-4 accent-[var(--gold)]"
+            />
+            <span>
+              完成后提交到当前分支
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                取消勾选时要求执行者只修改工作区、不创建 git 提交。
+              </span>
+            </span>
+          </label>
           <div className="grid gap-1.5">
             <Label htmlFor="work-acceptance">验收标准（每行一条）</Label>
             <Textarea id="work-acceptance" value={acceptance} onChange={(event) => setAcceptance(event.target.value)} rows={3} placeholder={'例如：\n文件存在且内容正确\n提交只包含目标文件'} />
