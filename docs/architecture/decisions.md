@@ -96,6 +96,8 @@
 | 数据根目录**锚在代码文件位置**（`server/src/config.ts` → `<repo>/data`），不锚 `process.cwd()` | 继续用 cwd 相对路径；或要求每个入口自己设 `ARENA_DATA_DIR` | cwd 随启动方式变（`pnpm dev` 是 `server/`，直接 `node server/dist/index.js` 是仓库根），同一份代码会把数据分裂到两处；「记得每个入口都设环境变量」是靠纪律而不是靠结构。文件位置在 dev 与 build 两种形态下都稳定（`server/src` 与 `server/dist` 都上跳两级到仓库根） |
 | 一个 `data/` 根目录 + 领域子目录（`rooms` / `chat` / `archive`） | 每个领域自己一个根目录（`data/` 与 `server/data/chat/`） | 领域已经分开（独立端点、独立模型），落盘却在两个树里，找数据要先知道它是哪一类。统一根目录 + 子目录，既保留领域边界又只有一处要找 |
 
+> **2026-11-26 迁移中：** server 持久化按 [SQLite Proposal](../proposals/sqlite-persistence.md) 分阶段切到 `node:sqlite`；S1 的 rooms/archives 已由 `data/arena.db` 持有，旧 JSON 作为导入源保留。chat/work 仍使用 JSON，完成后本表再收敛为最终结论。
+
 ## 7. 开发任务为何独立成域
 
 开发任务有同一任务内返工、收工确认与合并放行。借用聊天室收件虽省了配置，却把任务生命周期绑到了房间轮次，用户也很难从界面判断到哪里派单。专用工作域让执行者按角色长轮询收件，用户在大厅看板看每一轮证据；代价是客户端需要单独连接工作端点，两个会话要在线收件。runner 与桌面会话自动续接保留为候选。
