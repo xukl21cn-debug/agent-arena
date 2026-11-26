@@ -27,15 +27,21 @@ async function main(): Promise<void> {
     allowPositionals: false,
   });
   const config = loadRunnerConfig(values.config);
-  const work = new WorkClient(config.serverUrl, config.name);
-  const sessions = new SessionStore(config.stateFile);
-  const adapter = new DshHeadlessAdapter(config.dsh);
   const management = new RunnerManagementClient(
     config.serverUrl,
     config.id,
     config.name,
     config.workspace,
   );
+  // The work domain binds the worker identity to the MCP session. After a
+  // server restart the client opens a new session and rejoins under its own
+  // name; say so where the runner is watched.
+  const work = new WorkClient(config.serverUrl, config.name, () => {
+    console.error('[runner] 工作域会话已失效，已重新连接并重新加入。');
+    void management.event('info', '工作域会话失效，已重新连接并重新加入。').catch(() => undefined);
+  });
+  const sessions = new SessionStore(config.stateFile);
+  const adapter = new DshHeadlessAdapter(config.dsh);
   const controller = new AbortController();
   const stop = () => controller.abort();
   process.once('SIGINT', stop);

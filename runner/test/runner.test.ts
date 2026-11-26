@@ -343,21 +343,34 @@ it('keeps a result the server could not take and hands it in on the next pass', 
   const work = new FakeWork({ reason: 'assigned', task: working(claim()), claim: claim() });
   let runs = 0;
   work.submitError = () => new Error('fetch failed');
-  await new Runner(work as unknown as WorkClient, adapter(async () => { runs += 1; return okRun(); }), store, dir, quiet)
+  await new Runner(work as unknown as WorkClient, adapter(async () => { runs += 1; return okRun(); }), store, dir, quiet, undefined, 1)
     .runOnce({ waitTimeoutMs: 10 });
+  // Three quick tries, then the result waits for the next pass.
   expect(runs).toBe(1);
+  expect(work.submitAttempts).toBe(3);
   expect(store.get('task-1', 1)).toMatchObject({ status: 'submitting', claimId: 'claim-1' });
 
   // A restart in between neither loses the result nor runs the round again.
   const restarted = new SessionStore(stateFile(), Date.now, 'next-process');
   work.submitError = undefined;
   work.next = { reason: 'timeout' };
-  await new Runner(work as unknown as WorkClient, adapter(async () => { runs += 1; return okRun(); }), restarted, dir, quiet)
+  await new Runner(work as unknown as WorkClient, adapter(async () => { runs += 1; return okRun(); }), restarted, dir, quiet, undefined, 1)
     .runOnce({ waitTimeoutMs: 10 });
   expect(runs).toBe(1);
-  expect(work.submitAttempts).toBe(2);
+  expect(work.submitAttempts).toBe(4);
   expect(work.submits).toHaveLength(1);
   expect(restarted.get('task-1', 1)).toMatchObject({ status: 'submitted' });
+});
+
+it('retries a hand-in the server could not be reached for within the same pass', async () => {
+  const work = new FakeWork({ reason: 'assigned', task: working(claim()), claim: claim() });
+  // Unreachable once, as right after a server restart; reachable immediately after.
+  work.submitError = (attempt) => (attempt === 1 ? new Error('fetch failed') : undefined);
+  await new Runner(work as unknown as WorkClient, adapter(okRun), store, dir, quiet, undefined, 1)
+    .runOnce({ waitTimeoutMs: 10 });
+  expect(work.submitAttempts).toBe(2);
+  expect(work.submits).toHaveLength(1);
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'submitted' });
 });
 
 it('abandons a result the claim no longer accepts', async () => {

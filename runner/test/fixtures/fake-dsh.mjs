@@ -1,7 +1,7 @@
 let input = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => { input += chunk; });
-process.stdin.on('end', () => {
+process.stdin.on('end', async () => {
   const mode = process.env.FAKE_DSH_MODE ?? 'ok';
   const sessionId = 'session-fake';
   console.log(JSON.stringify({ type: 'session', sessionId, cwd: process.cwd() }));
@@ -18,6 +18,7 @@ process.stdin.on('end', () => {
     setTimeout(() => {}, 60_000);
     return;
   }
+  if (mode === 'slow') await new Promise((resolve) => setTimeout(resolve, 1_500));
 
   // Report how the CLI was started, so a test can see that a session was resumed.
   const resumeArg = process.argv.indexOf('--session-id');

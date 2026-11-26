@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp } from '../../server/src/app.js';
 import { loadConfig } from '../../server/src/config.js';
 import { RoomManager } from '../../server/src/game/rooms/room-manager.js';
@@ -141,6 +141,66 @@ it('resumes a round after the runner process that started it is gone', async () 
     });
     expect(sessions.get(String(task.id), 1)).toMatchObject({ status: 'submitted' });
   } finally {
+    await runnerClient.close();
+  }
+});
+
+it('hands in the round when the server restarts while DSH is running', async () => {
+  await call('join_work', { role: 'coordinator', name: 'coordinator' });
+  process.env.FAKE_DSH_MODE = 'slow';
+  const port = (server.address() as { port: number }).port;
+  const runnerClient = new WorkClient(url.origin, 'runner-e2e');
+  await runnerClient.connect();
+  try {
+    await runnerClient.join();
+    const task = await call('create_task', {
+      requestId: 'runner-restart',
+      title: 'Server restart mid-run',
+      requirement: 'The round survives the server going away.',
+      branch: 'feat/probe',
+      base: 'a'.repeat(40),
+      acceptance: ['The result is handed in once the server is back'],
+      docs: [{ kind: 'brief', path: 'brief.md', summary: 'Scope' }],
+    });
+    const runner = new Runner(
+      runnerClient,
+      new DshHeadlessAdapter({
+        command: process.execPath,
+        argsPrefix: [fixture],
+        profile: 'headless',
+        permissionMode: null,
+        approvalPolicy: null,
+        extraDirs: [],
+        timeoutMs: 10_000,
+      }),
+      new SessionStore(path.join(dir, 'state.json')),
+      dir,
+      { info() {}, warn() {}, error() {} },
+      undefined,
+      50,
+    );
+    const running = runner.runOnce({ waitTimeoutMs: 1_000 });
+    await vi.waitFor(async () => {
+      expect((await call('get_task', { taskId: task.id })).status).toBe('working');
+    });
+
+    // Same port, same data, new process: the runner's session is gone.
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    const restarted = new WorkStore(dir, dir, 60_000);
+    server = createServer(createApp(new RoomManager(), loadConfig({ ARENA_DATA_DIR: dir, ARENA_WORK_WORKSPACE: dir }), { work: restarted }));
+    await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+
+    await running;
+    coordinator = new Client({ name: 'coordinator', version: '1' });
+    await coordinator.connect(new StreamableHTTPClientTransport(url));
+    await call('join_work', { role: 'coordinator', name: 'coordinator' });
+    expect(await call('get_task', { taskId: task.id })).toMatchObject({
+      status: 'pending_review',
+      rounds: [{ work: { summary: expect.stringContaining('fake dsh read') } }],
+    });
+  } finally {
+    delete process.env.FAKE_DSH_MODE;
     await runnerClient.close();
   }
 });

@@ -48,6 +48,9 @@ interface WorkApi {
 /** How many times the server may reject a result before the runner stops retrying. */
 const MAX_REJECTIONS = 5;
 
+/** Quick tries for one hand-in while the server cannot be reached at all. */
+const HAND_IN_ATTEMPTS = 3;
+
 /** Prepended when a round continues after the process running it was killed. */
 export const RESUME_PREAMBLE =
   '上一次执行在途中被中断，工作区可能留有未完成的改动。先查看当前状态（例如 git status 和相关文件），确认哪些已经完成，再继续完成下面的任务。';
@@ -82,6 +85,8 @@ export class Runner {
     private readonly workspace: string,
     private readonly logger: RunnerLogger = console,
     private readonly events?: RunnerEvents,
+    /** Pause between the quick tries of one hand-in. */
+    private readonly retryDelayMs = 2_000,
   ) {}
 
   /** The task shown by the runner registry while DSH is executing. */
@@ -157,12 +162,24 @@ export class Runner {
       this.sessions.markInterrupted(taskId, round, '本地记录缺少执行结果。');
       return;
     }
-    try {
-      await this.work.submitResult(taskId, round, claimId, record.result);
-      this.sessions.markSubmitted(taskId, round);
-      this.logger.info(`任务 ${taskId} 第 ${round} 轮结果已提交。`);
-    } catch (error) {
-      await this.onHandInError(record, error);
+    // An unreachable server gets a few quick tries before the result waits for
+    // the next pass: a server that has just restarted resets the first request
+    // on the old connection, and the very next attempt already reaches it.
+    // Anything the server answered is final for this pass and handled at once.
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await this.work.submitResult(taskId, round, claimId, record.result);
+        this.sessions.markSubmitted(taskId, round);
+        this.logger.info(`任务 ${taskId} 第 ${round} 轮结果已提交。`);
+        return;
+      } catch (error) {
+        if (error instanceof WorkClientError || attempt >= HAND_IN_ATTEMPTS) {
+          await this.onHandInError(record, error);
+          return;
+        }
+        this.logger.warn(`任务 ${taskId} 第 ${round} 轮提交失败（第 ${attempt} 次），${this.retryDelayMs / 1000} 秒后重试：${reasonOf(error)}`);
+        await sleep(this.retryDelayMs);
+      }
     }
   }
 

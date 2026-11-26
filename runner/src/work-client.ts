@@ -1,5 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StreamableHTTPClientTransport, StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Claim, WorkTask } from '@arena/shared';
 import type { AgentResult } from './result.js';
 
@@ -28,6 +28,16 @@ export class WorkClientError extends Error {
   }
 }
 
+/**
+ * The server no longer knows this session: it restarted, or dropped the
+ * session. The SDK does not open a new one by itself, and on the dead session
+ * every call keeps failing, `join_work` included. Checked by class: the SDK
+ * leaves the error's `name` as "Error".
+ */
+export function sessionGone(error: unknown): boolean {
+  return error instanceof StreamableHTTPError && error.code === 404;
+}
+
 export function decodeToolResult<T>(result: unknown): T {
   const response = result as {
     content?: Array<{ type?: string; text?: string }>;
@@ -53,20 +63,28 @@ export function decodeToolResult<T>(result: unknown): T {
   return value as T;
 }
 
+interface CallOptions {
+  timeout?: number;
+  signal?: AbortSignal;
+}
+
 /** Thin typed wrapper over the work domain's Streamable HTTP MCP endpoint. */
 export class WorkClient {
   private readonly client = new Client({ name: 'arena-runner', version: '0.1.0' });
   private transport: StreamableHTTPClientTransport | undefined;
+  /** Bumped each time a new session replaces one the server forgot. */
+  private generation = 0;
+  private refreshing: Promise<void> | undefined;
 
   constructor(
     private readonly serverUrl: string,
     private readonly name: string,
+    /** Called after a lost session was replaced and the worker rejoined. */
+    private readonly onReconnect?: () => void,
   ) {}
 
   async connect(): Promise<void> {
-    const url = new URL('/work/mcp', this.serverUrl + '/');
-    this.transport = new StreamableHTTPClientTransport(url);
-    await this.client.connect(this.transport);
+    await this.open();
   }
 
   async close(): Promise<void> {
@@ -79,7 +97,7 @@ export class WorkClient {
   }
 
   async waitForWork(timeoutMs: number, signal?: AbortSignal): Promise<WorkWaitResult> {
-    return this.call<WorkWaitResult>('wait_for_work', { timeoutMs }, timeoutMs + 5_000, signal);
+    return this.call<WorkWaitResult>('wait_for_work', { timeoutMs }, { timeout: timeoutMs + 5_000, signal });
   }
 
   async submitResult(
@@ -105,17 +123,44 @@ export class WorkClient {
     return task;
   }
 
-  private async call<T>(
-    name: string,
-    args: Record<string, unknown>,
-    timeoutMs?: number,
-    signal?: AbortSignal,
-  ): Promise<T> {
-    const options = {
-      ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
-      ...(signal === undefined ? {} : { signal }),
-    };
-    const result = await this.client.callTool({ name, arguments: args }, undefined, options);
-    return decodeToolResult<T>(result);
+  private async open(): Promise<void> {
+    const url = new URL('/work/mcp', this.serverUrl + '/');
+    this.transport = new StreamableHTTPClientTransport(url);
+    await this.client.connect(this.transport);
+  }
+
+  /**
+   * Replace a session the server no longer knows. The work domain binds the
+   * worker identity to the MCP session, so the new session joins again under
+   * the same name, which is how it gets its identity back. Calls that hit the
+   * dead session together share this one reconnect.
+   */
+  private async refreshSession(): Promise<void> {
+    this.refreshing ??= (async () => {
+      await this.client.close().catch(() => undefined);
+      await this.open();
+      this.generation += 1;
+      await this.request<JoinResult>('join_work', { role: 'worker', name: this.name }, {});
+      this.onReconnect?.();
+    })().finally(() => {
+      this.refreshing = undefined;
+    });
+    return this.refreshing;
+  }
+
+  private async request<T>(name: string, args: Record<string, unknown>, options: CallOptions): Promise<T> {
+    return decodeToolResult<T>(await this.client.callTool({ name, arguments: args }, undefined, options));
+  }
+
+  private async call<T>(name: string, args: Record<string, unknown>, options: CallOptions = {}): Promise<T> {
+    const generation = this.generation;
+    try {
+      return await this.request<T>(name, args, options);
+    } catch (error) {
+      if (options.signal?.aborted || !sessionGone(error)) throw error;
+      // Another call that hit the same dead session may already have replaced it.
+      if (this.generation === generation) await this.refreshSession();
+      return this.request<T>(name, args, options);
+    }
   }
 }
