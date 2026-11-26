@@ -45,7 +45,11 @@ export class WorkStore {
   ) {
     this.workspace = realpathSync(workspace);
     this.directory = path.join(dataDir, 'work');
-    mkdirSync(this.directory, { recursive: true });
+    // With a store the JSON tree is only the legacy import source; creating it
+    // would resurrect an empty `work/` after the old files were removed.
+    if (this.store === undefined) {
+      mkdirSync(this.directory, { recursive: true });
+    }
     if (this.store) {
       for (const task of this.store.loadAll()) {
         if (task.workspace !== this.workspace) {

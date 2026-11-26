@@ -1,6 +1,6 @@
 # SQLite 持久化迁移
 
-**状态：S1 实现完成，待独立评审；S2/S3 待排期。** 分支：`feat/sqlite-persistence`。基线：`main` @ `e19dc7b`。
+**状态：S1–S3 实现完成，四域均已切到 SQLite；S4 收尾中，待独立评审与用户验收。** 分支：`feat/sqlite-persistence`。基线：`main` @ `e19dc7b`。
 
 ## 1. 背景
 
@@ -73,7 +73,7 @@ CREATE INDEX work_tasks_status ON work_tasks(status, updated_at DESC);
 server/src/db/database.ts        # 打开 DB、PRAGMA、schema migration、事务
 server/src/db/migrate-json.ts    # 从 data/**/*.json 一次性导入
 server/src/game/rooms/repository.ts
-  FileRoomRepository             # 保留到迁移完成，最终删除或仅在导入期使用
+  FileRoomRepository             # 只作导入器与测试夹具，运行时不启用
   SqliteRoomRepository           # 新实现，保持 RoomRepository 接口
 server/src/chat/store.ts         # 从 ChatManager 的 fs 逻辑抽出 ChatStore 接口 + SqliteChatStore
 server/src/work/store.ts         # 从 WorkStore 的 fs 逻辑抽出 WorkRepository + SqliteWorkRepository
@@ -85,7 +85,7 @@ server/src/work/store.ts         # 从 WorkStore 的 fs 逻辑抽出 WorkReposit
 
 1. 启动时打开 `data/arena.db`，执行 `schema_migrations`。
 2. 如果数据库为空且存在旧的 `data/rooms|chat|work|archive` JSON：在事务中逐条解析并导入；单条损坏只警告并跳过，原文件保留。
-3. 导入完成后数据库为权威源；旧 JSON 目录保留为只读备份，不自动删除。
+3. 导入完成后数据库为权威源，服务不再写 JSON。旧 JSON 目录不会自动删除——删用户文件得用户自己决定；确认迁移无误后由用户手动清理，本地开发数据已于 2026-11-26 清理（见 §6）。
 4. 提供 `ARENA_DB_PATH` 覆盖默认 `data/arena.db`，测试使用临时 DB 文件。
 5. 若数据库打开/迁移失败，启动失败并打印明确错误，不静默退回 JSON（避免双写和状态分裂）。
 
@@ -96,25 +96,35 @@ server/src/work/store.ts         # 从 WorkStore 的 fs 逻辑抽出 WorkReposit
 | S1 | DB 基础设施 + rooms/archives 的 `SqliteRoomRepository` + JSON 导入 | 棋局创建/落子/重启恢复/回放/归档全部通过；旧 JSON 可导入 |
 | S2 | chat 的 `ChatStore` + SQLite 实现 | 聊天创建/消息/轮次/重启恢复通过 |
 | S3 | work 的 `WorkRepository` + SQLite 实现 | 任务创建/领取/复审/返工/合并证据/重启恢复通过 |
-| S4 | 删除文件实现、更新部署文档、全量回归 | 全量测试通过；`data/arena.db` 可由备份恢复 |
+| S4 | 文件实现只留导入/测试路径、更新部署与备份文档、全量回归 | 全量测试通过；`data/arena.db` 可由备份恢复 |
 
 同一分支内按阶段提交，阶段之间不新建目录或按阶段拆 Proposal。
 
 ## 4. 验证
 
-- 现有 server 37 文件 / 480 测试全部通过；新增 SQLite repository、迁移、事务和重启测试。
+- 迁移前 server 37 文件 / 480 测试全部通过，迁移后 40 文件 / 488 测试全部通过；新增 SQLite repository、迁移、事务和重启测试。
 - 手动走一遍：棋局落子 → 重启 → 回放；聊天发言 → 重启；工作看板新建 → runner 领取 → 复审 → 合并；旧 JSON 数据导入后行为一致。
 - 部署验证：`pnpm bundle` 打出的 `deploy-dst` 在目标机（Node 22.13+、同 OS/arch）启动并读写 SQLite。
 
 ## 5. 开放问题
 
 - 已定：使用 Node 内置 `node:sqlite`；Node 下限提高到 **22.13**，不再使用 `better-sqlite3` 的原生二进制。
-- 已定：按 S1→S2→S3 分阶段推进；S1 已完成 rooms/archives，chat/work 仍暂时使用 JSON。
-- 已定：旧 JSON 保留为只读备份，不自动删除；迁移完成后数据库为唯一权威源，不做双写回退。
+- 已定：按 S1→S2→S3 分阶段推进；三阶段均已完成，四域共用 `data/arena.db`。
+- 已定：迁移完成后数据库为唯一权威源，不做双写回退；旧 JSON 只作导入源，代码不自动删除，清理由用户手动做。
+- 已定（S4）：`FileRoomRepository` 与各域的 JSON 读写路径只留给导入器和测试，运行时不启用；不为「删干净」拆掉升级路径。
 
 ## 6. 阶段记录
 
 | 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
 |---|---|---|---|---|
-| S1 rooms/archives | `e6a6e57` | server 38 文件 / 483 测试；新增 SQLite repository、重启恢复、归档裁剪和 legacy JSON 导入测试 | 旧 JSON 仍保留；chat/work 仍为 JSON；无迁移进度 UI | 独立评审：无阻塞；高优先级 Node 下限已修正为 22.13；低项留 S2/S4 |
+| S1 rooms/archives | `e6a6e57`（整改 `7b4bc4f`） | server 38 文件 / 483 测试；新增 SQLite repository、重启恢复、归档裁剪和 legacy JSON 导入测试 | 旧 JSON 仍保留；chat/work 仍为 JSON；无迁移进度 UI | 独立评审：无阻塞；高优先级 Node 下限已修正为 22.13；低项留 S2/S4 |
+| S2 chat | `4978532` | server 40 文件 / 488 测试；新增 chat 的 SQLite 重启恢复、legacy 导入、删除测试 | 消息仍整包存进房间 payload，没有按条分页的表 | 待独立评审 |
+| S3 work | `4978532` | 同上；新增 work 任务 SQLite 恢复与 legacy 导入（非法任务跳过并警告） | 任务列表仍全量载入 payload，没有分页 | 待独立评审 |
+| S4 收尾 | `ff5ecce` | 手动冒烟：真实 `pnpm dev` 重启后三域数据齐全；另用临时库目录（不含任何 JSON 目录）单独启动，日志 `rooms 1 restored` / `chats 2 restored`，REST 三域数据与库一致；新增 chat/work「SQLite 模式不再重建旧 JSON 目录」测试，server 40 文件 / 490 测试 | 文件实现未删除，只作导入/测试路径；WAL 热备份只写了「先停服或用 `VACUUM INTO`」，没有现成脚本 | 待独立评审 |
+
+### 旧数据清理（2026-11-26，本地开发环境）
+
+用户确认 SQLite 下三域数据齐全后，删除了 5 个旧 JSON 文件：`data/rooms/default.json`、`data/chat/chat-873d85.json`、`data/chat/smoke-ab1.json`、`data/work/2f8ae1de-….json`、`data/work/2fd2f015-….json`（`data/archive/` 为空）。删除前逐条与库内 payload 做了深度比对：棋局与两个聊天室完全一致，工作域那条库内更新（`pending_review` → `reviewing`），库为准。备份留在 `data/legacy-json-20261126-1535.zip`（`data/` 被 git 忽略，只在本地）。删除后运行中的服务与新建库目录的冷启动都正常。
+
+删除时发现 `ChatManager` / `WorkStore` 每次启动都会 `mkdir` 自己的 JSON 目录，删掉的文件树会被重建成空目录；已在 `ff5ecce` 改成只在文件模式建目录。
 

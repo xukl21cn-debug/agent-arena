@@ -53,7 +53,12 @@ export class ChatManager {
     private readonly store?: ChatStore,
   ) {
     this.chatDir = path.join(dataDir, 'chat');
-    mkdirSync(this.chatDir, { recursive: true });
+    // Only the file mode owns this directory. With a store the JSON tree is a
+    // read-only import source, so recreating it would leave an empty `chat/`
+    // behind after the legacy files were deleted.
+    if (this.store === undefined) {
+      mkdirSync(this.chatDir, { recursive: true });
+    }
   }
 
   get chatDirectory(): string {

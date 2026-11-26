@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -51,5 +51,12 @@ it('deletes a chat room from SQLite', () => {
   chat.create('delete-chat');
   chat.remove('delete-chat');
   expect(new SqliteChatStore(database).loadAll()).toHaveLength(0);
+  database.close();
+});
+
+it('does not recreate the legacy chat directory when a store is used', () => {
+  const database = new ArenaDatabase(path.join(dir, 'arena.db'));
+  new ChatManager(dir, new SqliteChatStore(database));
+  expect(existsSync(path.join(dir, 'chat'))).toBe(false);
   database.close();
 });

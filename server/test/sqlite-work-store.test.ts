@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -55,5 +55,12 @@ it('imports legacy work JSON once when the SQLite table is empty', () => {
   const database = new ArenaDatabase(path.join(dir, 'arena.db'));
   const imported = new SqliteWorkTaskStore(database, dir);
   expect(imported.loadAll().map((entry) => entry.id)).toEqual([task.id]);
+  database.close();
+});
+
+it('does not recreate the legacy work directory when a store is used', () => {
+  const database = new ArenaDatabase(path.join(dir, 'arena.db'));
+  new WorkStore(dir, dir, 60_000, undefined, new SqliteWorkTaskStore(database));
+  expect(existsSync(path.join(dir, 'work'))).toBe(false);
   database.close();
 });
