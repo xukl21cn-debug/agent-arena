@@ -86,3 +86,61 @@ it('turns a queued task into a submitted work round through the fake DSH CLI', a
     await runnerClient.close();
   }
 });
+
+it('resumes a round after the runner process that started it is gone', async () => {
+  await call('join_work', { role: 'coordinator', name: 'coordinator' });
+  const killed = new WorkClient(url.origin, 'runner-e2e');
+  await killed.connect();
+  await killed.join();
+  const task = await call('create_task', {
+    requestId: 'runner-resume',
+    title: 'Resumed runner',
+    requirement: 'Survive the process that started it.',
+    branch: 'feat/probe',
+    base: 'a'.repeat(40),
+    acceptance: ['The round is handed in exactly once'],
+    docs: [{ kind: 'brief', path: 'brief.md', summary: 'Scope' }],
+  });
+
+  // The runner claims the task and is then killed: its session is never closed,
+  // so the server keeps the round `working` under that claim.
+  const assigned = await killed.waitForWork(3_000);
+  expect(assigned.reason).toBe('assigned');
+  const claim = assigned.claim!;
+  const dead = new SessionStore(path.join(dir, 'state.json'), Date.now, 'killed-process');
+  dead.begin({ taskId: String(task.id), round: 1, claimId: claim.id });
+  dead.setSessionId(String(task.id), 1, 'session-before-crash');
+
+  // The next process finds the round, continues it in the recorded session and
+  // hands it in under the same claim.
+  const runnerClient = new WorkClient(url.origin, 'runner-e2e');
+  await runnerClient.connect();
+  try {
+    await runnerClient.join();
+    const sessions = new SessionStore(path.join(dir, 'state.json'), Date.now, 'next-process');
+    const runner = new Runner(
+      runnerClient,
+      new DshHeadlessAdapter({
+        command: process.execPath,
+        argsPrefix: [fixture],
+        profile: 'headless',
+        permissionMode: null,
+        approvalPolicy: null,
+        extraDirs: [],
+        timeoutMs: 10_000,
+      }),
+      sessions,
+      dir,
+      { info() {}, warn() {}, error() {} },
+    );
+    // The server's shortest accepted poll; the resume itself happens before it.
+    await runner.runOnce({ waitTimeoutMs: 1_000 });
+    expect(await call('get_task', { taskId: task.id })).toMatchObject({
+      status: 'pending_review',
+      rounds: [{ work: { summary: expect.stringContaining('resumed session-before-crash'), claimId: claim.id } }],
+    });
+    expect(sessions.get(String(task.id), 1)).toMatchObject({ status: 'submitted' });
+  } finally {
+    await runnerClient.close();
+  }
+});

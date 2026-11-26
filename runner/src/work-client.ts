@@ -99,6 +99,12 @@ export class WorkClient {
     return this.call<WorkTask>('ack_task_finished', { taskId, round });
   }
 
+  /** The server's view of a task, without the hint the tool adds for agents. */
+  async getTask(taskId: string): Promise<WorkTask> {
+    const { hint: _hint, ...task } = await this.call<WorkTask & { hint?: string }>('get_task', { taskId });
+    return task;
+  }
+
   private async call<T>(
     name: string,
     args: Record<string, unknown>,

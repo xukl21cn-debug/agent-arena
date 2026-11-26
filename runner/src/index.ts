@@ -52,7 +52,9 @@ async function main(): Promise<void> {
     await management.register();
     await management.event('info', 'runner started');
     console.error(`[runner] 已加入工作域：${joined.name}（${joined.participantId}），注册 id ${config.id}。`);
-    const runner = new Runner(work, adapter, sessions, config.workspace);
+    const runner = new Runner(work, adapter, sessions, config.workspace, console, {
+      emit: (level, message, taskId) => management.event(level, message, taskId),
+    });
     // A server restart clears the in-memory registry; a live runner process
     // must re-register instead of going permanently invisible.
     const reRegister = async (trigger: string): Promise<void> => {

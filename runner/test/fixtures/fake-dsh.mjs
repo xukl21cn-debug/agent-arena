@@ -19,8 +19,11 @@ process.stdin.on('end', () => {
     return;
   }
 
+  // Report how the CLI was started, so a test can see that a session was resumed.
+  const resumeArg = process.argv.indexOf('--session-id');
+  const resumed = resumeArg === -1 ? 'new session' : `resumed ${process.argv[resumeArg + 1]}`;
   const result = {
-    summary: `fake dsh read ${input.length} bytes`,
+    summary: `fake dsh read ${input.length} bytes, ${resumed}`,
     files: ['smoke.txt'],
     commits: ['abcdef0'],
     tests: [{ command: 'fake test', outcome: 'passed' }],

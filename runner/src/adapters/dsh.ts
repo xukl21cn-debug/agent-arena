@@ -143,7 +143,7 @@ export class DshHeadlessAdapter implements AgentAdapter {
         finish(code ?? 1);
       });
 
-      child.stdin.end(buildPrompt(task));
+      child.stdin.end([options.preamble, buildPrompt(task)].filter(Boolean).join('\n\n'));
     });
   }
 }

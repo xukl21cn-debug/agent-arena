@@ -6,9 +6,10 @@ import type { Claim, WorkTask } from '@arena/shared';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DshHeadlessAdapter } from '../src/adapters/dsh.js';
 import type { AgentAdapter, AgentRunResult } from '../src/adapters/types.js';
-import { Runner } from '../src/runner.js';
+import { Runner, RESUME_PREAMBLE, type RunnerEvents } from '../src/runner.js';
 import { SessionStore } from '../src/session-store.js';
-import type { WorkClient, WorkWaitResult } from '../src/work-client.js';
+import { WorkClientError, type WorkClient, type WorkWaitResult } from '../src/work-client.js';
+import type { AgentResult } from '../src/result.js';
 
 const fixture = fileURLToPath(new URL('./fixtures/fake-dsh.mjs', import.meta.url));
 
@@ -65,14 +66,24 @@ const resultText = 'done\n```arena-result\n' + JSON.stringify({
 class FakeWork {
   submits: Array<{ taskId: string; round: number; claimId: string; result: unknown }> = [];
   acked: Array<{ taskId: string; round: number }> = [];
+  submitAttempts = 0;
+  getTaskCalls = 0;
+  /** Successive answers to `getTask`; one is consumed per call. */
+  taskViews: WorkTask[] = [];
+  taskError: Error | undefined;
+  /** When set, every hand-in attempt throws what it returns. */
+  submitError: ((attempt: number) => Error) | undefined;
 
-  constructor(private readonly next: WorkWaitResult) {}
+  constructor(public next: WorkWaitResult) {}
 
   async waitForWork(): Promise<WorkWaitResult> {
     return this.next;
   }
 
   async submitResult(taskId: string, round: number, claimId: string, result: unknown): Promise<WorkTask> {
+    this.submitAttempts += 1;
+    const error = this.submitError?.(this.submitAttempts);
+    if (error) throw error;
     this.submits.push({ taskId, round, claimId, result });
     return task();
   }
@@ -85,9 +96,46 @@ class FakeWork {
     this.acked.push({ taskId, round });
     return task();
   }
+
+  async getTask(taskId: string): Promise<WorkTask> {
+    this.getTaskCalls += 1;
+    if (this.taskError) throw this.taskError;
+    const view = this.taskViews.shift();
+    if (!view) throw new Error(`unexpected getTask(${taskId})`);
+    return view;
+  }
 }
 
-const adapter = (impl: (task: WorkTask, options?: { resumeSessionId?: string }) => Promise<AgentRunResult>): AgentAdapter => ({ run: impl });
+const adapter = (impl: (task: WorkTask, options?: { resumeSessionId?: string; preamble?: string }) => Promise<AgentRunResult>): AgentAdapter => ({ run: impl });
+
+const stateFile = (): string => path.join(dir, 'state.json');
+
+/** Leave the state file as a killed runner process would: a round still `running` under its claim. */
+function leftRunningByAnotherProcess(claimId: string, sessionId: string): void {
+  const dead = new SessionStore(stateFile(), Date.now, 'dead-process');
+  dead.begin({ taskId: 'task-1', round: 1, claimId });
+  dead.setSessionId('task-1', 1, sessionId);
+  store = new SessionStore(stateFile(), Date.now, 'live-process');
+}
+
+/** The task as the server shows it while a worker holds its claim. */
+const working = (claim: Claim): WorkTask => ({ ...task(), rounds: [{ round: 1, createdAt: 1, workClaim: claim }] });
+
+const quiet = { info(): void {}, warn(): void {}, error(): void {} };
+const okRun = async (): Promise<AgentRunResult> => ({ text: resultText, reasonKind: 'completed', exitCode: 0, stderr: '' });
+type Emitted = [level: string, message: string, taskId: string | undefined];
+function recorder(): { events: Emitted[]; events2: RunnerEvents } {
+  const events: Emitted[] = [];
+  return { events, events2: { emit: async (level, message, taskId) => { events.push([level, message, taskId]); } } };
+}
+
+/** A round whose result is ready but was never taken by the server. */
+function leftWaitingForServer(): AgentResult {
+  const result: AgentResult = { summary: 'done', files: [], commits: [], tests: [], docs: [], unresolved: '受阻' };
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  store.setResult('task-1', 1, result);
+  return result;
+}
 
 it('submits parsed evidence exactly once for an assigned task', async () => {
   const work = new FakeWork({ reason: 'assigned', task: task(), claim: claim() });
@@ -205,4 +253,147 @@ it('kills a hung DSH process on cancel and submits an unresolved result', async 
     unresolved: expect.stringContaining('退出码'),
   });
   expect(store.get('task-1', 1)).toMatchObject({ status: 'submitted' });
+});
+
+it('does not start a round that is already running in this process', async () => {
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  const work = new FakeWork({ reason: 'assigned', task: working(claim()), claim: claim() });
+  let runs = 0;
+  const runner = new Runner(work as unknown as WorkClient, adapter(async () => { runs += 1; return okRun(); }), store, dir, quiet);
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(runs).toBe(0);
+  expect(store.get('task-1', 1)?.status).toBe('running');
+});
+
+it('resumes a round another process left running while its claim still stands', async () => {
+  leftRunningByAnotherProcess('claim-1', 'session-before-crash');
+  const work = new FakeWork({ reason: 'timeout' });
+  work.taskViews.push(working(claim()));
+  const { events, events2 } = recorder();
+  let seen: { resumeSessionId?: string; preamble?: string } = {};
+  const runner = new Runner(
+    work as unknown as WorkClient,
+    adapter(async (_task, options) => {
+      seen = { resumeSessionId: options?.resumeSessionId, preamble: options?.preamble };
+      return okRun();
+    }),
+    store,
+    dir,
+    quiet,
+    events2,
+  );
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  // Same claim, same session, and the agent is told its last run was cut short.
+  expect(seen).toEqual({ resumeSessionId: 'session-before-crash', preamble: RESUME_PREAMBLE });
+  expect(work.submitAttempts).toBe(1);
+  expect(work.submits[0]).toMatchObject({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'submitted', sessionId: 'session-before-crash' });
+  expect(store.orphans()).toEqual([]);
+  expect(events).toEqual([['warn', expect.stringContaining('续跑'), 'task-1']]);
+});
+
+it('marks an interrupted round and reports it once its claim is gone', async () => {
+  leftRunningByAnotherProcess('claim-1', 'session-before-crash');
+  const work = new FakeWork({ reason: 'needs_attention' });
+  work.taskViews.push({ ...task(), status: 'needs_attention', issue: '领取租约已过期。' });
+  const { events, events2 } = recorder();
+  let runs = 0;
+  const runner = new Runner(
+    work as unknown as WorkClient,
+    adapter(async () => { runs += 1; return okRun(); }),
+    store,
+    dir,
+    quiet,
+    events2,
+  );
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(runs).toBe(0);
+  expect(work.submitAttempts).toBe(0);
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'interrupted', note: '服务端状态 needs_attention' });
+  expect(events).toEqual([['warn', expect.stringContaining('在执行中被中断'), 'task-1']]);
+
+  // Settled: the next pass neither asks the server again nor repeats the event.
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(work.getTaskCalls).toBe(1);
+  expect(events).toHaveLength(1);
+});
+
+it('leaves an interrupted round alone until the server can be asked', async () => {
+  leftRunningByAnotherProcess('claim-1', 'session-before-crash');
+  const work = new FakeWork({ reason: 'timeout' });
+  work.taskError = new WorkClientError('NETWORK_ERROR', '连不上');
+  const { events, events2 } = recorder();
+  let runs = 0;
+  const runner = new Runner(
+    work as unknown as WorkClient,
+    adapter(async () => { runs += 1; return okRun(); }),
+    store,
+    dir,
+    quiet,
+    events2,
+  );
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(runs).toBe(0);
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'running', claimId: 'claim-1' });
+  expect(store.orphans()).toHaveLength(1);
+  expect(events).toEqual([]);
+});
+
+it('keeps a result the server could not take and hands it in on the next pass', async () => {
+  const work = new FakeWork({ reason: 'assigned', task: working(claim()), claim: claim() });
+  let runs = 0;
+  work.submitError = () => new Error('fetch failed');
+  await new Runner(work as unknown as WorkClient, adapter(async () => { runs += 1; return okRun(); }), store, dir, quiet)
+    .runOnce({ waitTimeoutMs: 10 });
+  expect(runs).toBe(1);
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'submitting', claimId: 'claim-1' });
+
+  // A restart in between neither loses the result nor runs the round again.
+  const restarted = new SessionStore(stateFile(), Date.now, 'next-process');
+  work.submitError = undefined;
+  work.next = { reason: 'timeout' };
+  await new Runner(work as unknown as WorkClient, adapter(async () => { runs += 1; return okRun(); }), restarted, dir, quiet)
+    .runOnce({ waitTimeoutMs: 10 });
+  expect(runs).toBe(1);
+  expect(work.submitAttempts).toBe(2);
+  expect(work.submits).toHaveLength(1);
+  expect(restarted.get('task-1', 1)).toMatchObject({ status: 'submitted' });
+});
+
+it('abandons a result the claim no longer accepts', async () => {
+  const work = new FakeWork({ reason: 'assigned', task: working(claim()), claim: claim() });
+  work.submitError = () => new WorkClientError('CLAIM_INACTIVE', '领取租约已失效。');
+  const { events, events2 } = recorder();
+  const runner = new Runner(work as unknown as WorkClient, adapter(okRun), store, dir, quiet, events2);
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'abandoned', note: '领取租约已失效。' });
+  expect(events).toEqual([['info', expect.stringContaining('不再提交'), 'task-1']]);
+
+  work.next = { reason: 'timeout' };
+  await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(work.submitAttempts).toBe(1);
+});
+
+it('stops retrying a result the server keeps rejecting', async () => {
+  leftWaitingForServer();
+  const work = new FakeWork({ reason: 'timeout' });
+  work.submitError = () => new WorkClientError('INVALID_REQUEST', '参数无效。');
+  const { events, events2 } = recorder();
+  const runner = new Runner(work as unknown as WorkClient, adapter(okRun), store, dir, quiet, events2);
+  for (let pass = 0; pass < 8; pass += 1) await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(work.submitAttempts).toBe(5);
+  expect(store.get('task-1', 1)).toMatchObject({ status: 'failed', note: '参数无效。' });
+  expect(events).toEqual([['error', expect.stringContaining('停止重试'), 'task-1']]);
+});
+
+it('does not take a lost worker identity as a verdict on the result', async () => {
+  leftWaitingForServer();
+  const work = new FakeWork({ reason: 'timeout' });
+  work.submitError = () => new WorkClientError('IDENTITY_REQUIRED', '请先调用 join_work。');
+  const { events, events2 } = recorder();
+  const runner = new Runner(work as unknown as WorkClient, adapter(okRun), store, dir, quiet, events2);
+  for (let pass = 0; pass < 8; pass += 1) await runner.runOnce({ waitTimeoutMs: 10 });
+  expect(work.submitAttempts).toBe(8);
+  expect(store.get('task-1', 1)?.status).toBe('submitting');
+  expect(events).toEqual([]);
 });

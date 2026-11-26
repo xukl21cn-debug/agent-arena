@@ -1,7 +1,36 @@
+import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { AgentResult } from './result.js';
 
-export type SessionStatus = 'running' | 'submitted' | 'failed';
+/**
+ * Where one task round stands for this runner.
+ *
+ * - `running`: started, no result yet;
+ * - `submitting`: the result is ready and waiting for the server to take it;
+ * - `submitted`: the server has the result;
+ * - `failed`: the server kept rejecting the result;
+ * - `interrupted`: the process died mid-run and the claim is gone;
+ * - `abandoned`: a result can no longer be handed in under its claim.
+ */
+export type SessionStatus =
+  | 'running'
+  | 'submitting'
+  | 'submitted'
+  | 'failed'
+  | 'interrupted'
+  | 'abandoned';
+
+/** A record that will not change again, so nothing waits on it. */
+const SETTLED: ReadonlySet<SessionStatus> = new Set<SessionStatus>([
+  'submitted',
+  'failed',
+  'interrupted',
+  'abandoned',
+]);
+
+/** Settled records kept for the record; everything still in play is always kept. */
+const MAX_SETTLED_RECORDS = 100;
 
 /** One task-round binding between a work claim and an agent session. */
 export interface SessionRecord {
@@ -12,6 +41,12 @@ export interface SessionRecord {
   status: SessionStatus;
   startedAt: number;
   updatedAt: number;
+  /** The runner process that started, or most recently resumed, this record. */
+  instanceId?: string;
+  /** The result waiting for the server; present from `submitting` on. */
+  result?: AgentResult;
+  /** How many times the server answered a hand-in with a rejection. */
+  rejections?: number;
   note?: string;
 }
 
@@ -29,7 +64,8 @@ function keyOf(taskId: string, round: number): string {
 /**
  * Local task ↔ session binding store. It is deliberately a small JSON file:
  * the runner is a single-process local tool, and this is the evidence needed to
- * avoid launching the same round twice after a restart.
+ * avoid launching the same round twice after a restart, and to hand in a result
+ * the server could not take the first time.
  */
 export class SessionStore {
   private readonly records = new Map<string, SessionRecord>();
@@ -38,6 +74,8 @@ export class SessionStore {
   constructor(
     private readonly file: string,
     private readonly now = Date.now,
+    /** Identifies this runner process in the records it starts. */
+    readonly instanceId: string = randomUUID(),
   ) {
     this.load();
   }
@@ -50,7 +88,7 @@ export class SessionStore {
       this.commandSeq = typeof parsed.commandSeq === 'number' && Number.isInteger(parsed.commandSeq) && parsed.commandSeq >= 0
         ? parsed.commandSeq : 0;
       for (const record of parsed.records) {
-        if (typeof record.taskId === 'string' && typeof record.round === 'number') {
+        if (typeof record?.taskId === 'string' && typeof record.round === 'number' && typeof record.claimId === 'string') {
           this.records.set(keyOf(record.taskId, record.round), record);
         }
       }
@@ -69,6 +107,12 @@ export class SessionStore {
   }
 
   private save(): void {
+    const settled = [...this.records.values()]
+      .filter((record) => SETTLED.has(record.status))
+      .sort((a, b) => a.updatedAt - b.updatedAt);
+    for (const record of settled.slice(0, Math.max(0, settled.length - MAX_SETTLED_RECORDS))) {
+      this.records.delete(keyOf(record.taskId, record.round));
+    }
     mkdirSync(path.dirname(this.file), { recursive: true });
     const payload: StateFile = {
       version: 1,
@@ -102,6 +146,23 @@ export class SessionStore {
     return this.records.get(keyOf(taskId, round));
   }
 
+  /**
+   * Rounds another runner process left `running`: that process is gone, so
+   * each one is either resumed here or marked interrupted once the server has
+   * been asked what became of its claim. A record from before instance ids
+   * existed counts as another process's.
+   */
+  orphans(): SessionRecord[] {
+    return [...this.records.values()]
+      .filter((record) => record.status === 'running' && record.instanceId !== this.instanceId)
+      .sort((a, b) => a.startedAt - b.startedAt);
+  }
+
+  /** Rounds whose result is ready and still waiting for the server. */
+  pendingSubmissions(): SessionRecord[] {
+    return [...this.records.values()].filter((record) => record.status === 'submitting');
+  }
+
   /** The latest DSH session seen for a task, used to continue its rework round. */
   latestSessionForTask(taskId: string): string | undefined {
     let found: SessionRecord | undefined;
@@ -113,19 +174,31 @@ export class SessionStore {
   }
 
   /**
-   * Record the start of a round. Returns false when the same claim was already
-   * started, which is the guard against a duplicate launch after a restart.
+   * Record the start of a round. Returns false when the same claim is already
+   * in play, which is the guard against a duplicate launch. The one exception
+   * is a `resume`: a round another process left `running` is taken over, keeping
+   * its session and start time.
    */
-  begin(input: Pick<SessionRecord, 'taskId' | 'round' | 'claimId'>): boolean {
+  begin(input: Pick<SessionRecord, 'taskId' | 'round' | 'claimId'>, options: { resume?: boolean } = {}): boolean {
     const key = keyOf(input.taskId, input.round);
     const existing = this.records.get(key);
-    if (existing?.claimId === input.claimId && existing.status !== 'failed') return false;
+    if (existing?.claimId === input.claimId && !SETTLED.has(existing.status)) {
+      const takeover = options.resume === true
+        && existing.status === 'running'
+        && existing.instanceId !== this.instanceId;
+      if (!takeover) return false;
+      existing.instanceId = this.instanceId;
+      existing.updatedAt = this.now();
+      this.save();
+      return true;
+    }
     const now = this.now();
     this.records.set(key, {
       ...input,
       status: 'running',
       startedAt: now,
       updatedAt: now,
+      instanceId: this.instanceId,
     });
     this.save();
     return true;
@@ -139,12 +212,45 @@ export class SessionStore {
     this.save();
   }
 
+  /**
+   * Keep a result on disk before the first hand-in attempt, so a crash or an
+   * unreachable server cannot lose it.
+   */
+  setResult(taskId: string, round: number, result: AgentResult): SessionRecord | undefined {
+    const record = this.records.get(keyOf(taskId, round));
+    if (!record) return undefined;
+    record.status = 'submitting';
+    record.result = result;
+    record.rejections = 0;
+    record.updatedAt = this.now();
+    this.save();
+    return record;
+  }
+
+  /** The server answered this hand-in with a rejection; returns the new count. */
+  countRejection(taskId: string, round: number): number {
+    const record = this.records.get(keyOf(taskId, round));
+    if (!record) return 0;
+    record.rejections = (record.rejections ?? 0) + 1;
+    record.updatedAt = this.now();
+    this.save();
+    return record.rejections;
+  }
+
   markSubmitted(taskId: string, round: number, note?: string): void {
     this.mark(taskId, round, 'submitted', note);
   }
 
   markFailed(taskId: string, round: number, note?: string): void {
     this.mark(taskId, round, 'failed', note);
+  }
+
+  markInterrupted(taskId: string, round: number, note?: string): void {
+    this.mark(taskId, round, 'interrupted', note);
+  }
+
+  markAbandoned(taskId: string, round: number, note?: string): void {
+    this.mark(taskId, round, 'abandoned', note);
   }
 
   private mark(taskId: string, round: number, status: SessionStatus, note?: string): void {

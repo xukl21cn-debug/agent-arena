@@ -3,6 +3,8 @@ import type { WorkTask } from '@arena/shared';
 export interface AgentRunOptions {
   /** Continue an existing persisted agent session instead of starting a new one. */
   resumeSessionId?: string;
+  /** Text placed before the task handoff, e.g. to tell the agent its last run was cut short. */
+  preamble?: string;
   /** Called as soon as the CLI reports its session identity. */
   onSessionId?: (sessionId: string) => void;
   signal?: AbortSignal;
