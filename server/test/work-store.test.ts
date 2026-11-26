@@ -69,6 +69,17 @@ describe('work relay persistence', () => {
     expect(() => store.reviewForHuman(task.id, { decision: 'rework', summary: '需要调整' })).toThrow('具体意见');
   });
 
+  it('rejects a human approval without commits without leaving the task reviewing', async () => {
+    const { worker } = join();
+    const task = store.createForHuman(request);
+    const claimed = await store.wait(worker, options);
+    store.submitWork(worker, { taskId: task.id, round: 1, claimId: claimed.claim!.id }, {
+      summary: '受阻', files: [], commits: [], tests: [], docs: [], unresolved: '环境不通',
+    });
+    expect(() => store.reviewForHuman(task.id, { decision: 'approve', summary: '通过' })).toThrow('没有可合并的提交');
+    expect(store.get(task.id).status).toBe('pending_review');
+  });
+
   it('serializes claims and preserves both rounds through approval and restart', async () => {
     const { coordinator, worker } = join();
     const task = store.create(coordinator, request);

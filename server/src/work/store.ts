@@ -204,6 +204,9 @@ export class WorkStore {
     if (input.decision === 'rework' && !input.findings?.trim()) {
       throw new WorkError('INVALID_REQUEST', '要求返工时请填写具体意见。');
     }
+    if (input.decision === 'approve' && !activeRound(task).work?.commits.length) {
+      throw new WorkError('INVALID_STATE', '这一轮没有可合并的提交。');
+    }
     const claim: Claim = {
       id: randomUUID(),
       kind: 'review',
