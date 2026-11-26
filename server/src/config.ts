@@ -42,6 +42,8 @@ export interface ServerConfig {
   serverUrl: string;
   /** Root for persisted state; one subdirectory per domain (rooms / chat / archive). */
   dataDir: string;
+  /** SQLite database file; defaults to <dataDir>/arena.db. */
+  databaseFile: string;
   /** Archived games kept per room, newest first, under <dataDir>/archive. */
   archiveLimit: number;
   workWorkspace: string;
@@ -88,6 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     MAX_WAIT_MS,
   );
 
+  const dataDir = env.ARENA_DATA_DIR?.trim() || DEFAULT_DATA_DIR;
   return {
     port: readInteger(env, 'PORT', DEFAULT_PORT, 1, 65_535),
     host: env.HOST?.trim() || DEFAULT_HOST,
@@ -95,7 +98,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     waitMaxMs: Math.max(waitDefaultMs, waitMaxMs),
     defaultRoomId: env.DEFAULT_ROOM_ID?.trim() || DEFAULT_ROOM_ID,
     serverUrl: env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL,
-    dataDir: env.ARENA_DATA_DIR?.trim() || DEFAULT_DATA_DIR,
+    dataDir,
+    databaseFile: env.ARENA_DB_PATH?.trim() || path.join(dataDir, 'arena.db'),
     archiveLimit: readInteger(env, 'ARENA_ARCHIVE_LIMIT', 20, 1, 500),
     workWorkspace: realpathSync(workspace),
     workClaimTtlMs: readInteger(env, 'ARENA_WORK_CLAIM_TTL_MS', 1_800_000, 60_000, 14_400_000),

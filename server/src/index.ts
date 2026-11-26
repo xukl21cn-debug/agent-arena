@@ -8,7 +8,8 @@ import { loadConfig } from './config.js';
 import { startChatSweep } from './chat/sweep.js';
 import { PresenceRegistry } from './game/rooms/presence.js';
 import { attachWebSocket } from './ws.js';
-import { FileRoomRepository } from './game/rooms/repository.js';
+import { ArenaDatabase } from './db/database.js';
+import { SqliteRoomRepository } from './game/rooms/sqlite-repository.js';
 import { RoomManager } from './game/rooms/room-manager.js';
 import { isWorkLoopback } from './work/mcp.js';
 import { WorkStore } from './work/store.js';
@@ -47,8 +48,10 @@ function main(): void {
   }
 
   const presence = new PresenceRegistry();
-  const repository = new FileRoomRepository(config.dataDir, {
+  const database = new ArenaDatabase(config.databaseFile);
+  const repository = new SqliteRoomRepository(database, {
     archiveLimit: config.archiveLimit,
+    importFrom: config.dataDir,
   });
   const manager = new RoomManager({
     repository,
@@ -103,11 +106,12 @@ function main(): void {
     console.log(`[arena] API   ${base}/api/runners  (runner registry)`);
     console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
     console.log(`[arena] data  ${config.dataDir}`);
+    console.log(`[arena] db    ${database.file}`);
     console.log(
       `[arena] room  "${defaultRoom.id}" (${defaultRoom.getState().status})`,
     );
     console.log(
-      `[arena] rooms  ${restoredCount} restored from ${repository.roomsDirectory}`,
+      `[arena] rooms  ${restoredCount} restored from ${database.file}`,
     );
     console.log(
       `[arena] chats  ${restoredChats} restored from ${chat.chatDirectory}`,
@@ -129,6 +133,7 @@ function main(): void {
     clearInterval(runnerSweepTimer);
     wss.close();
     server.close(() => {
+      database.close();
       process.exit(0);
     });
     setTimeout(() => process.exit(1), 3_000).unref();

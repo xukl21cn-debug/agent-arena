@@ -1,6 +1,6 @@
 # SQLite 持久化迁移
 
-**状态：需求确认中（草稿）。** 分支：`feat/sqlite-persistence`。基线：`main` @ `e19dc7b`。
+**状态：S1 实现完成，待独立评审；S2/S3 待排期。** 分支：`feat/sqlite-persistence`。基线：`main` @ `e19dc7b`。
 
 ## 1. 背景
 
@@ -29,7 +29,7 @@
 
 ### 3.1 库
 
-优先使用 `better-sqlite3@12`（支持 Node 20/22/24，同步 API 与现有代码风格一致）。`node:sqlite` 需要 Node 22+，而当前交付目标仍声明 Node 20，暂不作为默认。
+采用 Node 内置 `node:sqlite`（`DatabaseSync`），不引入原生第三方依赖；Node 下限提高到 22.5。`better-sqlite3` 仍作为备选，仅在未来需要 Node 20 兼容或更成熟 API 时重新评估。
 
 ### 3.2 表结构（草案）
 
@@ -108,7 +108,13 @@ server/src/work/store.ts         # 从 WorkStore 的 fs 逻辑抽出 WorkReposit
 
 ## 5. 开放问题
 
-1. **库选择**：`better-sqlite3@12`（Node 20 兼容、同步、原生二进制）还是提高 Node 下限后用 `node:sqlite`？
-2. **迁移范围**：一次完成 rooms/archives/chat/work 四个域，还是按 S1→S3 分阶段合入？本 Proposal 建议分阶段。
-3. **旧 JSON 处理**：保留只读备份（建议）还是导入后自动移入 `data/legacy-json-<timestamp>/`？
-4. **是否允许 JSON 回退**：建议迁移完成后数据库是唯一权威源，不保留双写回退，避免状态分裂。
+- 已定：使用 Node 内置 `node:sqlite`；Node 下限提高到 **22.5**，不再使用 `better-sqlite3` 的原生二进制。
+- 已定：按 S1→S2→S3 分阶段推进；S1 已完成 rooms/archives，chat/work 仍暂时使用 JSON。
+- 已定：旧 JSON 保留为只读备份，不自动删除；迁移完成后数据库为唯一权威源，不做双写回退。
+
+## 6. 阶段记录
+
+| 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
+|---|---|---|---|---|
+| S1 rooms/archives | 待提交 | server 38 文件 / 483 测试；新增 SQLite repository、重启恢复、归档裁剪和 legacy JSON 导入测试 | 旧 JSON 仍保留；chat/work 仍为 JSON；无迁移进度 UI | 待独立评审 |
+
