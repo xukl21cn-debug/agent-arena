@@ -56,6 +56,7 @@ export class SqliteRoomRepository implements RoomRepository {
   }
 
   save(room: GameRoom): void {
+    this.assertRoomId(room.id);
     this.upsertRoom(room.toSnapshot());
   }
 
@@ -75,6 +76,10 @@ export class SqliteRoomRepository implements RoomRepository {
   }
 
   archive(persisted: PersistedRoom): void {
+    const archiveId = archiveSummaryOf(persisted).archiveId;
+    if (!ARCHIVE_ID_PATTERN.test(archiveId)) {
+      throw new RoomError('INVALID_REQUEST', `Invalid archiveId "${String(archiveId)}".`);
+    }
     this.upsertArchive(persisted);
     this.pruneArchives(persisted.id);
   }
@@ -144,12 +149,13 @@ export class SqliteRoomRepository implements RoomRepository {
   }
 
   private pruneArchives(roomId: string): void {
-    const rows = this.database.db.prepare('SELECT payload FROM archives WHERE room_id = ?').all(roomId) as unknown as PayloadRow[];
+    const rows = this.database.db.prepare(
+      'SELECT payload FROM archives WHERE room_id = ? ORDER BY played_at DESC, rowid DESC',
+    ).all(roomId) as unknown as PayloadRow[];
     const owned = rows
       .map((row) => parsePayload<PersistedRoom>(row, 'archive'))
       .filter((entry): entry is PersistedRoom => entry !== null)
-      .map((entry) => archiveSummaryOf(entry))
-      .sort((a, b) => b.playedAt.localeCompare(a.playedAt));
+      .map((entry) => archiveSummaryOf(entry));
     const stale = owned.slice(this.archiveLimit);
     if (stale.length === 0) return;
     this.database.transaction(() => {

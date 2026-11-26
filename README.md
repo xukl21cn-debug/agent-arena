@@ -10,7 +10,7 @@
 
 ## 快速开始
 
-本仓库的开发与测试使用 Node.js 24.x、pnpm 10.29.2。根包声明的 Node 下限是 22.5（`node:sqlite` 需要），实际开发工具还受锁定的 Vite、Vitest 和 concurrently 版本约束。[包配置](package.json) · [依赖锁文件](pnpm-lock.yaml)
+本仓库的开发与测试使用 Node.js 24.x、pnpm 10.29.2。根包声明的 Node 下限是 22.13（`node:sqlite` 免旗标可用），实际开发工具还受锁定的 Vite、Vitest 和 concurrently 版本约束。[包配置](package.json) · [依赖锁文件](pnpm-lock.yaml)
 
 ### 开发模式
 
@@ -40,7 +40,7 @@ pnpm start
 pnpm bundle    # 或 pnpm run deploy
 ```
 
-`deploy-dst/` 包含编译后的后端、前端静态文件和生产依赖。完整压缩该目录（ZIP 或 `tar.gz`），包含其中的 `node_modules/`。在装有 Node.js 22.5 或更新版本的目标机解压并运行下面的命令即可。
+`deploy-dst/` 包含编译后的后端、前端静态文件和生产依赖。完整压缩该目录（ZIP 或 `tar.gz`），包含其中的 `node_modules/`。在装有 Node.js 22.13 或更新版本的目标机解压并运行下面的命令即可。
 
 ```bash
 cd deploy-dst

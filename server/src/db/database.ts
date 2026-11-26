@@ -21,7 +21,11 @@ export class ArenaDatabase {
     this.db.close();
   }
 
+  private transactionDepth = 0;
+
   transaction<T>(fn: () => T): T {
+    if (this.transactionDepth > 0) return fn();
+    this.transactionDepth += 1;
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const result = fn();
@@ -30,6 +34,8 @@ export class ArenaDatabase {
     } catch (error) {
       try { this.db.exec('ROLLBACK'); } catch { /* preserve the original error */ }
       throw error;
+    } finally {
+      this.transactionDepth -= 1;
     }
   }
 

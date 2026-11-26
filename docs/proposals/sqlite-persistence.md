@@ -29,7 +29,7 @@
 
 ### 3.1 库
 
-采用 Node 内置 `node:sqlite`（`DatabaseSync`），不引入原生第三方依赖；Node 下限提高到 22.5。`better-sqlite3` 仍作为备选，仅在未来需要 Node 20 兼容或更成熟 API 时重新评估。
+采用 Node 内置 `node:sqlite`（`DatabaseSync`），不引入原生第三方依赖；`node:sqlite` 从 Node 22.13 起免 `--experimental-sqlite` 旗标可用，因此 Node 下限提高到 22.13。`better-sqlite3` 仍作为备选，仅在未来需要 Node 20 兼容或更成熟 API 时重新评估。
 
 ### 3.2 表结构（草案）
 
@@ -104,11 +104,11 @@ server/src/work/store.ts         # 从 WorkStore 的 fs 逻辑抽出 WorkReposit
 
 - 现有 server 37 文件 / 480 测试全部通过；新增 SQLite repository、迁移、事务和重启测试。
 - 手动走一遍：棋局落子 → 重启 → 回放；聊天发言 → 重启；工作看板新建 → runner 领取 → 复审 → 合并；旧 JSON 数据导入后行为一致。
-- 部署验证：`pnpm bundle` 打出的 `deploy-dst` 在目标机（Node 20+、同 OS/arch）启动并读写 SQLite。
+- 部署验证：`pnpm bundle` 打出的 `deploy-dst` 在目标机（Node 22.13+、同 OS/arch）启动并读写 SQLite。
 
 ## 5. 开放问题
 
-- 已定：使用 Node 内置 `node:sqlite`；Node 下限提高到 **22.5**，不再使用 `better-sqlite3` 的原生二进制。
+- 已定：使用 Node 内置 `node:sqlite`；Node 下限提高到 **22.13**，不再使用 `better-sqlite3` 的原生二进制。
 - 已定：按 S1→S2→S3 分阶段推进；S1 已完成 rooms/archives，chat/work 仍暂时使用 JSON。
 - 已定：旧 JSON 保留为只读备份，不自动删除；迁移完成后数据库为唯一权威源，不做双写回退。
 
@@ -116,5 +116,5 @@ server/src/work/store.ts         # 从 WorkStore 的 fs 逻辑抽出 WorkReposit
 
 | 阶段 | 提交 | 测试 | 已知缺口 | 审核结论 |
 |---|---|---|---|---|
-| S1 rooms/archives | `e6a6e57` | server 38 文件 / 483 测试；新增 SQLite repository、重启恢复、归档裁剪和 legacy JSON 导入测试 | 旧 JSON 仍保留；chat/work 仍为 JSON；无迁移进度 UI | 待独立评审 |
+| S1 rooms/archives | `e6a6e57` | server 38 文件 / 483 测试；新增 SQLite repository、重启恢复、归档裁剪和 legacy JSON 导入测试 | 旧 JSON 仍保留；chat/work 仍为 JSON；无迁移进度 UI | 独立评审：无阻塞；高优先级 Node 下限已修正为 22.13；低项留 S2/S4 |
 
