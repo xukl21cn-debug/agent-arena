@@ -1,4 +1,5 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
@@ -79,6 +80,35 @@ it('moves a corrupt state file aside instead of overwriting it', () => {
   expect(files.some((name) => name.startsWith('state.json.corrupt-'))).toBe(true);
   expect(files).toContain('state.json');
 });
+
+// Windows only: this is where replacing an open file is refused.
+it.skipIf(process.platform !== 'win32')('waits out a replace that another process refuses for a moment', async () => {
+  const store = new SessionStore(file, () => 1_000);
+  store.begin({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
+  // What an antivirus scan or the indexer does to a file that was just written:
+  // open it without sharing delete, so it cannot be replaced for a while.
+  const marker = path.join(dir, 'holding');
+  const quote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
+  const holder = spawn('pwsh', ['-NoProfile', '-Command', [
+    `$h = [IO.File]::Open(${quote(file)}, 'Open', 'ReadWrite', 'None')`,
+    `[IO.File]::WriteAllText(${quote(marker)}, 'ok')`,
+    'Start-Sleep -Milliseconds 800',
+    '$h.Dispose()',
+  ].join('; ')], { stdio: 'ignore' });
+  try {
+    const deadline = Date.now() + 5_000;
+    while (!existsSync(marker) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(existsSync(marker)).toBe(true);
+
+    // The save waits for the handle instead of failing in whichever loop saved.
+    const started = Date.now();
+    store.markSubmitted('task-1', 1);
+    expect(Date.now() - started).toBeGreaterThan(300);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ records: [{ status: 'submitted' }] });
+  } finally {
+    holder.kill();
+  }
+}, 15_000);
 
 it('lets a new process resume a round another one left running', () => {
   const first = new SessionStore(file, () => 1_000, 'process-a');

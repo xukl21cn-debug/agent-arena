@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { ServerResponse } from 'node:http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, isInitializeRequest, type CallToolResult, type Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -142,8 +143,14 @@ function registerTools(server: Server, store: WorkStore, bindings: SessionBindin
   }, (input, extra) => run(async () => {
     const session = sessionId();
     const member = actorFor(session);
+    // Two reasons a wait can end early: the SDK cancelling the call, and the
+    // connection going away. Both must stop it, or a wait could outlive its
+    // caller and claim a task for a session that no longer exists.
+    const signals = [extra.signal, sessionContext.getStore()?.signal].filter(
+      (signal): signal is AbortSignal => signal !== undefined,
+    );
     const value = await store.wait(member, {
-      ...input, timeoutMs: input.timeoutMs ?? 20_000, signal: extra.signal,
+      ...input, timeoutMs: input.timeoutMs ?? 20_000, signal: AbortSignal.any(signals),
       connected: () => bindings.participantOf(session, bindingKey) === member.id,
     });
     return { ...value, hint: value.task ? nextByStatus[value.task.status]
@@ -175,6 +182,24 @@ function registerTools(server: Server, store: WorkStore, bindings: SessionBindin
   }, (input) => run(() => taskResult(store.cancel(actor(), input.taskId, input.reason, input.force))));
 }
 
+/**
+ * Aborts when the connection carrying this request goes away before its
+ * response is written: a runner process killed while parked on a long poll.
+ *
+ * Only the response's own `close` counts. The request's fires as soon as its
+ * body has been read, which is every request. A parked `wait_for_work` claims
+ * a task the moment something comes in; without this it outlived its caller
+ * until its own timeout and handed that claim to nobody, locking the live
+ * runner out for the rest of the lease.
+ */
+function connectionLost(res: ServerResponse): AbortSignal {
+  const controller = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) controller.abort();
+  });
+  return controller.signal;
+}
+
 export function mountWorkMcp(app: Express, store: WorkStore, bindings: SessionBindings): void {
   const sessions = new Map<string, { server: Server; transport: StreamableHTTPServerTransport }>();
   app.all(endpoint, async (req, res) => {
@@ -200,7 +225,11 @@ export function mountWorkMcp(app: Express, store: WorkStore, bindings: SessionBi
           return;
         }
         await sessionContext.run(
-          { sessionId: id, client: session.server.getClientVersion()?.name },
+          {
+            sessionId: id,
+            client: session.server.getClientVersion()?.name,
+            signal: connectionLost(res),
+          },
           () => session.transport.handleRequest(req, res, req.body),
         );
         return;

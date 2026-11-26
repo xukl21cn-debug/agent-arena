@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { RunnerCommandCursor } from '@arena/shared';
 import type { AgentResult } from './result.js';
@@ -32,6 +33,12 @@ const SETTLED: ReadonlySet<SessionStatus> = new Set<SessionStatus>([
 
 /** Settled records kept for the record; everything still in play is always kept. */
 const MAX_SETTLED_RECORDS = 100;
+
+/** How long `save` keeps retrying a replace that Windows refused: attempts × pause. */
+const RENAME_ATTEMPTS = 20;
+const RENAME_PAUSE_MS = 50;
+/** The pause itself; `Atomics.wait` is the only synchronous sleep Node offers. */
+const RENAME_PAUSE = new Int32Array(new SharedArrayBuffer(4));
 
 /** One task-round binding between a work claim and an agent session. */
 export interface SessionRecord {
@@ -124,7 +131,8 @@ export class SessionStore {
       ...(this.commandSeq === 0 && this.commandEpoch === undefined ? {} : { commandSeq: this.commandSeq }),
       ...(this.commandEpoch === undefined ? {} : { commandEpoch: this.commandEpoch }),
     };
-    const temp = `${this.file}.tmp`;
+    // Named for this process: two runner processes never write through one temp file.
+    const temp = `${this.file}.${process.pid}.tmp`;
     const fd = openSync(temp, 'w');
     try {
       writeFileSync(fd, JSON.stringify(payload, null, 2), 'utf8');
@@ -132,7 +140,22 @@ export class SessionStore {
     } finally {
       closeSync(fd);
     }
-    renameSync(temp, this.file);
+    // Windows refuses to replace a file that something else has open for a
+    // moment — an antivirus scan or the indexer reading what was just written.
+    // Retry briefly rather than let a lost write surface as an error in
+    // whichever loop happened to save.
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        renameSync(temp, this.file);
+        return;
+      } catch (error) {
+        if (attempt >= RENAME_ATTEMPTS) {
+          rmSync(temp, { force: true });
+          throw error;
+        }
+        Atomics.wait(RENAME_PAUSE, 0, 0, RENAME_PAUSE_MS);
+      }
+    }
   }
 
   /** Where this runner stopped reading registry commands, and in which registry. */
