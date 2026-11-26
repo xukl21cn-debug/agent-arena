@@ -1,5 +1,6 @@
 import type {
   RunnerCommandBatch,
+  RunnerCommandCursor,
   RunnerCommandKind,
   RunnerEventLevel,
   RunnerSummary,
@@ -48,10 +49,11 @@ export class RunnerManagementClient {
     });
   }
 
-  async pollCommands(afterSeq: number, timeoutMs: number, signal?: AbortSignal): Promise<RunnerCommandBatch> {
+  async pollCommands(cursor: RunnerCommandCursor, timeoutMs: number, signal?: AbortSignal): Promise<RunnerCommandBatch> {
     const query = new URLSearchParams({
-      afterSeq: String(afterSeq),
+      afterSeq: String(cursor.seq),
       timeoutMs: String(timeoutMs),
+      ...(cursor.epoch === undefined ? {} : { epoch: cursor.epoch }),
     });
     return this.request(`/api/runners/${encodeURIComponent(this.id)}/commands?${query.toString()}`, {
       method: 'GET',

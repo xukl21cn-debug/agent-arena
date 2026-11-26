@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import type {
   RunnerCommand,
   RunnerCommandBatch,
+  RunnerCommandCursor,
   RunnerCommandKind,
   RunnerDetail,
   RunnerEvent,
@@ -37,6 +39,8 @@ interface RunnerRecord {
 }
 
 const MAX_EVENTS = 100;
+/** Undelivered commands kept per runner; an offline runner loses the oldest beyond this. */
+const MAX_PENDING_COMMANDS = 100;
 const MAX_ID = 64;
 
 const statusOf = (record: RunnerRecord, now: number, ttlMs: number): RunnerStatus =>
@@ -49,6 +53,11 @@ const statusOf = (record: RunnerRecord, now: number, ttlMs: number): RunnerStatu
  * command queues, matching the fact that the runner's MCP session is gone too.
  */
 export class RunnerRegistry {
+  /**
+   * Identifies this registry instance. Command numbers only mean something
+   * within it: a server restart starts the numbering over.
+   */
+  readonly epoch: string = randomUUID();
   private readonly records = new Map<string, RunnerRecord>();
   private readonly listeners = new Set<(runner: RunnerDetail) => void>();
 
@@ -127,6 +136,10 @@ export class RunnerRegistry {
       ...(taskId === undefined ? {} : { taskId }),
     };
     record.commands.push(command);
+    // Bounded: a runner that never comes back loses the oldest of what it missed.
+    if (record.commands.length > MAX_PENDING_COMMANDS) {
+      record.commands.splice(0, record.commands.length - MAX_PENDING_COMMANDS);
+    }
     for (const wake of [...record.waiters]) wake();
     this.notify(record);
     return command;
@@ -134,7 +147,7 @@ export class RunnerRegistry {
 
   async waitForCommands(
     id: string,
-    afterSeq: number,
+    cursor: RunnerCommandCursor,
     timeoutMs: number,
     signal?: AbortSignal,
   ): Promise<RunnerCommandBatch> {
@@ -143,18 +156,28 @@ export class RunnerRegistry {
     record.lastSeenAt = this.now();
     record.lastStatus = 'online';
     if (wasOffline) this.notify(record);
-    // A runner may have persisted a cursor from a previous server process.
-    // A fresh registry has no command with that sequence, so start over rather
-    // than waiting forever for seq 7 when this process only has seq 1.
-    const effectiveAfterSeq = afterSeq > record.nextCommandSeq - 1 ? 0 : afterSeq;
+    // A runner's cursor only advances once it has dealt with a command, so
+    // everything up to it can go. Its number means what it says only within
+    // this registry: a server restart empties the queue and starts the
+    // numbering over, so a cursor from another instance starts from the
+    // beginning instead of landing inside the new sequence and skipping
+    // whatever came before it. A runner that predates epochs gets the old guess.
+    const sameInstance = cursor.epoch === this.epoch;
+    const afterSeq = sameInstance
+      ? cursor.seq
+      : cursor.epoch === undefined && cursor.seq <= record.nextCommandSeq - 1 ? cursor.seq : 0;
+    if (sameInstance) record.commands = record.commands.filter((command) => command.seq > afterSeq);
+    const effectiveAfterSeq = afterSeq;
+    const epoch = this.epoch;
+    const empty = (): RunnerCommandBatch => ({ commands: [], nextSeq: effectiveAfterSeq, epoch });
     const drain = (): RunnerCommandBatch | undefined => {
       const commands = record.commands.filter((command) => command.seq > effectiveAfterSeq);
       if (commands.length === 0) return undefined;
-      return { commands, nextSeq: commands.at(-1)?.seq ?? effectiveAfterSeq };
+      return { commands, nextSeq: commands.at(-1)?.seq ?? effectiveAfterSeq, epoch };
     };
     const immediate = drain();
     if (immediate) return immediate;
-    if (signal?.aborted) return { commands: [], nextSeq: effectiveAfterSeq };
+    if (signal?.aborted) return empty();
 
     return new Promise<RunnerCommandBatch>((resolve) => {
       let settled = false;
@@ -170,8 +193,8 @@ export class RunnerRegistry {
         const batch = drain();
         if (batch) finish(batch);
       };
-      const onAbort = (): void => finish({ commands: [], nextSeq: effectiveAfterSeq });
-      const timer = setTimeout(() => finish({ commands: [], nextSeq: effectiveAfterSeq }), timeoutMs);
+      const onAbort = (): void => finish(empty());
+      const timer = setTimeout(() => finish(empty()), timeoutMs);
       record.waiters.add(wake);
       signal?.addEventListener('abort', onAbort, { once: true });
     });

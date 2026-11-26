@@ -68,6 +68,7 @@ class FakeWork {
   acked: Array<{ taskId: string; round: number }> = [];
   submitAttempts = 0;
   getTaskCalls = 0;
+  waitCalls = 0;
   /** Successive answers to `getTask`; one is consumed per call. */
   taskViews: WorkTask[] = [];
   taskError: Error | undefined;
@@ -77,6 +78,7 @@ class FakeWork {
   constructor(public next: WorkWaitResult) {}
 
   async waitForWork(): Promise<WorkWaitResult> {
+    this.waitCalls += 1;
     return this.next;
   }
 
@@ -289,7 +291,11 @@ it('resumes a round another process left running while its claim still stands', 
   expect(work.submits[0]).toMatchObject({ taskId: 'task-1', round: 1, claimId: 'claim-1' });
   expect(store.get('task-1', 1)).toMatchObject({ status: 'submitted', sessionId: 'session-before-crash' });
   expect(store.orphans()).toEqual([]);
-  expect(events).toEqual([['warn', expect.stringContaining('续跑'), 'task-1']]);
+  // The resume was reported by the recovery; no second "claimed" for it.
+  expect(events).toEqual([
+    ['warn', expect.stringContaining('续跑'), 'task-1'],
+    ['info', '任务 task-1 第 1 轮执行完成。', 'task-1'],
+  ]);
 });
 
 it('marks an interrupted round and reports it once its claim is gone', async () => {
@@ -380,7 +386,11 @@ it('abandons a result the claim no longer accepts', async () => {
   const runner = new Runner(work as unknown as WorkClient, adapter(okRun), store, dir, quiet, events2);
   await runner.runOnce({ waitTimeoutMs: 10 });
   expect(store.get('task-1', 1)).toMatchObject({ status: 'abandoned', note: '领取租约已失效。' });
-  expect(events).toEqual([['info', expect.stringContaining('不再提交'), 'task-1']]);
+  expect(events).toEqual([
+    ['info', '领取任务「Runner fake」第 1 轮。', 'task-1'],
+    ['info', '任务 task-1 第 1 轮执行完成。', 'task-1'],
+    ['info', expect.stringContaining('不再提交'), 'task-1'],
+  ]);
 
   work.next = { reason: 'timeout' };
   await runner.runOnce({ waitTimeoutMs: 10 });
@@ -464,4 +474,85 @@ it('tells the agent its earlier attempt was cut short when a round continues und
   expect(seen).toEqual({ resumeSessionId: 'session-first-try', preamble: RESUME_PREAMBLE });
   expect(work.submits[0]).toMatchObject({ round: 1, claimId: 'claim-new' });
   expect(store.get('task-1', 1)).toMatchObject({ status: 'submitted', claimId: 'claim-new', sessionId: 'session-first-try' });
+});
+
+/** A task and claim of their own, so no record of an earlier leg is in the way. */
+function roundFixture(id: string): { view: WorkTask; claim: Claim } {
+  const claim: Claim = { id: `claim-${id}`, kind: 'work', round: 1, expiresAt: Date.now() + 60_000 };
+  return { claim, view: { ...task(), id, rounds: [{ round: 1, createdAt: 1, workClaim: claim }] } };
+}
+
+it('reports how each round ended', async () => {
+  const { events, events2 } = recorder();
+  let impl: () => Promise<AgentRunResult> = async () => okRun();
+  const work = new FakeWork({ reason: 'timeout' });
+  const runner = new Runner(work as unknown as WorkClient, adapter(() => impl()), store, dir, quiet, events2);
+  const run = async (id: string, outcome: () => Promise<AgentRunResult>) => {
+    const { view, claim } = roundFixture(id);
+    impl = outcome;
+    work.next = { reason: 'assigned', task: view, claim };
+    events.length = 0;
+    await runner.runOnce({ waitTimeoutMs: 10 });
+    return events.map(([level, message]) => [level, message]);
+  };
+
+  expect(await run('done', async () => okRun())).toEqual([
+    ['info', '领取任务「Runner fake」第 1 轮。'],
+    ['info', '任务 done 第 1 轮执行完成。'],
+  ]);
+  expect(await run('timed-out', async () => ({ text: '', reasonKind: 'timeout', exitCode: null, stderr: '' }))).toEqual([
+    ['info', '领取任务「Runner fake」第 1 轮。'],
+    ['warn', '任务 timed-out 第 1 轮超时，已终止；未完成的部分写在了回报里。'],
+  ]);
+  expect(await run('crashed', async () => ({ text: resultText, reasonKind: 'completed', exitCode: 3, stderr: 'boom' }))).toEqual([
+    ['info', '领取任务「Runner fake」第 1 轮。'],
+    ['error', '任务 crashed 第 1 轮执行失败：DSH 退出码 3；DSH stderr：boom'],
+  ]);
+  expect(await run('unstartable', async () => { throw new Error('spawn failed'); })).toEqual([
+    ['info', '领取任务「Runner fake」第 1 轮。'],
+    ['error', '任务 unstartable 第 1 轮执行失败：runner 执行 DSH 失败：spawn failed'],
+  ]);
+  // The reason also reached the work board, as part of the result.
+  expect(work.submits.at(-1)?.result).toMatchObject({ unresolved: 'runner 执行 DSH 失败：spawn failed' });
+});
+
+it('reports a cancelled round as cancelled, not as a failure', async () => {
+  process.env.FAKE_DSH_MODE = 'hang';
+  const { events, events2 } = recorder();
+  const work = new FakeWork({ reason: 'assigned', task: task(), claim: claim() });
+  const runner = new Runner(
+    work as unknown as WorkClient,
+    new DshHeadlessAdapter({
+      command: process.execPath,
+      argsPrefix: [fixture],
+      profile: 'headless',
+      permissionMode: null,
+      approvalPolicy: null,
+      extraDirs: [],
+      timeoutMs: 60_000,
+    }),
+    store,
+    dir,
+    quiet,
+    events2,
+  );
+  const running = runner.runOnce({ waitTimeoutMs: 10 });
+  await vi.waitFor(() => expect(runner.currentTask()).toMatchObject({ id: 'task-1' }));
+  runner.cancelCurrent();
+  await running;
+  expect(events.at(-1)).toEqual(['warn', '任务 task-1 第 1 轮被取消，已终止执行。', 'task-1']);
+  expect(events.some(([, message]) => message.includes('执行失败'))).toBe(false);
+});
+
+it('says once that the board is waiting on a person', async () => {
+  const work = new FakeWork({ reason: 'needs_attention', task: { ...task(), status: 'needs_attention' } });
+  const { events, events2 } = recorder();
+  const controller = new AbortController();
+  const runner = new Runner(work as unknown as WorkClient, adapter(okRun), store, dir, quiet, events2, 1, 1);
+  const loop = runner.runLoop({ waitTimeoutMs: 10, signal: controller.signal });
+  // Several polls go by while the task stays as it is.
+  await vi.waitFor(() => expect(work.waitCalls).toBeGreaterThanOrEqual(4));
+  controller.abort();
+  await loop;
+  expect(events).toEqual([['warn', '任务 task-1 待接管，暂停领取新任务。', 'task-1']]);
 });

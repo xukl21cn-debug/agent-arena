@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { RunnerCommandCursor } from '@arena/shared';
 import type { AgentResult } from './result.js';
 
 /**
@@ -53,8 +54,9 @@ export interface SessionRecord {
 interface StateFile {
   version: 1;
   records: SessionRecord[];
-  /** Highest runner-management command already consumed by this runner. */
+  /** Highest runner-management command already consumed by this runner, and in which registry. */
   commandSeq?: number;
+  commandEpoch?: string;
 }
 
 function keyOf(taskId: string, round: number): string {
@@ -70,6 +72,7 @@ function keyOf(taskId: string, round: number): string {
 export class SessionStore {
   private readonly records = new Map<string, SessionRecord>();
   private commandSeq = 0;
+  private commandEpoch: string | undefined;
 
   constructor(
     private readonly file: string,
@@ -87,6 +90,7 @@ export class SessionStore {
       if (parsed.version !== 1 || !Array.isArray(parsed.records)) throw new Error('unsupported state file shape');
       this.commandSeq = typeof parsed.commandSeq === 'number' && Number.isInteger(parsed.commandSeq) && parsed.commandSeq >= 0
         ? parsed.commandSeq : 0;
+      this.commandEpoch = typeof parsed.commandEpoch === 'string' ? parsed.commandEpoch : undefined;
       for (const record of parsed.records) {
         if (typeof record?.taskId === 'string' && typeof record.round === 'number' && typeof record.claimId === 'string') {
           this.records.set(keyOf(record.taskId, record.round), record);
@@ -117,7 +121,8 @@ export class SessionStore {
     const payload: StateFile = {
       version: 1,
       records: [...this.records.values()],
-      ...(this.commandSeq === 0 ? {} : { commandSeq: this.commandSeq }),
+      ...(this.commandSeq === 0 && this.commandEpoch === undefined ? {} : { commandSeq: this.commandSeq }),
+      ...(this.commandEpoch === undefined ? {} : { commandEpoch: this.commandEpoch }),
     };
     const temp = `${this.file}.tmp`;
     const fd = openSync(temp, 'w');
@@ -130,15 +135,17 @@ export class SessionStore {
     renameSync(temp, this.file);
   }
 
-  /** Highest command sequence already consumed by this runner. */
-  commandCursor(): number {
-    return this.commandSeq;
+  /** Where this runner stopped reading registry commands, and in which registry. */
+  commandCursor(): RunnerCommandCursor {
+    return { seq: this.commandSeq, ...(this.commandEpoch === undefined ? {} : { epoch: this.commandEpoch }) };
   }
 
-  setCommandCursor(seq: number): void {
+  setCommandCursor(cursor: RunnerCommandCursor): void {
+    if (!Number.isInteger(cursor.seq)) return;
     // Empty long-polls return the same cursor; skip the write in that case.
-    if (!Number.isInteger(seq) || seq <= this.commandSeq) return;
-    this.commandSeq = seq;
+    if (cursor.seq <= this.commandSeq && cursor.epoch === this.commandEpoch) return;
+    this.commandSeq = cursor.seq;
+    this.commandEpoch = cursor.epoch;
     this.save();
   }
 

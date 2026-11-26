@@ -31,6 +31,7 @@ const commandInput = z.object({
 });
 const commandQuery = z.object({
   afterSeq: z.coerce.number().int().nonnegative().default(0),
+  epoch: z.string().trim().min(1).max(100).optional(),
   timeoutMs: z.coerce.number().int().min(1_000).max(30_000).default(20_000),
 });
 
@@ -91,7 +92,8 @@ export function createRunnerRouter(registry: RunnerRegistry): Router {
     const controller = new AbortController();
     res.on('close', () => controller.abort());
     try {
-      res.json(await registry.waitForCommands(id, query.afterSeq, query.timeoutMs, controller.signal));
+      const cursor = { seq: query.afterSeq, ...(query.epoch === undefined ? {} : { epoch: query.epoch }) };
+      res.json(await registry.waitForCommands(id, cursor, query.timeoutMs, controller.signal));
     } catch (error) {
       if (!res.headersSent) throw error;
     }

@@ -92,6 +92,12 @@ export function cancelCurrentTask(runner: Runner, taskId?: string): CancelOutcom
 export class Runner {
   private activeTask: RunnerTaskRef | null = null;
   private activeController: AbortController | undefined;
+  /** Set by `cancelCurrent`, so a round ended by a cancel is not mistaken for one that failed. */
+  private cancelRequested = false;
+  /** The task the last poll was about; `needs_attention` names the task the board waits on. */
+  private waitedTaskId: string | null = null;
+  /** The task already reported as blocking the board; one event per task, not one per poll. */
+  private blockedOn: string | null | undefined;
 
   constructor(
     private readonly work: WorkApi,
@@ -102,6 +108,8 @@ export class Runner {
     private readonly events?: RunnerEvents,
     /** Pause between the quick tries of one hand-in. */
     private readonly retryDelayMs = 2_000,
+    /** Pause between polls while the work domain has nothing to hand out. */
+    private readonly pauseMs = 5_000,
   ) {}
 
   /** The task shown by the runner registry while DSH is executing. */
@@ -112,6 +120,7 @@ export class Runner {
   /** Abort the current DSH process; returns false when nothing is running. */
   cancelCurrent(): boolean {
     if (!this.activeController) return false;
+    this.cancelRequested = true;
     this.activeController.abort();
     return true;
   }
@@ -120,6 +129,7 @@ export class Runner {
   async runOnce(options: RunnerOptions): Promise<RunOnceOutcome> {
     await this.settlePending(options.signal);
     const wait = await this.work.waitForWork(options.waitTimeoutMs, options.signal);
+    this.waitedTaskId = wait.task?.id ?? null;
     if (wait.reason === 'assigned') {
       if (!wait.task || !wait.claim) throw new Error('工作域返回 assigned 但没有 task/claim。');
       await this.execute(wait.task, wait.claim, options.signal);
@@ -145,12 +155,29 @@ export class Runner {
         await sleep(5_000, options.signal);
         continue;
       }
-      if (outcome === 'assigned' || outcome === 'acknowledged' || outcome === 'timeout') continue;
+      if (outcome === 'assigned' || outcome === 'acknowledged' || outcome === 'timeout') {
+        this.blockedOn = undefined;
+        continue;
+      }
       if (outcome !== 'finished') {
+        if (outcome === 'needs_attention') await this.reportBlocked();
+        else this.blockedOn = undefined;
         this.logger.info(`[runner] 工作域状态：${outcome}，继续等待。`);
-        await sleep(5_000, options.signal);
+        await sleep(this.pauseMs, options.signal);
       }
     }
+  }
+
+  /** Say once per task that the board is waiting on a person; every poll would repeat it. */
+  private async reportBlocked(): Promise<void> {
+    const taskId = this.waitedTaskId;
+    if (this.blockedOn === taskId) return;
+    this.blockedOn = taskId;
+    await this.report(
+      'warn',
+      taskId === null ? '有任务待接管，暂停领取新任务。' : `任务 ${taskId} 待接管，暂停领取新任务。`,
+      taskId ?? undefined,
+    );
   }
 
   /**
@@ -262,6 +289,7 @@ export class Runner {
     const workspace = realpathSync(task.workspace);
     const handIn = { taskId: task.id, round: claim.round, claimId: claim.id };
     if (workspace !== this.workspace) {
+      await this.report('error', `任务 ${task.id} 第 ${claim.round} 轮未执行：runner 工作区与任务工作区不一致。`, task.id);
       await this.handIn(
         handIn,
         fallbackResult('', `runner 工作区（${this.workspace}）与任务工作区（${workspace}）不一致，未执行。`),
@@ -300,6 +328,17 @@ export class Runner {
     }
 
     this.logger.info(`任务 ${task.id}「${task.title}」第 ${claim.round} 轮${resume ? '续跑' : ''}。`);
+    // A resume was reported by the recovery that decided on it.
+    if (!resume) {
+      await this.report(
+        'info',
+        continuing
+          ? `任务 ${task.id} 第 ${claim.round} 轮继续执行（上一次尝试未完成）。`
+          : `领取任务「${task.title}」第 ${claim.round} 轮。`,
+        task.id,
+      );
+    }
+    this.cancelRequested = false;
     this.activeTask = { id: task.id, title: task.title, status: 'working', round: claim.round, startedAt: Date.now() };
     this.activeController = new AbortController();
     const controller = this.activeController;
@@ -313,6 +352,8 @@ export class Runner {
     }, Math.max(1_000, Math.floor((claim.expiresAt - Date.now()) / 2)));
     renewal.unref();
     let result: AgentResult;
+    let reasonKind: string | null = null;
+    let failure: string[] = [];
     try {
       const run = await this.adapter.run(task, {
         signal: controller.signal,
@@ -321,15 +362,16 @@ export class Runner {
         onSessionId: (sessionId) => {
           this.sessions.setSessionId(task.id, claim.round, sessionId);
           this.logger.info(`任务 ${task.id} 的 DSH 会话：${sessionId}`);
+          void this.report('info', `任务 ${task.id} 的 DSH 会话：${sessionId}`, task.id);
         },
       });
-      const parsed = parseAgentResult(run.text);
-      result = parsed.ok ? parsed.value : fallbackResult(run.text, parsed.reason);
-      const failure: string[] = [];
+      reasonKind = run.reasonKind;
       if (run.exitCode !== 0) failure.push(`DSH 退出码 ${run.exitCode}`);
       if (run.reasonKind !== 'completed') failure.push(`DSH 最终状态 ${run.reasonKind ?? '未知'}`);
       const stderrTail = run.stderr.trim().slice(-1_000);
       if (stderrTail) failure.push(`DSH stderr：${stderrTail}`);
+      const parsed = parseAgentResult(run.text);
+      result = parsed.ok ? parsed.value : fallbackResult(run.text, parsed.reason);
       if (failure.length > 0) {
         result = {
           ...result,
@@ -337,13 +379,16 @@ export class Runner {
         };
       }
     } catch (error) {
-      result = fallbackResult('', `runner 执行 DSH 失败：${reasonOf(error)}`);
+      failure = [`runner 执行 DSH 失败：${reasonOf(error)}`];
+      result = fallbackResult('', failure[0]!);
     } finally {
       signal?.removeEventListener('abort', forwardAbort);
       this.activeController = undefined;
       this.activeTask = null;
       clearInterval(renewal);
     }
+
+    await this.reportOutcome(task.id, claim.round, reasonKind, failure);
 
     await this.handIn(handIn, result);
   }
@@ -354,6 +399,28 @@ export class Runner {
     this.sessions.begin(input);
     const record = this.sessions.setResult(input.taskId, input.round, result);
     if (record !== undefined) await this.flush(record);
+  }
+
+  /**
+   * Tell the registry how a round ended. A cancel and a shutdown both end the
+   * DSH process; the runner's own record of having asked is what tells them
+   * apart.
+   */
+  private async reportOutcome(taskId: string, round: number, reasonKind: string | null, failure: string[]): Promise<void> {
+    const what = `任务 ${taskId} 第 ${round} 轮`;
+    if (this.cancelRequested) {
+      await this.report('warn', `${what}被取消，已终止执行。`, taskId);
+      return;
+    }
+    if (reasonKind === 'timeout') {
+      await this.report('warn', `${what}超时，已终止；未完成的部分写在了回报里。`, taskId);
+      return;
+    }
+    if (failure.length > 0) {
+      await this.report('error', `${what}执行失败：${failure.join('；').slice(0, 500)}`, taskId);
+      return;
+    }
+    await this.report('info', `${what}执行完成。`, taskId);
   }
 
   private async report(level: RunnerEventLevel, message: string, taskId?: string): Promise<void> {

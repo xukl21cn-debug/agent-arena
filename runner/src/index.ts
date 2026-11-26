@@ -82,10 +82,10 @@ async function main(): Promise<void> {
     }, config.heartbeatIntervalMs);
     heartbeatTimer.unref();
     const commandLoop = (async () => {
-      let afterSeq = sessions.commandCursor();
+      let cursor = sessions.commandCursor();
       while (!controller.signal.aborted) {
         try {
-          const batch = await management.pollCommands(afterSeq, COMMAND_POLL_TIMEOUT_MS, controller.signal);
+          const batch = await management.pollCommands(cursor, COMMAND_POLL_TIMEOUT_MS, controller.signal);
           for (const command of batch.commands) {
             if (command.kind === 'cancel') {
               const outcome = cancelCurrentTask(runner, command.taskId);
@@ -96,8 +96,8 @@ async function main(): Promise<void> {
                 .catch((error) => console.error('[runner] 取消事件上报失败：', error instanceof Error ? error.message : error));
             }
           }
-          afterSeq = batch.nextSeq;
-          sessions.setCommandCursor(afterSeq);
+          cursor = { seq: batch.nextSeq, epoch: batch.epoch };
+          sessions.setCommandCursor(cursor);
         } catch (error) {
           if (controller.signal.aborted) break;
           if (isUnregistered(error)) await reRegister('command poll');

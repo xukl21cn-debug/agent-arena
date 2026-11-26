@@ -203,7 +203,12 @@ it('continues an interrupted round after the board asks for it', async () => {
     });
     const work = (await call('get_task', { taskId })).rounds as Array<{ work: { claimId: string } }>;
     expect(work[0]!.work.claimId).not.toBe(firstClaim);
-    expect(events).toEqual([['warn', expect.stringContaining('在执行中被中断'), taskId]]);
+    expect(events).toEqual([
+      ['warn', expect.stringContaining('在执行中被中断'), taskId],
+      ['info', expect.stringContaining('继续执行'), taskId],
+      ['info', `任务 ${taskId} 的 DSH 会话：session-fake`, taskId],
+      ['info', `任务 ${taskId} 第 1 轮执行完成。`, taskId],
+    ]);
     // The record now belongs to the new claim, with the session the run reported.
     expect(sessions.get(taskId, 1)).toMatchObject({ status: 'submitted', claimId: work[0]!.work.claimId, sessionId: 'session-fake' });
   } finally {

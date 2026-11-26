@@ -42,8 +42,13 @@ it('registers, heartbeats, reports an event, and consumes a command', async () =
   await client.heartbeat(task);
   await client.event('info', 'started');
   await client.command('cancel');
-  const batch = await client.pollCommands(0, 1_000);
-  expect(batch.commands).toMatchObject([{ kind: 'cancel' }]);
+  const first = await client.pollCommands({ seq: 0 }, 1_000);
+  expect(first.commands).toMatchObject([{ kind: 'cancel' }]);
+  // The batch names the registry it was read from; sending that back is what
+  // lets the next poll be understood after a server restart.
+  expect(first.epoch).toBe(registry.epoch);
+  const next = await client.pollCommands({ seq: first.nextSeq, epoch: first.epoch }, 1_000);
+  expect(next).toEqual({ commands: [], nextSeq: first.nextSeq, epoch: registry.epoch });
   expect(registry.get('runner-client')).toMatchObject({
     currentTask: task,
     events: [{ message: 'started' }],

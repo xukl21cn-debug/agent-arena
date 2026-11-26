@@ -59,11 +59,15 @@ it('keeps the latest session id for a task across rework rounds', () => {
   expect(store.latestSessionForTask('task-1')).toBe('session-round-1');
 });
 
-it('persists the runner command cursor', () => {
+it('persists the runner command cursor together with the registry it belongs to', () => {
   const store = new SessionStore(file, () => 1_000);
-  expect(store.commandCursor()).toBe(0);
-  store.setCommandCursor(7);
-  expect(new SessionStore(file, () => 2_000).commandCursor()).toBe(7);
+  expect(store.commandCursor()).toEqual({ seq: 0 });
+  store.setCommandCursor({ seq: 7, epoch: 'server-a' });
+  expect(new SessionStore(file, () => 2_000).commandCursor()).toEqual({ seq: 7, epoch: 'server-a' });
+  // After a server restart the numbering starts over: a lower sequence that
+  // belongs to a new registry is a step forward and must be kept.
+  store.setCommandCursor({ seq: 1, epoch: 'server-b' });
+  expect(new SessionStore(file, () => 3_000).commandCursor()).toEqual({ seq: 1, epoch: 'server-b' });
 });
 
 it('moves a corrupt state file aside instead of overwriting it', () => {
