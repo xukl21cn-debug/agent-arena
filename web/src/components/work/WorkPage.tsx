@@ -1,8 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Plus } from 'lucide-react';
 import type { ArtifactRef, TestEvidence, WorkStatus, WorkTask } from '@arena/shared';
+import { Button } from '@/components/ui/button';
+import { api } from '../../api';
 import { useWorkStore } from '../../store/work';
 import { usePageTitle } from '../layout/PageTitle';
 import { BackLink } from '../layout/BackLink';
+import { NewTaskDialog } from './NewTaskDialog';
+import { ReviewDialog } from './ReviewDialog';
 
 const labels: Record<WorkStatus, string> = {
   queued: '待领取', working: '执行中', pending_review: '待复审', reviewing: '复审中',
@@ -37,11 +42,12 @@ function Tests({ tests }: { tests: TestEvidence[] }) {
   ))}</ul>;
 }
 
-function TaskDetail({ task }: { task: WorkTask }) {
+function TaskDetail({ task, canReview }: { task: WorkTask; canReview: boolean }) {
   const busy = useWorkStore((store) => store.busy);
   const approve = useWorkStore((store) => store.approve);
   const takeover = useWorkStore((store) => store.takeover);
   const [reason, setReason] = useState('');
+  const [reviewOpen, setReviewOpen] = useState(false);
   const handleTakeover = (event: FormEvent) => {
     event.preventDefault();
     if (reason.trim()) void takeover(reason.trim());
@@ -51,6 +57,11 @@ function TaskDetail({ task }: { task: WorkTask }) {
       <div className="work-title">
         <h2 className="panel-title">{task.title}</h2><span>{labels[task.status]}</span>
       </div>
+      {canReview && task.status === 'pending_review' && (
+        <Button className="work-approve" type="button" onClick={() => setReviewOpen(true)}>
+          复审任务
+        </Button>
+      )}
       {task.status === 'pending_merge_approval' && (
         <button className="btn btn--primary work-approve" type="button" disabled={busy} onClick={() => void approve()}>
           确认合并
@@ -99,6 +110,7 @@ function TaskDetail({ task }: { task: WorkTask }) {
           <p>{task.merge.pushed ? `已推送 ${task.merge.remote ?? ''}` : '尚未推送'}</p>
         </section>
       )}
+      <ReviewDialog open={reviewOpen} onOpenChange={setReviewOpen} taskTitle={task.title} />
     </section>
   );
 }
@@ -106,7 +118,12 @@ function TaskDetail({ task }: { task: WorkTask }) {
 export function WorkPage() {
   usePageTitle('开发任务');
   const { connect, tasks, select, selected, detail, loading, error } = useWorkStore();
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [humanCoordinatorId, setHumanCoordinatorId] = useState<string | null>(null);
   useEffect(() => connect(), [connect]);
+  useEffect(() => {
+    void api.workContext().then((context) => setHumanCoordinatorId(context.humanCoordinatorId)).catch(() => undefined);
+  }, []);
   return (
     <>
       <div className="page-head">
@@ -114,6 +131,11 @@ export function WorkPage() {
           <BackLink to="/" label="返回大厅" />
           <h2 className="page-title">开发任务</h2>
           <p className="page-subtitle">本机看板：领取、复审、收工确认与放行合并。</p>
+        </div>
+        <div className="page-head-meta">
+          <Button type="button" onClick={() => setNewTaskOpen(true)}>
+            <Plus className="size-3.5" />新建任务
+          </Button>
         </div>
       </div>
       {error && <p className="error-bar" role="alert">{error}</p>}
@@ -129,8 +151,9 @@ export function WorkPage() {
             </button>
           ))}
         </nav>
-        {detail && <TaskDetail key={detail.id} task={detail} />}
+        {detail && <TaskDetail key={detail.id} task={detail} canReview={detail.coordinator.id === humanCoordinatorId} />}
       </main>
+      <NewTaskDialog open={newTaskOpen} onOpenChange={setNewTaskOpen} />
     </>
   );
 }

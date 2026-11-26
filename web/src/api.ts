@@ -34,6 +34,23 @@ export interface ChatRoomSummaryDto {
   updatedAt: string;
 }
 
+/** Local work page dispatch contract; the server fills requestId if omitted. */
+export interface CreateWorkTaskInput {
+  title: string;
+  requirement: string;
+  branch: string;
+  base: string;
+  acceptance: string[];
+  docs: Array<{ kind: 'brief'; path: string; summary: string }>;
+}
+
+export interface WorkContextDto {
+  workspace: string;
+  humanCoordinatorId: string;
+  branch: string | null;
+  base: string | null;
+}
+
 interface ErrorPayload {
   error?: {
     code?: string;
@@ -156,6 +173,17 @@ export const api = {
   takeOverWork: (id: string, reason: string) => request<WorkTask>('/api/work/tasks/' + encodeURIComponent(id) + '/takeover', {
     method: 'POST', body: JSON.stringify({ reason }),
   }),
+  workContext: (): Promise<WorkContextDto> => request<WorkContextDto>('/api/work/context'),
+  createWorkTask: (input: CreateWorkTaskInput): Promise<WorkTask> => request<WorkTask>('/api/work/tasks', {
+    method: 'POST', body: JSON.stringify(input),
+  }),
+  reviewWorkTask: (
+    id: string,
+    input: { decision: 'approve' | 'rework'; summary: string; findings?: string },
+  ): Promise<WorkTask> => request<WorkTask>(
+    '/api/work/tasks/' + encodeURIComponent(id) + '/review',
+    { method: 'POST', body: JSON.stringify(input) },
+  ),
   listRunners: (): Promise<RunnerSummary[]> => request<RunnerSummary[]>('/api/runners'),
   runnerDetail: (id: string): Promise<RunnerDetail> => request<RunnerDetail>(
     '/api/runners/' + encodeURIComponent(id),

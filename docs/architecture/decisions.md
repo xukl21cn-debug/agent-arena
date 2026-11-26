@@ -148,3 +148,9 @@
 | P1 只支持 DSH headless，保留 `AgentAdapter` 接口；多客户端在 P4 | 先做多客户端适配器空壳；或把 DSH 直接写进循环 | 先跑通一个真实闭环，避免为未实现的客户端提前抽象；DSH 适配器本身仍隔离在 `src/adapters/dsh.ts` |
 | 任务轮次与 DSH `sessionId` 落本地状态文件，重复领取时拒绝重复启动 | 只靠内存记录；或每次领取都重新启动 | 进程重启后内存丢失；本地状态文件是 P1 最小的“不重复执行”证据，完整恢复留给 P3 |
 | Runner 管理使用**内存 `RunnerRegistry` + REST 长轮询 + `/ws?kind=runner`**；命令按 runner id 排队，离线不阻塞页面 | 把 runner 状态落盘；让 server 反向 dial runner；为管理面另开 gRPC/消息队列 | 注册表是观测数据，权威任务状态仍在 `WorkStore`；server 重启后旧 MCP 会话本来就不存在，清空注册表不会制造新的状态不一致。长轮询复用工作域的成熟模式，页面刷新仍走现有 `/ws` |
+
+## 12. 看板派单
+
+| 决策 | 放弃的选项 | 为什么 |
+|---|---|---|
+| 看板派单使用固定的人类协调者身份（`w_human_0` / `看板用户`），`/api/work/tasks` 直接创建任务；人工复审时服务端内部领取 review claim 后立即提交 | 让浏览器模拟 MCP 会话；让主 agent coordinator 代为派单 | 浏览器没有 MCP 会话，不能跨两次 REST 请求持有 claim；固定本地 coordinator 让派单与复审可以独立完成，同时任务仍走同一 `WorkStore` 状态机。主 agent 创建的 coordinator 任务不显示看板复审按钮，避免越权 |
