@@ -32,6 +32,12 @@
 
 **2026-11-26 用户验收通过，已合入 `main`（合并提交 `8625a3c`）。** `/work` 新增「新建任务」表单和待复审任务的人工「通过 / 返工」操作：看板用户以本地 coordinator 身份派单，runner 自动领取；任务仍走同一工作域状态机。
 
+## SQLite 持久化
+
+**2026-11-26 用户验收通过，已合入 `main`（合并提交 `0d86c8e`）。** 棋局、棋谱、聊天室、工作任务的权威状态从 `data/` 下的 JSON 文件迁到一个 SQLite 库 `data/arena.db`（Node 内置 `node:sqlite`，Node 下限提到 22.13）。REST、WebSocket、MCP 的行为不变；旧 JSON 只在首次启动时导入一次并留下标记，之后数据被清空也不会重新导入。经过一轮独立评审；整改后的独立二审因额度耗尽没有完成，由换模型后的主 agent 用实验和变异验证复核，用户决定接受。长期结论见[决策](architecture/decisions.md)§6 与[硬约束](architecture/constraints.md)§6，备份方式见[项目首页](../README.md#数据与备份)。
+
 ## 尚未排期
 
 - **runner 后续阶段。** P1、P2 已实现；P3 重启/超时/取消恢复、P4 多客户端与并发仍待排期。聊天常驻成员形态（P4-C3）已决定不做：会话断开自动交还已覆盖「收工不交还」的故障模式（见上），pass_turn 与租约 sweep 作为其余兜底。开发任务的「自动回投」目标会话空闲/未开时自动拉起接单，headless/`codex exec resume`/`--resume` 续跑已调研证实可行（本机 `docs/archive/review-2026-11-24/research/`），等真实多客户端排队接活的场景出现再做。若轮流发言限制讨论，再评估 `mentions` 或 `free` 模式。[聊天模型](../server/src/chat/model.ts)
+
+- **持久化遗留项。** 库里读不出来的行会被跳过并记日志，但用同一个 id 重新创建房间会把那一行覆盖（与 JSON 模式一致，不是迁移引入的）；`createApp` 的 `chat` / `work` 仍是可选参数，漏传会回落到文件模式（已决定保持现状）；`chat_rooms_updated_at`、`work_tasks_status` 两个索引暂时没有查询使用；关停的 3 秒兜底与双击 Ctrl+C 没有自动化测试；服务运行中的热备份只有文档说明，没有现成脚本（先停服再拷，或用 `VACUUM INTO`）。[数据库层](../server/src/db/database.ts)
