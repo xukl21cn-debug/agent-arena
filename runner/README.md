@@ -54,7 +54,7 @@ P1 只支持 DSH headless，单进程、单任务顺序执行。
 - 首轮从 `--json` 的 `session` 事件自动创建并记录会话 ID；同一任务的返工轮会沿用该任务之前的 DSH 会话。
 - 模型凭据由 DSH 自己读取：启动环境、会话工作目录的 `.env`，或 `$DSH_HOME/.env`；runner 不保存凭据。
 - `permissionMode` 默认 `workspace-write`；无人值守时 `approvalPolicy` 默认 `never`。需要额外可写目录时用 `extraDirs`。
-- 如果 Windows 上 DSH 报 `windows-acl workspace grant failed ... grantWrite(...)`，这是 DSH 的 workspace-write ACL 授权在当前机器失败；可改用 `"permissionMode": "danger-full-access"` 验证链路（这会放弃文件沙箱，需理解风险）。
+- 如果 Windows 上 DSH 报 `windows-acl workspace grant failed ... grantWrite(...)`，是 DSH 的 workspace-write 授权在工作区根目录上失败。常见原因：工作区所在的盘只给当前用户「修改」权限（非系统盘的默认设置就是这样），而授权时要写完整性标签，需要「完全控制」。修法是给工作区根目录补上当前用户的完全控制——DSH 自带的 `diagnose-windows-sandbox-acl` 脚本一条命令完成诊断、修复，并生成恢复脚本。`"permissionMode": "danger-full-access"` 只是放弃文件沙箱的临时绕行，链路通了就应改回去。
 
 ## 结果约定
 

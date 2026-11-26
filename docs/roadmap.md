@@ -24,7 +24,9 @@
 
 ## Runner 自动执行
 
-**2026-11-26 用户验收通过，已合入 `main`（合并提交 `63485bc`）。** 新增 `@arena/runner` 本机执行器：以 worker 身份连接 `/work/mcp`，领取任务后启动 DSH headless，自动记录会话 ID 并把结构化结果回投工作看板。真实 DSH smoke 已进入 `pending_review`；本机 `workspace-write` 的 Windows ACL 授权失败，验收改用 `danger-full-access`，需在 ACL 正常环境复验。详见归档的 runner proposal。
+**2026-11-26 用户验收通过，已合入 `main`（合并提交 `63485bc`）。** 新增 `@arena/runner` 本机执行器：以 worker 身份连接 `/work/mcp`，领取任务后启动 DSH headless，自动记录会话 ID 并把结构化结果回投工作看板。真实 DSH smoke 已进入 `pending_review`；本机 `workspace-write` 的 Windows ACL 授权失败，验收改用 `danger-full-access`。详见归档的 runner proposal。
+
+**2026-11-26 已复验 `workspace-write`。** 根因是工作区所在的 E: 盘只给当前用户「修改」权限，DSH 授权时要写完整性标签，需要「完全控制」。用 DSH 自带的 ACL 诊断脚本给仓库根目录补上当前用户的完全控制后，授权、受限令牌、工作区内可写与区外被拒、受限 `pwsh` 均实测通过，本地 `runner.config.json` 已改回 `workspace-write`。尚未带真实模型跑完整任务（headless profile 的模型额度已用完），额度恢复后补一次。
 
 **2026-11-26 用户验收通过，已合入 `main`（合并提交 `63485bc`）。** 新增 `/runners` 页面和 `RunnerRegistry`：显示 runner 在线/离线、当前任务、最近事件；任务级 `cancel` 命令通过 REST 长轮询排队，runner 重连后消费；server 重启后运行中的 runner 会自动重新注册。runner 进程启动/停止仍由用户负责。
 
