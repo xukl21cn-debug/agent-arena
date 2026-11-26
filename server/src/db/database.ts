@@ -28,8 +28,8 @@ export class ArenaDatabase {
         `[arena] 无法打开数据库 ${file}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
     try {
+      this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
       this.migrate();
     } catch (error) {
       // A refused or failed migration must not keep the file locked for the
@@ -39,7 +39,13 @@ export class ArenaDatabase {
       } catch {
         /* the original error matters more */
       }
-      throw error;
+      // The schema-version error in `migrate()` already names the file. The
+      // driver's own errors ("file is not a database") do not, and the file is
+      // the one thing the user needs in order to fix it.
+      const message = error instanceof Error ? error.message : String(error);
+      throw error instanceof Error && message.includes(file)
+        ? error
+        : new Error(`[arena] 数据库 ${file} 打不开或迁移失败: ${message}`, { cause: error });
     }
   }
 

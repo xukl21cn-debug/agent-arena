@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -27,6 +27,15 @@ it('refuses a database written by a newer build', () => {
   // Writing into a schema we do not understand fails later, mid-request, with
   // "no such table"; refusing at boot says what actually happened.
   expect(() => new ArenaDatabase(file)).toThrow(/schema 版本/);
+});
+
+it('names the file when it exists but is not a database', () => {
+  const file = path.join(dir, 'arena.db');
+  writeFileSync(file, 'x');
+  // The driver only says "file is not a database"; with ARENA_DB_PATH the
+  // user would not know which file to fix.
+  expect(() => new ArenaDatabase(file)).toThrow(/not a database/);
+  expect(() => new ArenaDatabase(file)).toThrow(file);
 });
 
 it('upgrades a v3 database: adds the meta table and moves timestamps to epoch ms', () => {
