@@ -96,7 +96,7 @@
 | 数据根目录**锚在代码文件位置**（`server/src/config.ts` → `<repo>/data`），不锚 `process.cwd()` | 继续用 cwd 相对路径；或要求每个入口自己设 `ARENA_DATA_DIR` | cwd 随启动方式变（`pnpm dev` 是 `server/`，直接 `node server/dist/index.js` 是仓库根），同一份代码会把数据分裂到两处；「记得每个入口都设环境变量」是靠纪律而不是靠结构。文件位置在 dev 与 build 两种形态下都稳定（`server/src` 与 `server/dist` 都上跳两级到仓库根） |
 | 一个 `data/` 根目录，四个域共用一个 SQLite 库文件 `arena.db` | 每个领域自己一个根目录（`data/` 与 `server/data/chat/`）；或每个域一个库文件 | 领域边界已经在代码和端点上，落盘不必再分树：一个库文件能一次备份、一次事务，找数据只有一处。领域归属靠表名（`rooms` / `archives` / `chat_rooms` / `work_tasks`）和 repository 接口保留 |
 
-> **2026-11-26 已迁移完成：** server 持久化按 [SQLite Proposal](../proposals/sqlite-persistence.md) 切到 `node:sqlite`，棋局、棋谱、聊天室、工作任务全部由 `data/arena.db` 持有，旧 JSON 只在首次启动时导入一次并留下标记，导入后可删除（本地开发数据已于当日清理）。放弃 JSON 的原因：多域多文件写入没有事务边界，半写或崩溃会留下互相矛盾的快照，状态多了也没法直接查。选 `node:sqlite` 而非 `better-sqlite3`：不引入原生依赖，代价是 Node 下限提到 22.13。
+> **2026-11-26 已迁移完成：** server 持久化切到 `node:sqlite`，棋局、棋谱、聊天室、工作任务全部由 `data/arena.db` 持有，旧 JSON 只在首次启动时导入一次并留下标记，导入后可删除（本地开发数据已于当日清理）。放弃 JSON 的原因：多域多文件写入没有事务边界，半写或崩溃会留下互相矛盾的快照，状态多了也没法直接查。选 `node:sqlite` 而非 `better-sqlite3`：不引入原生依赖，代价是 Node 下限提到 22.13。迁移过程、评审与复核记录见本机 `docs/archive/proposals/sqlite-persistence.md`（git 不跟踪）。
 
 ## 7. 开发任务为何独立成域
 
