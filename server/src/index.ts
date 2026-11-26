@@ -133,7 +133,25 @@ function main(): void {
     }
   });
 
+  let shuttingDown = false;
+  let databaseClosed = false;
+  const closeDatabase = (): void => {
+    if (databaseClosed) return;
+    databaseClosed = true;
+    try {
+      database.close();
+    } catch (error) {
+      console.error('[arena] 关闭数据库失败:', error instanceof Error ? error.message : error);
+    }
+  };
+
   const shutdown = (signal: string): void => {
+    if (shuttingDown) {
+      // Second Ctrl+C: stop waiting for the graceful path.
+      closeDatabase();
+      process.exit(1);
+    }
+    shuttingDown = true;
     console.log(`[arena] ${signal} received, shutting down`);
     clearInterval(sweepTimer);
     clearInterval(chatSweepTimer);
@@ -141,10 +159,18 @@ function main(): void {
     clearInterval(runnerSweepTimer);
     wss.close();
     server.close(() => {
-      database.close();
+      closeDatabase();
       process.exit(0);
     });
-    setTimeout(() => process.exit(1), 3_000).unref();
+    // An open browser tab holds a keep-alive socket, and `server.close()` waits
+    // for every connection: without this the force-exit timer below wins, the
+    // database is never closed, and the WAL is not checkpointed back into
+    // `arena.db` (which is what makes "copy the one file" a real backup).
+    server.closeAllConnections();
+    setTimeout(() => {
+      closeDatabase();
+      process.exit(1);
+    }, 3_000).unref();
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));

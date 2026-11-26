@@ -60,3 +60,22 @@ it('does not recreate the legacy chat directory when a store is used', () => {
   expect(existsSync(path.join(dir, 'chat'))).toBe(false);
   database.close();
 });
+
+it('does not resurrect a deleted chat room from the legacy JSON', () => {
+  const legacy = new ChatManager(dir);
+  legacy.create('legacy-chat');
+  const file = path.join(dir, 'arena.db');
+
+  const first = new ArenaDatabase(file);
+  const chat = new ChatManager(dir, new SqliteChatStore(first, dir));
+  chat.restoreAll();
+  chat.remove('legacy-chat');
+  expect(chat.list()).toEqual([]);
+  first.close();
+
+  const second = new ArenaDatabase(file);
+  const restored = new ChatManager(dir, new SqliteChatStore(second, dir));
+  restored.restoreAll();
+  expect(restored.list()).toEqual([]);
+  second.close();
+});

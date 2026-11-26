@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
 import type { ArchiveSummary, RoomSummary } from '@arena/shared';
 import { ROOM_ID_PATTERN } from '@arena/shared';
 import { ArenaDatabase } from '../../db/database.js';
@@ -19,8 +21,37 @@ export interface SqliteRoomRepositoryOptions extends RepositoryOptions {
   importFrom?: string;
 }
 
+/** One-shot import marker; see `ArenaDatabase.metaFlag`. */
+const LEGACY_IMPORTED_FLAG = 'legacy_imported:rooms';
+
 interface PayloadRow {
   payload: string;
+}
+
+/**
+ * Ids of the `*.json` files in a legacy directory. Names that cannot be a
+ * valid id are skipped with a warning: `FileRoomRepository` builds paths from
+ * ids and throws on the first bad one, and a single stray file used to abort
+ * the whole import (and with it, the boot).
+ */
+function legacyIdsIn(directory: string, pattern: RegExp, label: string): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(directory);
+  } catch {
+    return [];
+  }
+  const ids: string[] = [];
+  for (const entry of entries) {
+    if (!entry.endsWith('.json') || entry.endsWith('.json.tmp')) continue;
+    const id = entry.slice(0, -'.json'.length);
+    if (pattern.test(id)) {
+      ids.push(id);
+      continue;
+    }
+    console.warn(`[sqlite-repository] skipping legacy ${label} file ${entry}: name is not a valid id`);
+  }
+  return ids;
 }
 
 function parsePayload<T>(row: PayloadRow | undefined, label: string): T | null {
@@ -103,35 +134,94 @@ export class SqliteRoomRepository implements RoomRepository {
     return summaries.sort((a, b) => b.playedAt.localeCompare(a.playedAt));
   }
 
-  /** One-time import of legacy room/archive JSON; corrupt files are skipped by FileRoomRepository. */
+  /**
+   * One-time import of the legacy room/archive JSON. Two rules keep it safe:
+   * one bad file must not abort the import (the transaction would roll back
+   * and the next boot would hit the same file forever), and "already
+   * imported" is a stored marker rather than "the table happens to be empty" —
+   * otherwise deleting the last room would let the next boot resurrect it.
+   */
   private importLegacy(dataDir: string): void {
-    const rooms = Number((this.database.db.prepare('SELECT COUNT(*) AS count FROM rooms').get() as { count: number }).count);
-    const archives = Number((this.database.db.prepare('SELECT COUNT(*) AS count FROM archives').get() as { count: number }).count);
-    if (rooms > 0 || archives > 0) return;
+    if (this.database.metaFlag(LEGACY_IMPORTED_FLAG)) return;
+    // A populated database already holds the authoritative state; importing
+    // over it would overwrite newer rows with stale JSON. Mark it done so the
+    // question is never asked again.
+    const existing = this.database.db
+      .prepare('SELECT (SELECT COUNT(*) FROM rooms) + (SELECT COUNT(*) FROM archives) AS count')
+      .get() as { count: number };
+    if (Number(existing.count) > 0) {
+      this.database.setMetaFlag(LEGACY_IMPORTED_FLAG);
+      return;
+    }
 
-    const legacy = new FileRoomRepository(dataDir, { archiveLimit: this.archiveLimit });
-    const roomSummaries = legacy.list();
-    const archiveSummaries = legacy.listArchives();
-    this.database.transaction(() => {
-      for (const summary of roomSummaries) {
-        const persisted = legacy.load(summary.roomId);
-        if (persisted) this.upsertRoom(persisted);
-      }
-      for (const summary of archiveSummaries) {
-        const persisted = legacy.loadArchive(summary.archiveId);
-        if (persisted) this.upsertArchive(persisted);
-      }
+    const roomIds = legacyIdsIn(path.join(dataDir, 'rooms'), ROOM_ID_PATTERN, 'room');
+    const archiveIds = legacyIdsIn(path.join(dataDir, 'archive'), ARCHIVE_ID_PATTERN, 'archive');
+    if (roomIds.length === 0 && archiveIds.length === 0) return;
+
+    // `createDirs: false`: the legacy tree is read-only here, and creating the
+    // directories would undo a cleanup the user just did.
+    const legacy = new FileRoomRepository(dataDir, {
+      archiveLimit: this.archiveLimit,
+      createDirs: false,
     });
-    if (roomSummaries.length > 0 || archiveSummaries.length > 0) {
-      console.log(`[sqlite-repository] imported ${roomSummaries.length} rooms and ${archiveSummaries.length} archives from legacy JSON.`);
+    let rooms = 0;
+    let archives = 0;
+    this.database.transaction(() => {
+      for (const roomId of roomIds) if (this.importRoom(legacy, roomId)) rooms += 1;
+      for (const archiveId of archiveIds) if (this.importArchive(legacy, archiveId)) archives += 1;
+      this.database.setMetaFlag(LEGACY_IMPORTED_FLAG);
+    });
+    if (rooms > 0 || archives > 0) {
+      console.log(`[sqlite-repository] imported ${rooms} rooms and ${archives} archives from legacy JSON.`);
+    }
+  }
+
+  private importRoom(legacy: FileRoomRepository, roomId: string): boolean {
+    try {
+      const persisted = legacy.load(roomId);
+      if (persisted === null) return false;
+      // Validate before binding: a payload without a usable updatedAt throws
+      // inside the transaction, which rolls the whole import back.
+      if (!ROOM_ID_PATTERN.test(persisted.id) || typeof persisted.state?.updatedAt !== 'string') {
+        console.warn(`[sqlite-repository] skipping legacy room ${roomId}: unexpected payload shape`);
+        return false;
+      }
+      this.upsertRoom(persisted);
+      return true;
+    } catch (error) {
+      console.warn(
+        `[sqlite-repository] skipping legacy room ${roomId}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return false;
+    }
+  }
+
+  private importArchive(legacy: FileRoomRepository, archiveId: string): boolean {
+    try {
+      const persisted = legacy.loadArchive(archiveId);
+      if (persisted === null) return false;
+      if (!ROOM_ID_PATTERN.test(persisted.id)) {
+        console.warn(`[sqlite-repository] skipping legacy archive ${archiveId}: unexpected payload shape`);
+        return false;
+      }
+      this.upsertArchive(persisted);
+      return true;
+    } catch (error) {
+      console.warn(
+        `[sqlite-repository] skipping legacy archive ${archiveId}:`,
+        error instanceof Error ? error.message : error,
+      );
+      return false;
     }
   }
 
   private upsertRoom(persisted: PersistedRoom): void {
+    const updatedAt = Date.parse(String(persisted.state.updatedAt));
     this.database.db.prepare(`
       INSERT INTO rooms(id, payload, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
-    `).run(persisted.id, JSON.stringify(persisted), persisted.state.updatedAt);
+    `).run(persisted.id, JSON.stringify(persisted), Number.isFinite(updatedAt) ? updatedAt : Date.now());
   }
 
   private upsertArchive(persisted: PersistedRoom): void {

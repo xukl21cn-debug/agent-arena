@@ -61,10 +61,6 @@ export class ChatManager {
     }
   }
 
-  get chatDirectory(): string {
-    return this.chatDir;
-  }
-
   private fileFor(roomId: string): string {
     // Chat room ids go through the same validator as game rooms — the
     // pattern already forbids `/`, `\` and `..`, which is the whole

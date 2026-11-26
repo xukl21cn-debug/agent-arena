@@ -19,8 +19,9 @@ const projectRoot = path.resolve(
 );
 
 /**
- * Default root for persisted state, split per domain: `<dataDir>/rooms`,
- * `<dataDir>/chat`, `<dataDir>/archive`.
+ * Default root for persisted state. The authoritative store is the SQLite file
+ * `<dataDir>/arena.db`; the `rooms` / `chat` / `work` / `archive` subdirectories
+ * are only read once, as the import source of the pre-SQLite layout.
  *
  * Anchored to this file, not to `process.cwd()`. `pnpm dev` and `pnpm start`
  * run the server with `server/` as the working directory while
@@ -40,11 +41,11 @@ export interface ServerConfig {
   waitMaxMs: number;
   defaultRoomId: string;
   serverUrl: string;
-  /** Root for persisted state; one subdirectory per domain (rooms / chat / archive). */
+  /** Root for persisted state; holds `arena.db` plus the legacy JSON import source. */
   dataDir: string;
   /** SQLite database file; defaults to <dataDir>/arena.db. */
   databaseFile: string;
-  /** Archived games kept per room, newest first, under <dataDir>/archive. */
+  /** Archived games kept per room, newest first. */
   archiveLimit: number;
   workWorkspace: string;
   workClaimTtlMs: number;
@@ -90,7 +91,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     MAX_WAIT_MS,
   );
 
-  const dataDir = env.ARENA_DATA_DIR?.trim() || DEFAULT_DATA_DIR;
+  // Both overrides resolve against the repo root, never `process.cwd()`: a
+  // relative `ARENA_DB_PATH` would otherwise put the database wherever the
+  // server happened to be started from.
+  const dataDir = path.resolve(projectRoot, env.ARENA_DATA_DIR?.trim() || DEFAULT_DATA_DIR);
   return {
     port: readInteger(env, 'PORT', DEFAULT_PORT, 1, 65_535),
     host: env.HOST?.trim() || DEFAULT_HOST,
@@ -99,7 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     defaultRoomId: env.DEFAULT_ROOM_ID?.trim() || DEFAULT_ROOM_ID,
     serverUrl: env.ARENA_SERVER_URL?.trim() || DEFAULT_SERVER_URL,
     dataDir,
-    databaseFile: env.ARENA_DB_PATH?.trim() || path.join(dataDir, 'arena.db'),
+    databaseFile: path.resolve(projectRoot, env.ARENA_DB_PATH?.trim() || path.join(dataDir, 'arena.db')),
     archiveLimit: readInteger(env, 'ARENA_ARCHIVE_LIMIT', 20, 1, 500),
     workWorkspace: realpathSync(workspace),
     workClaimTtlMs: readInteger(env, 'ARENA_WORK_CLAIM_TTL_MS', 1_800_000, 60_000, 14_400_000),

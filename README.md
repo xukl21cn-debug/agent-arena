@@ -170,9 +170,9 @@ pnpm runner -- --config runner.config.json
 
 ## 数据与备份
 
-四个域的权威状态都在 `data/arena.db`（SQLite，WAL 模式，同目录另有 `-wal` / `-shm`）。正常关停会把 WAL 合并回主文件，因此**停服后复制 `arena.db` 一个文件就是完整备份**；服务还在跑时直接复制会丢掉 `-wal` 里尚未合并的写入，要么先停服，要么用 `VACUUM INTO` 导出一致快照。
+四个域的权威状态都在 `data/arena.db`（SQLite，WAL 模式，同目录另有 `-wal` / `-shm`）。正常关停（含 `Ctrl+C`）会断开连接、关闭数据库并把 WAL 合并回主文件，因此**停服后复制 `arena.db` 一个文件就是完整备份**；服务还在跑时直接复制会丢掉 `-wal` 里尚未合并的写入，要么先停服，要么用 `VACUUM INTO` 导出一致快照。库文件被更高版本写过（schema 版本更新）时，当前版本会拒绝启动而不是照常写入。
 
-升级前的 `data/rooms|chat|work|archive` JSON 只在对应表为空时导入一次，导入后可以删除；服务不写回 JSON，也不会自动删这些文件。
+升级前的 `data/rooms|chat|work|archive` JSON 只在首次启动时导入一次，导入完成会写进库里的标记，之后即使数据被清空也不会重新导入；服务不写回 JSON，也不会自动删这些文件。
 
 ## 开发与文档
 

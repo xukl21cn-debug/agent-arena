@@ -9,6 +9,9 @@ interface PayloadRow {
   payload: string;
 }
 
+/** One-shot import marker; see `ArenaDatabase.metaFlag`. */
+const LEGACY_IMPORTED_FLAG = 'legacy_imported:work';
+
 function parseTask(row: PayloadRow | undefined, label: string): WorkTask | null {
   if (row === undefined) return null;
   try {
@@ -45,9 +48,20 @@ export class SqliteWorkTaskStore implements WorkTaskStore {
     `).run(task.id, task.status, task.updatedAt, JSON.stringify(task));
   }
 
+  /**
+   * One-time import of `data/work/*.json`. The marker, not an empty table,
+   * decides whether it already ran — otherwise deleting every task would let
+   * the next boot import the deleted ones back.
+   */
   private importLegacy(dataDir: string): void {
-    const count = Number((this.database.db.prepare('SELECT COUNT(*) AS count FROM work_tasks').get() as { count: number }).count);
-    if (count > 0) return;
+    if (this.database.metaFlag(LEGACY_IMPORTED_FLAG)) return;
+    // A populated table already holds the authoritative state; importing over
+    // it would overwrite newer tasks with stale JSON.
+    const existing = this.database.db.prepare('SELECT COUNT(*) AS count FROM work_tasks').get() as { count: number };
+    if (Number(existing.count) > 0) {
+      this.database.setMetaFlag(LEGACY_IMPORTED_FLAG);
+      return;
+    }
     const directory = path.join(dataDir, 'work');
     let entries: string[];
     try {
@@ -55,18 +69,24 @@ export class SqliteWorkTaskStore implements WorkTaskStore {
     } catch {
       return;
     }
+    const files = entries.filter((entry) => entry.endsWith('.json') && !entry.endsWith('.json.tmp'));
+    if (files.length === 0) return;
+
     let imported = 0;
     this.database.transaction(() => {
-      for (const entry of entries) {
-        if (!entry.endsWith('.json') || entry.endsWith('.json.tmp')) continue;
+      for (const entry of files) {
         try {
           const task = taskSchema.parse(JSON.parse(readFileSync(path.join(directory, entry), 'utf8')));
-          this.save(task);
+          this.database.db.prepare(`
+            INSERT INTO work_tasks(id, status, updated_at, payload) VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING
+          `).run(task.id, task.status, task.updatedAt, JSON.stringify(task));
           imported += 1;
         } catch (error) {
           console.warn(`[work-store] skipping old or invalid task file ${entry}:`, error instanceof Error ? error.message : error);
         }
       }
+      this.database.setMetaFlag(LEGACY_IMPORTED_FLAG);
     });
     if (imported > 0) console.log(`[work-store] imported ${imported} tasks from legacy JSON.`);
   }
