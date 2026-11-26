@@ -7,7 +7,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const deployDst = path.resolve(root, 'deploy-dst');
 const webDist = path.resolve(root, 'web/dist');
 
-console.log('[deploy] 1/3 构建所有子项目 (shared, server, web)...');
+console.log('[deploy] 1/3 构建 shared、server、web、runner（runner 是本地工具，不打进部署包）...');
 // tsc does not prune stale outputs. A dist/mcp/stdio.js left behind from
 // before the stdio adapter was retired would otherwise be shipped verbatim,
 // so every bundle starts from an empty dist.

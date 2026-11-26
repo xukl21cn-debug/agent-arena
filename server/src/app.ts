@@ -13,6 +13,8 @@ import type { RoomManager } from './game/rooms/room-manager.js';
 import { isWorkLoopback, mountWorkMcp } from './work/mcp.js';
 import { createWorkRouter } from './work/http.js';
 import { WorkStore } from './work/store.js';
+import { createRunnerRouter } from './runner/http.js';
+import type { RunnerRegistry } from './runner/registry.js';
 
 export interface AppOptions {
   /** Directory holding the built web UI. Omit to run API/MCP only. */
@@ -20,6 +22,8 @@ export interface AppOptions {
   /** The chat domain's rooms; created here when the caller does not pass one. */
   chat?: ChatManager;
   work?: WorkStore;
+  /** Runner presence/command registry; mounted as `/api/runners` when present. */
+  runner?: RunnerRegistry;
   /** Chat MCP gone-detection grace; tests shrink it, production keeps 5s. */
   chatGoneGraceMs?: number;
   /** How long a dead chat MCP session stays resumable; tests shrink it. */
@@ -54,6 +58,7 @@ export function createApp(
   app.use(express.json({ limit: '64kb' }));
 
   if (work) app.use('/api/work', createWorkRouter(work));
+  if (options.runner) app.use('/api/runners', createRunnerRouter(options.runner));
   app.use('/api', createApiRouter(manager, config));
   mountMcpHttp(app, manager, config);
 

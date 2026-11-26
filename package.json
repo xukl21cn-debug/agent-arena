@@ -15,13 +15,15 @@
     "build:shared": "pnpm --filter @arena/shared build",
     "build:server": "pnpm --filter @arena/server build",
     "build:web": "pnpm --filter @arena/web build",
-    "build": "pnpm build:shared && pnpm build:server && pnpm build:web",
+    "build:runner": "pnpm --filter @arena/runner build",
+    "runner": "pnpm build:shared && pnpm build:runner && node runner/dist/index.js",
+    "build": "pnpm build:shared && pnpm build:server && pnpm build:web && pnpm build:runner",
     "bundle": "node scripts/deploy.mjs",
     "deploy": "node scripts/deploy.mjs",
     "start": "pnpm --filter @arena/server start",
     "duel": "pnpm --filter @arena/server duel",
-    "test": "pnpm build:shared && pnpm --filter @arena/server test",
-    "typecheck": "pnpm build:shared && pnpm --filter @arena/server typecheck && pnpm --filter @arena/web typecheck"
+    "test": "pnpm build:shared && pnpm --filter @arena/server test && pnpm --filter @arena/runner test",
+    "typecheck": "pnpm build:shared && pnpm --filter @arena/server typecheck && pnpm --filter @arena/web typecheck && pnpm --filter @arena/runner typecheck"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

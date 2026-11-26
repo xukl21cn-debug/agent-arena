@@ -29,6 +29,8 @@ Thumbs.db
 data/
 data-dev/
 .dev-isolated.json
+.arena-runner/
+runner.config.json
 *.sqlite
 *.db
 .commandcode

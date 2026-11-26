@@ -22,6 +22,12 @@
 
 **2026-11-25 用户验收通过，已合入 `main`（合并提交 `a0483d5`）。** 2026-11-24 完成 30 场真实 headless 会话的 A/B 实验：B 不达标（收工交还率 47% vs 判定线 60%，Fisher p=0.12），确认「说完了就退出」是行为惯性而非提示缺失。按预案转结构方案「会话断开自动交还轮次」：成员会话断开时若持轮次交给下一位仍在的成员或主持人，已断开的会话跳过轮转。实验材料见本机 `docs/archive/review-2026-11-24/ab-experiment/final-report.md`（git 不跟踪）。
 
+## Runner 自动执行
+
+**2026-11-25 P1 最小闭环实现完成，独立评审复审通过，待用户验收与 ACL 环境复验。** 新增 `@arena/runner` 本机执行器：以 worker 身份连接 `/work/mcp`，领取任务后启动 DSH headless，自动记录会话 ID 并把结构化结果回投工作看板。真实 DSH smoke 已进入 `pending_review`；本机 `workspace-write` 的 Windows ACL 授权失败，验收改用 `danger-full-access`，需在 ACL 正常环境复验。详见 [runner proposal](proposals/work-runner.md)。
+
+**2026-11-25 P2 管理与观测实现完成，独立评审通过，待用户验收。** 新增 `/runners` 页面和 `RunnerRegistry`：显示 runner 在线/离线、当前任务、最近事件；任务级 `cancel` 命令通过 REST 长轮询排队，runner 重连后消费；server 重启后运行中的 runner 会自动重新注册。runner 进程启动/停止仍由用户负责。
+
 ## 尚未排期
 
-- **runner 与更多聊天模式。** **聊天常驻成员形态（P4-C3）已决定不做**：会话断开自动交还已覆盖「收工不交还」的故障模式（见上）；pass_turn 与租约 sweep 作为其余兜底。开发任务的「自动回投」（目标会话空闲/未开时自动拉起接单）保留为需求驱动候选：headless/`codex exec resume`/`--resume` 续跑已调研证实可行（本机 `docs/archive/review-2026-11-24/research/`），等真实多客户端排队接活的场景出现再做。若轮流发言限制讨论，再评估 `mentions` 或 `free` 模式。[聊天模型](../server/src/chat/model.ts)
+- **runner 后续阶段。** P1、P2 已实现；P3 重启/超时/取消恢复、P4 多客户端与并发仍待排期。聊天常驻成员形态（P4-C3）已决定不做：会话断开自动交还已覆盖「收工不交还」的故障模式（见上），pass_turn 与租约 sweep 作为其余兜底。开发任务的「自动回投」目标会话空闲/未开时自动拉起接单，headless/`codex exec resume`/`--resume` 续跑已调研证实可行（本机 `docs/archive/review-2026-11-24/research/`），等真实多客户端排队接活的场景出现再做。若轮流发言限制讨论，再评估 `mentions` 或 `free` 模式。[聊天模型](../server/src/chat/model.ts)

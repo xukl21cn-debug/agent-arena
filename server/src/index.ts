@@ -13,6 +13,8 @@ import { RoomManager } from './game/rooms/room-manager.js';
 import { isWorkLoopback } from './work/mcp.js';
 import { WorkStore } from './work/store.js';
 import { startWorkSweep } from './work/sweep.js';
+import { RunnerRegistry } from './runner/registry.js';
+import { startRunnerSweep } from './runner/sweep.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDistCandidates = [
@@ -68,10 +70,12 @@ function main(): void {
   const work = isWorkLoopback(config.host)
     ? new WorkStore(config.dataDir, config.workWorkspace, config.workClaimTtlMs)
     : undefined;
-  const app = createApp(manager, config, { webDist, chat, work });
+  const runner = new RunnerRegistry();
+  const app = createApp(manager, config, { webDist, chat, work, runner });
   const server = createServer(app);
-  const wss = attachWebSocket(server, manager, { presence, chat, work });
+  const wss = attachWebSocket(server, manager, { presence, chat, work, runner });
   const workSweepTimer = work ? startWorkSweep(work) : undefined;
+  const runnerSweepTimer = startRunnerSweep(runner);
 
   // Seats with no session, viewer, or parked wait flip to `disconnected` once
   // their last call ages out. This only refreshes what the UI shows.
@@ -96,6 +100,7 @@ function main(): void {
     } else {
       console.log('[arena] 工作域仅在回环地址开放，本次启动已跳过。');
     }
+    console.log(`[arena] API   ${base}/api/runners  (runner registry)`);
     console.log(`[arena] WS    ws://${config.host}:${config.port}/ws`);
     console.log(`[arena] data  ${config.dataDir}`);
     console.log(
@@ -121,6 +126,7 @@ function main(): void {
     clearInterval(sweepTimer);
     clearInterval(chatSweepTimer);
     clearInterval(workSweepTimer);
+    clearInterval(runnerSweepTimer);
     wss.close();
     server.close(() => {
       process.exit(0);
